@@ -105,10 +105,13 @@ wp-rest-cli config clear
 ```sh
 npm run wp -- <args>   # run against source via tsx, no build needed
 npm run build          # bundle to dist/cli.js (tsup)
-npm test                # vitest (unit + an execa-driven integration suite against a local fixture server)
+npm test                # jest (unit, via wp-scripts) + vitest (an execa-driven integration suite against a local fixture server)
 npm run typecheck
-npm run lint
+npm run lint            # wp-scripts lint-js — WordPress/Gutenberg coding standards
+npm run format          # wp-scripts format
 ```
+
+Code style follows the [WordPress/Gutenberg JavaScript coding standards](https://developer.wordpress.org/coding-standards/wordpress-coding-standards/javascript/), via `@wordpress/scripts`, `@wordpress/eslint-plugin`, and `@wordpress/prettier-config`.
 
 ## Design notes
 

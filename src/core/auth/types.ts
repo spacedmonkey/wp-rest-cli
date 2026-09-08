@@ -4,5 +4,6 @@
  * call sites in the HTTP client.
  */
 export interface AuthProvider {
-  getHeaders(): Promise<Record<string, string>>;
+	/** @return Headers to merge into an outgoing request to authenticate it. */
+	getHeaders: () => Promise< Record< string, string > >;
 }

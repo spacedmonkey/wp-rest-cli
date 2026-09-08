@@ -10,7 +10,7 @@ Contributions are welcome. The full contributor guide lives in the repository:
 
 ```sh
 npm install
-npm test          # unit + integration suite
+npm test          # jest (unit tests) + vitest (the execa-driven integration suite)
 npm run lint
 npm run typecheck
 npm run format

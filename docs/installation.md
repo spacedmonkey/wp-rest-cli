@@ -36,8 +36,10 @@ npm run wp -- <namespace> <route> [<verb>] [<id>] [--flag=value...] --url=<site>
 | `npm run wp -- <args>` | Run against source via `tsx`, no build needed. |
 | `npm run build` | Bundle to `dist/cli.js` (tsup). |
 | `npm run dev` | `tsup --watch`. |
-| `npm test` | Run the vitest suite (unit tests + an execa-driven integration suite against a local fixture server). |
-| `npm run test:watch` | Vitest in watch mode. |
+| `npm test` | Run the full suite: Jest (unit tests) + Vitest (an execa-driven integration suite against a local fixture server). |
+| `npm run test:unit` | Jest only, unit suite only. |
+| `npm run test:integration` | Vitest run, integration suite only. |
+| `npm run test:watch` | Jest in watch mode (unit suite only; see `test:integration:watch` for the integration suite). |
 | `npm run typecheck` | `tsc --noEmit`. |
 | `npm run lint` | `eslint .`. |
 | `npm run format` | `prettier --write .`. |

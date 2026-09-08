@@ -31,31 +31,46 @@ npm run dev        # tsup --watch
 Run the full local check suite:
 
 ```sh
-npm test          # vitest: unit tests + the execa-driven integration suite
-npm run lint       # eslint .
+npm test          # jest (unit tests, via wp-scripts) + vitest (the execa-driven integration suite)
+npm run lint       # wp-scripts lint-js (WordPress/Gutenberg coding standards)
 npm run typecheck  # tsc --noEmit
-npm run format     # prettier --write .
+npm run format     # wp-scripts format
 ```
 
 Run a single test file or a single test by name while iterating:
 
 ```sh
-npx vitest run test/unit/formatter.test.ts
-npx vitest run -t "name substring"
+NODE_OPTIONS=--experimental-vm-modules npx wp-scripts test-unit-js formatter.test.ts     # unit
+NODE_OPTIONS=--experimental-vm-modules npx wp-scripts test-unit-js -t "name substring"   # unit
+
+npx vitest run test/integration/cli.test.ts                           # integration
+npx vitest run -t "name substring"                                    # integration
 ```
+
+## Coding standards
+
+This project follows WordPress/Gutenberg JavaScript coding standards. `eslint.config.js` and
+`.prettierrc.cjs` are built on `@wordpress/eslint-plugin` and `@wordpress/prettier-config`
+respectively (via `@wordpress/scripts`), so `npm run lint`/`npm run format` enforce the same rules
+as Gutenberg itself — including required JSDoc on functions. Don't hand-roll ESLint/Prettier config
+changes that diverge from those packages' defaults; add a narrowly-scoped override in
+`eslint.config.js` instead, with a comment explaining why (see the existing `no-console` override
+for `src/cli.ts`/`src/core/debug.ts` as an example).
 
 ## How the test suites work
 
-- **Unit tests** (`test/unit/`) exercise pure logic - command/route parsing, formatting, indexer route
-  matching - with no network involved.
-- **Integration tests** (`test/integration/cli.test.ts`) are the source of truth for end-to-end CLI
-  behavior. They spawn a plain `node:http` fixture server (`test/integration/fixtures/server.ts`) that
-  models a `wp/v2` index, a `widgets` collection with full CRUD + `meta`, and a parameterized-only route,
-  then drive the actual CLI binary against it via `execa` + `tsx`. **No live WordPress site is needed** to
-  run or write these tests, and none should be required to add new ones - when adding a new verb or
-  command, prefer extending the fixture and adding an integration test over mocking `fetch` at the unit
-  level, since most of the value here is in the URL-building and dispatch logic across the whole pipeline.
-  Expect these tests to take seconds rather than milliseconds.
+- **Unit tests** (`test/unit/`), run under **Jest**, exercise pure logic - command/route parsing,
+  formatting, indexer route matching - with no network involved.
+- **Integration tests** (`test/integration/cli.test.ts`), run under **Vitest**, are the source of truth
+  for end-to-end CLI behavior. They spawn a plain `node:http` fixture server
+  (`test/integration/fixtures/server.ts`) that models a `wp/v2` index, a `widgets` collection with full
+  CRUD + `meta`, and a parameterized-only route, then drive the actual CLI binary against it via `execa` +
+  `tsx`. **No live WordPress site is needed** to run or write these tests, and none should be required to
+  add new ones - when adding a new verb or command, prefer extending the fixture and adding an
+  integration test over mocking `fetch` at the unit level, since most of the value here is in the
+  URL-building and dispatch logic across the whole pipeline, and Jest's ESM setup here can't hoist
+  `jest.mock()` module replacement the way Vitest's `vi.mock()` did. Expect these tests to take seconds
+  rather than milliseconds.
 
 ## Architecture
 

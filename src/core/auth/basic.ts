@@ -7,13 +7,21 @@ import type { AuthProvider } from './types.js';
  * exact same wire format, so nothing else about this class changes.
  */
 export class BasicAuthProvider implements AuthProvider {
-  constructor(
-    private readonly username: string,
-    private readonly password: string,
-  ) {}
+	/**
+	 * @param username WordPress username.
+	 * @param password Account password, or an Application Password.
+	 */
+	constructor(
+		private readonly username: string,
+		private readonly password: string
+	) {}
 
-  async getHeaders(): Promise<Record<string, string>> {
-    const token = Buffer.from(`${this.username}:${this.password}`, 'utf8').toString('base64');
-    return { Authorization: `Basic ${token}` };
-  }
+	/** @return An `Authorization: Basic ...` header for the configured credentials. */
+	async getHeaders(): Promise< Record< string, string > > {
+		const token = Buffer.from(
+			`${ this.username }:${ this.password }`,
+			'utf8'
+		).toString( 'base64' );
+		return { Authorization: `Basic ${ token }` };
+	}
 }

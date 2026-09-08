@@ -12,14 +12,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm run wp -- <namespace> <route> [<verb>] [<id>] [--flag=value...] --url=<site>  # run against src/ via tsx, no build needed
 npm run build          # bundle to dist/cli.js (tsup)
 npm run dev             # tsup --watch
-npm test                # vitest run (unit + an execa-driven integration suite against a local fixture server)
-npm run test:watch       # vitest watch mode
+npm test                 # jest (unit, via wp-scripts) + vitest run (an execa-driven integration suite against a local fixture server)
+npm run test:unit        # wp-scripts test-unit-js (jest), unit suite only
+npm run test:integration # vitest run, integration suite only
+npm run test:watch       # wp-scripts test-unit-js --watch (unit only; see test:integration:watch for the integration suite)
 npm run typecheck       # tsc --noEmit
-npm run lint            # eslint .
-npm run format          # prettier --write .
+npm run lint            # wp-scripts lint-js (WordPress/Gutenberg coding standards, via @wordpress/eslint-plugin)
+npm run format          # wp-scripts format (WordPress/Gutenberg coding standards, via @wordpress/prettier-config)
 ```
 
-Run a single test file: `npx vitest run test/unit/formatter.test.ts`. Run a single test by name: `npx vitest run -t "name substring"`. The integration suite (`test/integration/cli.test.ts`) spawns the CLI via `execa`/`tsx` against an in-process HTTP fixture server (`test/integration/fixtures/server.ts`), so it's slower (seconds, not ms) than the unit tests — expect that when iterating.
+Run a single unit test file: `NODE_OPTIONS=--experimental-vm-modules npx wp-scripts test-unit-js formatter.test.ts`. Run a single unit test by name: `NODE_OPTIONS=--experimental-vm-modules npx wp-scripts test-unit-js -t "name substring"`. The integration suite (`test/integration/cli.test.ts`) spawns the CLI via `execa`/`tsx` against an in-process HTTP fixture server (`test/integration/fixtures/server.ts`), so it's slower (seconds, not ms) than the unit tests — expect that when iterating. Run just that suite with `npx vitest run test/integration/cli.test.ts` or `npx vitest run -t "name substring"`.
+
+### Coding standards
+
+This project follows WordPress/Gutenberg JavaScript coding standards, enforced via `@wordpress/scripts`:
+
+- `eslint.config.js` spreads `@wordpress/eslint-plugin`'s flat `recommended` config (which itself pulls in `@wordpress/prettier-config`-aware formatting rules and TypeScript support via `typescript-eslint`, since both `prettier` and `typescript` are installed). Project-specific overrides on top: a `_`-prefixed-arg allowance for `@typescript-eslint/no-unused-vars`, and `no-console: off` for `src/cli.ts`/`src/core/debug.ts` (a CLI's whole job is printing).
+- `.prettierrc.cjs` re-exports `@wordpress/prettier-config` as-is (tabs, single quotes, `printWidth: 80`). `prettier` itself is aliased to `npm:wp-prettier` (WordPress's own Prettier fork) in `devDependencies`, since `wp-scripts format`/`lint-js` require that exact package to be installed under the `prettier` name — a plain `prettier` install will not satisfy them.
+- `.prettierignore` excludes `.github/`, `*.yml`/`*.yaml`, and `mkdocs.yml` — the WordPress formatting/tab-indent rules apply to this project's JS/TS/JSON, not to CI workflow or docs-site YAML.
+- JSDoc is required on functions (`jsdoc/require-param` etc., from the WordPress config) — see the existing `src/` files for the expected style (a one-line summary, `@param`/`@return` with real descriptions, not bare tags).
 
 ## Architecture
 
@@ -64,5 +75,5 @@ WP-CLI's `wp post meta` talks to `wp_postmeta` directly. Over REST there's no su
 
 ### Testing conventions
 
-- Unit tests (`test/unit/`) test pure logic (parsing, formatting, indexer route-matching) with no network.
-- The integration suite (`test/integration/cli.test.ts`) is the source of truth for end-to-end CLI behavior: it starts `test/integration/fixtures/server.ts` (a plain `node:http` server modeling a `wp/v2` index, a `widgets` collection with full CRUD + `meta`, and a parameterized-only `global-styles/themes` route) and drives the actual CLI binary via `execa` + `tsx`. When adding a new verb/command, prefer extending this fixture and adding an integration test over mocking `fetch` at the unit level, since most of the value here is in the URL-building and dispatch logic across the whole pipeline.
+- Unit tests (`test/unit/`), run under **Jest** (ESM via `ts-jest`, config in `jest.config.js`), test pure logic (parsing, formatting, indexer route-matching) with no network. Jest's ESM setup here can't hoist `jest.mock()` module replacement the way Vitest's `vi.mock()` did — a future test needing to mock one of this project's own modules would need `jest.unstable_mockModule()` plus a dynamic `import()`.
+- The integration suite (`test/integration/cli.test.ts`), run under **Vitest** (`vitest.config.ts` now scopes it to `test/integration/**`), is the source of truth for end-to-end CLI behavior: it starts `test/integration/fixtures/server.ts` (a plain `node:http` server modeling a `wp/v2` index, a `widgets` collection with full CRUD + `meta`, and a parameterized-only `global-styles/themes` route) and drives the actual CLI binary via `execa` + `tsx`. When adding a new verb/command, prefer extending this fixture and adding an integration test over mocking `fetch` at the unit level, since most of the value here is in the URL-building and dispatch logic across the whole pipeline.
