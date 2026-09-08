@@ -1,0 +1,45 @@
+name: Feature request
+description: Suggest a new command, verb, or capability for wp-rest-cli
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion. wp-rest-cli follows WP-CLI's own command/flag conventions where possible, so it helps to describe how this would look on the command line.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: What are you trying to do that the CLI doesn't currently support?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed command / behavior
+      description: What would the command look like? Include example invocations if you can.
+      render: sh
+      placeholder: |
+        wp-rest-cli wp/v2 posts touch <id> --url=https://example.com
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any existing commands/flags you tried, or workarounds you're currently using.
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Anything else relevant - e.g. how the equivalent works in WP-CLI itself, related REST API endpoints, etc.
+    validations:
+      required: false

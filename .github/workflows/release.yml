@@ -1,0 +1,58 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  release:
+    name: Build, verify & publish GitHub release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Pack npm tarball
+        run: npm pack
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: '*.tgz'
+
+      # Publishing to the npm registry is disabled for now: the package name
+      # `wp-rest-cli` is already taken by a different, unrelated project, so
+      # `npm publish` would fail/collide as-is. Once this package is renamed
+      # or moved under a scope (e.g. `@spacedmonkey/wp-rest-cli`), update the
+      # name in package.json and flip this step on (remove `if: false` and
+      # set an `NPM_TOKEN` secret in the repo settings).
+      - name: Publish to npm
+        if: false
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
