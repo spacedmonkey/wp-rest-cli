@@ -1,0 +1,60 @@
+site_name: wp-rest-cli
+site_description: A WP-CLI-style command line tool for talking to any WordPress site's REST API over HTTP.
+site_url: https://spacedmonkey.github.io/wp-rest-cli/
+repo_url: https://github.com/spacedmonkey/wp-rest-cli
+repo_name: spacedmonkey/wp-rest-cli
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+
+nav:
+  - Home: index.md
+  - Installation: installation.md
+  - Usage: usage.md
+  - Authentication: authentication.md
+  - Configuration: configuration.md
+  - Meta commands: meta-commands.md
+  - Examples: examples.md
+  - Contributing: contributing.md
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - content.action.edit
+    - search.suggest
+    - search.highlight
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - toc:
+      permalink: true
+
+plugins:
+  - search
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/spacedmonkey/wp-rest-cli

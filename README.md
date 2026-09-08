@@ -3,10 +3,13 @@
 [![CI](https://github.com/spacedmonkey/wp-rest-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/spacedmonkey/wp-rest-cli/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](package.json)
+[![Docs](https://img.shields.io/badge/docs-spacedmonkey.github.io-blue.svg)](https://spacedmonkey.github.io/wp-rest-cli/)
 
 A WP-CLI-style command line tool for talking to **any** WordPress site's REST API over HTTP — no PHP, no SSH, no WordPress install required locally. It auto-discovers a site's REST API from just a URL, introspects routes the way `?_method=OPTIONS` does, and speaks WP-CLI's own `--format=`/`--fields=` conventions.
 
 > This is an independent project inspired by [wp-cli/restful](https://github.com/wp-cli/restful) and the [2016 "RESTful WP-CLI" update](https://make.wordpress.org/cli/2016/04/14/restful-wp-cli-update-3/), reimplemented as a standalone Node/TypeScript CLI that always talks to a real WordPress REST API over HTTP (rather than running inside WordPress/PHP).
+
+**[Full documentation](https://spacedmonkey.github.io/wp-rest-cli/)**
 
 ## Install
 
