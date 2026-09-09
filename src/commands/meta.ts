@@ -1,8 +1,11 @@
+/**
+ * Internal dependencies
+ */
 import type { WpRestClient } from '../core/client.js';
-import { formatOutput } from '../core/formatter.js';
-import { pc } from '../ui.js';
 import { CliError } from '../core/errors.js';
+import { formatOutput } from '../core/formatter.js';
 import type { GlobalFlags, RouteEndpoint } from '../types.js';
+import { pc } from '../ui.js';
 
 /**
  * WP-CLI's `wp post meta <command>` talks to wp_postmeta directly, so it can

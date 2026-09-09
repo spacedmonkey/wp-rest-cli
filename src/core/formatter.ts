@@ -1,9 +1,16 @@
-import { inspect } from 'node:util';
-import { table as renderTable, getBorderCharacters } from 'table';
+/**
+ * External dependencies
+ */
 import { flatten } from 'flat';
-import { stringify as stringifyYaml } from 'yaml';
 import { json2csv } from 'json-2-csv';
+import { inspect } from 'node:util';
 import pc from 'picocolors';
+import { table as renderTable, getBorderCharacters } from 'table';
+import { stringify as stringifyYaml } from 'yaml';
+
+/**
+ * Internal dependencies
+ */
 import { CliError } from './errors.js';
 import type { OutputFormat } from '../types.js';
 

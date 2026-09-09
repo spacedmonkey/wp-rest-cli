@@ -1,3 +1,6 @@
+/**
+ * External dependencies
+ */
 import Conf from 'conf';
 
 interface StoredConfig {

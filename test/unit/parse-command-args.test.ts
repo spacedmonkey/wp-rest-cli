@@ -1,4 +1,11 @@
+/**
+ * External dependencies
+ */
 import { describe, expect, it } from '@jest/globals';
+
+/**
+ * Internal dependencies
+ */
 import { parseCommandArgs } from '../../src/commands/rest.js';
 import { CliError } from '../../src/core/errors.js';
 

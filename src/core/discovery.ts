@@ -1,6 +1,13 @@
+/**
+ * WordPress dependencies
+ */
 import { prependHTTPS } from '@wordpress/url';
-import { CliError } from './errors.js';
+
+/**
+ * Internal dependencies
+ */
 import { debugLog } from './debug.js';
+import { CliError } from './errors.js';
 
 const LINK_REL = 'https://api.w.org/';
 

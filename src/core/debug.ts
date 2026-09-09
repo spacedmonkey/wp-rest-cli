@@ -1,3 +1,6 @@
+/**
+ * Internal dependencies
+ */
 import { pc } from '../ui.js';
 
 /**

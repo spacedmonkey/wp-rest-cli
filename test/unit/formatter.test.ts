@@ -1,4 +1,11 @@
+/**
+ * External dependencies
+ */
 import { describe, expect, it } from '@jest/globals';
+
+/**
+ * Internal dependencies
+ */
 import { formatOutput } from '../../src/core/formatter.js';
 
 const posts = [

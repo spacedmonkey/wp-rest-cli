@@ -1,3 +1,6 @@
+/**
+ * Internal dependencies
+ */
 import type { AuthProvider } from './types.js';
 
 /**

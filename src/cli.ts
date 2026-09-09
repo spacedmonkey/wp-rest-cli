@@ -1,5 +1,12 @@
-import process from 'node:process';
+/**
+ * External dependencies
+ */
 import { Command } from 'commander';
+import process from 'node:process';
+
+/**
+ * Internal dependencies
+ */
 import {
 	parseCommandArgs,
 	runRestCommand,
@@ -14,8 +21,8 @@ import {
 	configFilePath,
 } from './config.js';
 import { formatErrorForDisplay, CliError, WpApiError } from './core/errors.js';
-import { pc } from './ui.js';
 import type { Context, GlobalFlags, OutputFormat } from './types.js';
+import { pc } from './ui.js';
 
 const CONTEXTS: Context[] = [ 'view', 'edit', 'embed' ];
 const FORMATS: OutputFormat[] = [
