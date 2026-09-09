@@ -139,6 +139,25 @@ export async function startFixture(): Promise< Fixture > {
 							},
 						],
 					},
+					// Modelled on WP_REST_Revisions_Controller: the URL parameter sits
+					// in the *middle* of the path (a parent post id), not at the end —
+					// addressed as `wp wp/v2 posts revisions get <parent>`.
+					'/wp/v2/posts/(?P<parent>[\\d]+)/revisions': {
+						namespace: 'wp/v2',
+						methods: [ 'GET' ],
+						endpoints: [ { methods: [ 'GET' ] } ],
+					},
+					// Modelled on WP_REST_Global_Styles_Revisions_Controller's sibling
+					// (real WP's .../themes/<stylesheet>/variations): a mid-path
+					// parameter *and* a hybrid node — "global-styles/themes" is both
+					// directly addressable (the themes route above) and has this as a
+					// child.
+					'/wp/v2/global-styles/themes/(?P<stylesheet>%s)/variations':
+						{
+							namespace: 'wp/v2',
+							methods: [ 'GET' ],
+							endpoints: [ { methods: [ 'GET' ] } ],
+						},
 				},
 			} );
 			return;
@@ -338,6 +357,42 @@ export async function startFixture(): Promise< Fixture > {
 		);
 		if ( gizmoMatch && req.method === 'GET' ) {
 			send( res, 200, { id: gizmoMatch[ 1 ], kind: 'electronic' } );
+			return;
+		}
+
+		const revisionsMatch = path.match(
+			/^\/wp-json\/wp\/v2\/posts\/([^/]+)\/revisions$/
+		);
+		if ( revisionsMatch && req.method === 'GET' ) {
+			const parent = revisionsMatch[ 1 ] as string;
+			if ( parent !== '10' ) {
+				send( res, 404, {
+					code: 'rest_post_invalid_id',
+					message: 'Invalid post parent ID.',
+					data: { status: 404 },
+				} );
+				return;
+			}
+			send( res, 200, [ { id: 101, parent: 10 } ] );
+			return;
+		}
+
+		const variationsMatch = path.match(
+			/^\/wp-json\/wp\/v2\/global-styles\/themes\/([^/]+)\/variations$/
+		);
+		if ( variationsMatch && req.method === 'GET' ) {
+			const stylesheet = decodeURIComponent(
+				variationsMatch[ 1 ] as string
+			);
+			if ( stylesheet !== 'twentytwentyfour' ) {
+				send( res, 404, {
+					code: 'rest_theme_not_found',
+					message: 'Theme not found.',
+					data: { status: 404 },
+				} );
+				return;
+			}
+			send( res, 200, [ { title: 'Default', settings: {} } ] );
 			return;
 		}
 

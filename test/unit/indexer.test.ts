@@ -49,6 +49,13 @@ describe( 'routesForNamespace', () => {
 		);
 		expect( routes ).toContain( 'global-styles/themes' );
 	} );
+
+	it( 'lists a route with a parameter in the middle of its path, by joining its literal segments', () => {
+		const routes = routesForNamespace( index, 'wp/v2' ).map(
+			( r ) => r.route
+		);
+		expect( routes ).toContain( 'posts/autosaves' );
+	} );
 } );
 
 describe( 'routeChildren', () => {
@@ -99,6 +106,22 @@ describe( 'routeChildren', () => {
 		] );
 	} );
 
+	it( 'marks a route as a "hybrid" when it is both directly addressable and has a child (a mid-path parameter route beneath it)', () => {
+		const rootChildren = routeChildren( index, 'wp/v2', '' );
+		expect( rootChildren.find( ( c ) => c.segment === 'posts' ) ).toEqual( {
+			segment: 'posts',
+			route: 'posts',
+			hasChildren: true,
+		} );
+		expect( routeChildren( index, 'wp/v2', 'posts' ) ).toEqual( [
+			{
+				segment: 'autosaves',
+				route: 'posts/autosaves',
+				hasChildren: false,
+			},
+		] );
+	} );
+
 	it( 'returns no children once the full leaf route is reached', () => {
 		expect(
 			routeChildren( index, 'wp/v2', 'global-styles/themes' )
@@ -141,13 +164,24 @@ describe( 'resolveRouteInfo', () => {
 		} );
 	} );
 
-	it( 'resolves a parameterised-only route, flagging that it requires a parameter', () => {
+	it( 'resolves a parameterised-only route, flagging that it requires a parameter and where it belongs (trailing, so at the end)', () => {
 		expect(
 			resolveRouteInfo( index, 'wp/v2', 'global-styles/themes' )
 		).toEqual( {
 			path: '/wp/v2/global-styles/themes/(?P<stylesheet>%s)',
 			requiresParam: true,
+			paramIndex: 2,
 		} );
+	} );
+
+	it( 'resolves a route with a parameter in the middle of its path, reporting where it belongs', () => {
+		expect( resolveRouteInfo( index, 'wp/v2', 'posts/autosaves' ) ).toEqual(
+			{
+				path: '/wp/v2/posts/(?P<parent>[\\d]+)/autosaves',
+				requiresParam: true,
+				paramIndex: 1,
+			}
+		);
 	} );
 
 	it( 'falls back to treating an unknown route as exact, letting the caller surface the real error', () => {
@@ -177,13 +211,13 @@ describe( 'supportedVerbsForRoute', () => {
 		] );
 	} );
 
-	it( 'treats a mid-path placeholder (not a trailing one) as a collection, not an item', () => {
+	it( 'treats a mid-path placeholder (not a trailing one) as a collection, but still addressable via get/exists since it needs a value', () => {
 		expect(
 			supportedVerbsForRoute(
 				index,
 				'/wp/v2/posts/(?P<parent>[\\d]+)/autosaves'
 			)
-		).toEqual( [ 'list' ] );
+		).toEqual( [ 'list', 'get', 'exists' ] );
 	} );
 
 	it( 'maps GET to get/exists (not list) for a route that only exists in parameterised form', () => {

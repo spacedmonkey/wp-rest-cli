@@ -27,6 +27,55 @@ export function stripTrailingPlaceholder( path: string ): string {
 	return path.replace( /\/\(\?P<[^>]+>[^)]*\)$/, '' );
 }
 
+const PLACEHOLDER_SEGMENT = /^\(\?P<[^>]+>[^)]*\)$/;
+
+/**
+ * Splits any `/`-joined path (a full index path, or one already relative to
+ * its namespace — leading segments like a namespace are just literal
+ * segments as far as this is concerned) into its literal segments and, if it
+ * has exactly one `(?P<name>...)` URL parameter placeholder — anywhere in
+ * the path, not just trailing — the position that parameter belongs at
+ * among those literal segments. E.g. `posts/(?P<parent>[\d]+)/revisions` has
+ * literal segments `['posts', 'revisions']` with `paramIndex: 1` (the id
+ * belongs between them); a trailing placeholder like
+ * `global-styles/themes/(?P<stylesheet>%s)` yields `paramIndex` equal to
+ * `segments.length`, matching the CLI's existing "append the id at the end"
+ * behaviour. A path with more than one placeholder returns `null` — this
+ * CLI's single-`<id>` verb grammar can't address a route needing two
+ * parameters (e.g. one specific revision, addressed by parent post *and*
+ * revision id).
+ * @param path A `/`-joined path to split.
+ * @return The literal segments and the placeholder's position (`null` if there isn't one), or `null` if there's more than one placeholder.
+ */
+export function splitPlaceholder(
+	path: string
+): { segments: string[]; paramIndex: number | null } | null {
+	const rawSegments = path.split( '/' );
+	const placeholderIndexes = rawSegments.reduce< number[] >(
+		( indexes, segment, i ) => {
+			if ( PLACEHOLDER_SEGMENT.test( segment ) ) {
+				indexes.push( i );
+			}
+			return indexes;
+		},
+		[]
+	);
+	if ( placeholderIndexes.length > 1 ) {
+		return null;
+	}
+	if ( placeholderIndexes.length === 0 ) {
+		return { segments: rawSegments, paramIndex: null };
+	}
+	const paramIndex = placeholderIndexes[ 0 ] as number;
+	return {
+		segments: [
+			...rawSegments.slice( 0, paramIndex ),
+			...rawSegments.slice( paramIndex + 1 ),
+		],
+		paramIndex,
+	};
+}
+
 /**
  * Routes registered under a namespace, keyed by their path relative to the namespace.
  * @param index     The site's root REST API index.
@@ -49,23 +98,33 @@ export function routesForNamespace(
 		}
 
 		if ( path.includes( '(?P<' ) ) {
+			const parsed = splitPlaceholder( path.slice( prefix.length ) );
+			if ( ! parsed || parsed.paramIndex === null ) {
+				// More than one placeholder (e.g. a specific revision, addressed
+				// by parent post *and* revision id) isn't addressable by this
+				// CLI's single-<id> grammar, so it's left off the listing.
+				continue;
+			}
+			const route = parsed.segments.join( '/' );
+			if ( ! route ) {
+				continue;
+			}
 			// Typical WP pattern: a bare collection (e.g. /posts) plus a singular
 			// variant ending in a parameter (e.g. /posts/(?P<id>[\d]+)) — the latter
 			// is reached via `get <id>` / `update <id>` / `delete <id>` on the bare
 			// route, not addressed directly, so skip it here.
-			const basePath = stripTrailingPlaceholder( path );
-			if ( basePath === path || paths.includes( basePath ) ) {
+			if ( paths.includes( prefix + route ) ) {
 				continue;
 			}
-			// Some routes (e.g. WP_REST_Global_Styles_Controller's
-			// /wp/v2/global-styles/themes/(?P<stylesheet>%s)) have no bare sibling
-			// at all — the parameterised path is the *only* way to reach them. List
-			// the base (e.g. "global-styles/themes") so it's still discoverable;
-			// it's addressed the same way, via `get/update/delete <param>`.
-			const route = basePath.slice( prefix.length );
-			if ( ! route ) {
-				continue;
-			}
+			// Some routes have no bare sibling at all — either a trailing
+			// parameter with no bare collection (e.g.
+			// WP_REST_Global_Styles_Controller's
+			// /wp/v2/global-styles/themes/(?P<stylesheet>%s)), or a parameter in
+			// the *middle* of the path (e.g. /wp/v2/posts/(?P<parent>[\d]+)/revisions).
+			// The parameterised path is the only way to reach them either way —
+			// list the literal segments joined together (e.g. "global-styles/themes"
+			// or "posts/revisions") so it's still discoverable; it's addressed the
+			// same way, via `get/exists <param>`.
 			results.push( { path, route } );
 			continue;
 		}
@@ -157,6 +216,13 @@ const VERB_ORDER: Verb[] = [
  * route that only exists in parameterised form (see `routesForNamespace`),
  * `path` already *is* that item-level entry, so GET there maps to `get`/
  * `exists`, not `list`.
+ * Separately, a route registered with exactly one URL parameter *anywhere*
+ * in its path (not just trailing — e.g. `posts/(?P<parent>[\d]+)/revisions`)
+ * needs a value to be addressed at all, regardless of whether WordPress
+ * itself considers its response a list or a single item; the CLI's existing
+ * `get`/`exists <value>` grammar is how that value is supplied, so both are
+ * always added for such a route in addition to whatever collection verbs it
+ * already has.
  * @param index The site's root REST API index.
  * @param path  The route's index path, as returned by {@link routesForNamespace}.
  * @return The CLI verbs this route supports, in the CLI's canonical order.
@@ -202,6 +268,13 @@ export function supportedVerbsForRoute(
 	if ( itemMethods.has( 'DELETE' ) ) {
 		supported.add( 'delete' );
 	}
+	if ( collectionMethods.has( 'GET' ) ) {
+		const placeholderInfo = splitPlaceholder( path );
+		if ( placeholderInfo && placeholderInfo.paramIndex !== null ) {
+			supported.add( 'get' );
+			supported.add( 'exists' );
+		}
+	}
 
 	return VERB_ORDER.filter( ( verb ) => supported.has( verb ) );
 }
@@ -216,25 +289,30 @@ export function supportedVerbsForRoute(
  * @param index     The site's root REST API index.
  * @param namespace The namespace the route lives under.
  * @param route     The CLI-addressed route name (the `<route>` argument, `/`-joined).
- * @return The route's real index path, and whether it needs an instantiated
- *         parameter value before it can be introspected.
+ * @return The route's real index path, whether it needs an instantiated
+ *         parameter value before it can be introspected, and (when it does)
+ *         the position within `route.split('/')` that value belongs at.
  */
 export function resolveRouteInfo(
 	index: IndexResponse,
 	namespace: string,
 	route: string
-): { path: string; requiresParam: boolean } {
+): { path: string; requiresParam: boolean; paramIndex?: number } {
 	const exactPath = `/${ namespace }/${ route }`;
 	if ( index.routes[ exactPath ] ) {
 		return { path: exactPath, requiresParam: false };
 	}
+	const prefix = `/${ namespace }/`;
 	for ( const path of Object.keys( index.routes ) ) {
-		if ( ! path.includes( '(?P<' ) ) {
+		if ( ! path.startsWith( prefix ) || ! path.includes( '(?P<' ) ) {
 			continue;
 		}
-		const basePath = stripTrailingPlaceholder( path );
-		if ( basePath !== path && basePath === exactPath ) {
-			return { path, requiresParam: true };
+		const parsed = splitPlaceholder( path.slice( prefix.length ) );
+		if ( ! parsed || parsed.paramIndex === null ) {
+			continue;
+		}
+		if ( parsed.segments.join( '/' ) === route ) {
+			return { path, requiresParam: true, paramIndex: parsed.paramIndex };
 		}
 	}
 	return { path: exactPath, requiresParam: false };

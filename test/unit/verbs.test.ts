@@ -102,6 +102,22 @@ describe( 'buildVerbRequest', () => {
 		expect( req.body ).toEqual( { title: 'Updated' } );
 	} );
 
+	it( 'splices the id into the middle of the route when paramIndex is given, instead of appending it', () => {
+		const req = buildVerbRequest( {
+			verb: 'get',
+			apiRoot,
+			namespace: 'wp/v2',
+			route: 'posts/autosaves',
+			id: '42',
+			paramIndex: 1,
+			context: 'view',
+			fields: {},
+		} );
+		expect( req.url ).toBe(
+			'https://example.com/wp-json/wp/v2/posts/42/autosaves?context=view'
+		);
+	} );
+
 	it( 'builds a DELETE request with query fields (e.g. force)', () => {
 		const req = buildVerbRequest( {
 			verb: 'delete',

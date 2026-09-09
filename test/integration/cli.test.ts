@@ -317,6 +317,102 @@ describe( 'wp-rest-cli (integration)', () => {
 		} );
 	} );
 
+	describe( 'routes with a mid-path URL parameter (not at the end)', () => {
+		it( 'lists a route whose parameter sits in the middle of the path, joined by its literal segments', async () => {
+			const result = await run( [ 'wp/v2', 'posts', '--format=json' ] );
+			expect( result.exitCode ).toBe( 0 );
+			const rows = JSON.parse( result.stdout ) as Array< {
+				route: string;
+				verbs: string;
+			} >;
+			expect( rows ).toEqual( [
+				{ route: 'revisions', verbs: 'list, get, exists' },
+			] );
+		} );
+
+		it( 'shows the param-required note for a mid-path route with no value given', async () => {
+			const result = await run( [ 'wp/v2', 'posts', 'revisions' ] );
+			expect( result.exitCode ).toBe( 0 );
+			expect( result.stdout ).toContain(
+				'This route only exists with a value in place of its URL parameter'
+			);
+		} );
+
+		it( 'splices the value into the middle of the URL for `get`, not the end', async () => {
+			const result = await run( [
+				'wp/v2',
+				'posts',
+				'revisions',
+				'get',
+				'10',
+				'--format=json',
+			] );
+			expect( result.exitCode ).toBe( 0 );
+			expect( JSON.parse( result.stdout ) ).toEqual( [
+				{ id: 101, parent: 10 },
+			] );
+		} );
+
+		it( '404s naturally for a parent id the fixture does not recognise', async () => {
+			const result = await run( [
+				'wp/v2',
+				'posts',
+				'revisions',
+				'get',
+				'999',
+			] );
+			expect( result.exitCode ).toBe( 1 );
+		} );
+
+		it( 'marks a route as both directly addressable and a subcommand when it has a mid-path-parameter child', async () => {
+			const result = await run( [
+				'wp/v2',
+				'global-styles',
+				'--format=json',
+			] );
+			expect( result.exitCode ).toBe( 0 );
+			const rows = JSON.parse( result.stdout ) as Array< {
+				route: string;
+				verbs: string;
+			} >;
+			expect( rows ).toEqual( [
+				{ route: 'themes', verbs: 'get, exists, (subcommand)' },
+			] );
+		} );
+
+		it( 'still performs a get against the hybrid route itself (unaffected by its new child)', async () => {
+			const result = await run( [
+				'wp/v2',
+				'global-styles',
+				'themes',
+				'get',
+				'twentytwentyfour',
+				'--format=json',
+			] );
+			expect( result.exitCode ).toBe( 0 );
+			expect( JSON.parse( result.stdout ) ).toEqual( {
+				settings: {},
+				styles: {},
+			} );
+		} );
+
+		it( 'performs a get against the child nested beneath the hybrid route', async () => {
+			const result = await run( [
+				'wp/v2',
+				'global-styles',
+				'themes',
+				'variations',
+				'get',
+				'twentytwentyfour',
+				'--format=json',
+			] );
+			expect( result.exitCode ).toBe( 0 );
+			expect( JSON.parse( result.stdout ) ).toEqual( [
+				{ title: 'Default', settings: {} },
+			] );
+		} );
+	} );
+
 	it( 'shows a param-required note when introspecting a route with no bare collection', async () => {
 		const result = await run( [ 'wp/v2', 'global-styles', 'themes' ] );
 		expect( result.exitCode ).toBe( 0 );

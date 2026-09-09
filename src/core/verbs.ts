@@ -44,10 +44,32 @@ export interface BuildRequestOptions {
 	namespace: string;
 	route: string;
 	id?: string;
+	/**
+	 * Where in `route.split('/')` the id belongs, for a route whose URL
+	 * parameter isn't at the very end (e.g. `posts/(?P<parent>[\d]+)/revisions`
+	 * — see `resolveRouteInfo`). Defaults to the end of the route (today's
+	 * only supported shape) when omitted.
+	 */
+	paramIndex?: number;
 	context: Context;
 	fields: Record< string, string >;
 	/** Raw JSON body override for create/update, from --content. */
 	content?: unknown;
+}
+
+/**
+ * Splices an id into a route's segments at `paramIndex`, defaulting to the
+ * end of the route when `paramIndex` isn't given.
+ * @param route      The namespace-relative route, `/`-joined.
+ * @param id         The id to splice in.
+ * @param paramIndex Where within `route.split('/')` to insert it.
+ * @return The route with the (URI-encoded) id inserted.
+ */
+function spliceId( route: string, id: string, paramIndex?: number ): string {
+	const segments = route.split( '/' );
+	const insertAt = paramIndex ?? segments.length;
+	segments.splice( insertAt, 0, encodeURIComponent( id ) );
+	return segments.join( '/' );
 }
 
 /**
@@ -57,8 +79,17 @@ export interface BuildRequestOptions {
  * @return The request to issue.
  */
 export function buildVerbRequest( options: BuildRequestOptions ): VerbRequest {
-	const { verb, apiRoot, namespace, route, id, context, fields, content } =
-		options;
+	const {
+		verb,
+		apiRoot,
+		namespace,
+		route,
+		id,
+		paramIndex,
+		context,
+		fields,
+		content,
+	} = options;
 
 	if ( REQUIRES_ID.includes( verb ) && ! id ) {
 		throw new CliError(
@@ -71,7 +102,10 @@ export function buildVerbRequest( options: BuildRequestOptions ): VerbRequest {
 		apiRoot
 	).toString();
 	const singularUrl = id
-		? `${ collectionUrl }/${ encodeURIComponent( id ) }`
+		? new URL(
+				`${ namespace }/${ spliceId( route, id, paramIndex ) }`,
+				apiRoot
+		  ).toString()
 		: collectionUrl;
 	const method = METHOD_BY_VERB[ verb ];
 

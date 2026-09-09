@@ -502,6 +502,57 @@ async function renderRouteChildren(
 }
 
 /**
+ * Whether `route` is itself a real, addressable route — as opposed to a pure
+ * container that only exists because deeper routes are registered beneath
+ * it (e.g. "global-styles" has no route of its own, only the "themes" child
+ * beneath it). A "hybrid" route (both real *and* having children, like
+ * "global-styles/themes" once a "variations" child is registered beneath
+ * it) counts as real here — `routeChildren`'s presence check alone can't
+ * distinguish a hybrid from a pure container, since both have children.
+ * @param index     The site's root REST API index.
+ * @param namespace The route's namespace.
+ * @param route     The route name.
+ * @return Whether `route` resolves to an actual registered route.
+ */
+function isRealRoute(
+	index: IndexResponse,
+	namespace: string,
+	route: string
+): boolean {
+	const info = resolveRouteInfo( index, namespace, route );
+	return info.requiresParam || Boolean( index.routes[ info.path ] );
+}
+
+/**
+ * A dim note appended after a real route's own introspection output when it
+ * also has nested child segments (the "hybrid" case) — otherwise the
+ * children would be silently unreachable, since typing the route in full
+ * lands on its own schema, not a child listing.
+ * @param index     The site's root REST API index.
+ * @param namespace The route's namespace.
+ * @param children  The route's child segments, from `routeChildren`.
+ * @param flags     Global CLI flags (format/fields/field/color).
+ * @return The rendered note, or an empty string if there are no children.
+ */
+async function renderChildrenNote(
+	index: IndexResponse,
+	namespace: string,
+	children: RouteChildSegment[],
+	flags: GlobalFlags
+): Promise< string > {
+	if ( ! children.length ) {
+		return '';
+	}
+	const childList = await renderRouteChildren(
+		index,
+		namespace,
+		children,
+		flags
+	);
+	return pc.dim( '\nThis route also has nested sub-routes:\n' ) + childList;
+}
+
+/**
  * Renders `wp help <namespace> <route> <verb>`'s single-verb help block: its
  * usage line, a warning if the route doesn't actually support it, its argument
  * schema, and any verb-specific notes (e.g. `--force` for delete).
@@ -636,6 +687,32 @@ async function getRouteSchema(
 }
 
 /**
+ * Looks up where a route's URL parameter belongs (see `resolveRouteInfo`),
+ * for verbs that are about to splice an `<id>` into the route. Requires a
+ * fresh index fetch — unlike `getRouteSchema`, there's no schema to cache
+ * here, just the position — so it's only called where an id is actually
+ * present.
+ * @param client      The REST client to issue the underlying index request with.
+ * @param apiRoot     The resolved REST API root URL.
+ * @param namespace   The route's namespace.
+ * @param route       The route name.
+ * @param showSpinner Whether to show a progress spinner for the index request.
+ * @return The position within `route.split('/')` the id belongs at, or `undefined` for the default (append at the end).
+ */
+async function resolveParamIndex(
+	client: WpRestClient,
+	apiRoot: string,
+	namespace: string,
+	route: string,
+	showSpinner: boolean
+): Promise< number | undefined > {
+	const index = await withSpinner( 'Fetching API index', showSpinner, () =>
+		fetchIndex( client, apiRoot )
+	);
+	return resolveRouteInfo( index, namespace, route ).paramIndex;
+}
+
+/**
  * Combines the WP-CLI-style usage synopsis with the existing detailed per-method arg listing.
  * @param namespace     The route's namespace.
  * @param route         The route name.
@@ -753,7 +830,10 @@ export async function runRestCommand(
 			() => fetchIndex( client, apiRoot )
 		);
 		const children = routeChildren( index, parsed.namespace, parsed.route );
-		if ( children.length > 0 ) {
+		if (
+			children.length > 0 &&
+			! isRealRoute( index, parsed.namespace, parsed.route )
+		) {
 			const output = await renderRouteChildren(
 				index,
 				parsed.namespace,
@@ -780,13 +860,20 @@ export async function runRestCommand(
 			return { output, exitCode: 0 };
 		}
 		return {
-			output: renderRouteHelp(
-				parsed.namespace,
-				parsed.route,
-				schema,
-				requiresParam,
-				verbs
-			),
+			output:
+				renderRouteHelp(
+					parsed.namespace,
+					parsed.route,
+					schema,
+					requiresParam,
+					verbs
+				) +
+				( await renderChildrenNote(
+					index,
+					parsed.namespace,
+					children,
+					flags
+				) ),
 			exitCode: 0,
 		};
 	}
@@ -810,12 +897,20 @@ export async function runRestCommand(
 	}
 
 	if ( parsed.verb === 'exists' ) {
+		const paramIndex = await resolveParamIndex(
+			client,
+			apiRoot,
+			parsed.namespace,
+			parsed.route,
+			! flags.quiet
+		);
 		const request = buildVerbRequest( {
 			verb: 'exists',
 			apiRoot,
 			namespace: parsed.namespace,
 			route: parsed.route,
 			id: parsed.id,
+			paramIndex,
 			context: flags.context,
 			fields: parsed.fields,
 		} );
@@ -911,12 +1006,22 @@ export async function runRestCommand(
 	}
 
 	// parsed.mode === 'verb', parsed.verb is now one of list/get/create/update/delete
+	const paramIndex = parsed.id
+		? await resolveParamIndex(
+				client,
+				apiRoot,
+				parsed.namespace,
+				parsed.route,
+				! flags.quiet
+		  )
+		: undefined;
 	const request = buildVerbRequest( {
 		verb: parsed.verb,
 		apiRoot,
 		namespace: parsed.namespace,
 		route: parsed.route,
 		id: parsed.id,
+		paramIndex,
 		context: flags.context,
 		fields: parsed.fields,
 		content: resolveContent( flags.content ),
@@ -1025,7 +1130,10 @@ export async function runHelpCommand(
 			() => fetchIndex( client, apiRoot )
 		);
 		const children = routeChildren( index, parsed.namespace, parsed.route );
-		if ( children.length > 0 ) {
+		if (
+			children.length > 0 &&
+			! isRealRoute( index, parsed.namespace, parsed.route )
+		) {
 			const output = await renderRouteChildren(
 				index,
 				parsed.namespace,
@@ -1043,13 +1151,20 @@ export async function runHelpCommand(
 			index
 		);
 		return {
-			output: renderRouteHelp(
-				parsed.namespace,
-				parsed.route,
-				schema,
-				requiresParam,
-				verbs
-			),
+			output:
+				renderRouteHelp(
+					parsed.namespace,
+					parsed.route,
+					schema,
+					requiresParam,
+					verbs
+				) +
+				( await renderChildrenNote(
+					index,
+					parsed.namespace,
+					children,
+					flags
+				) ),
 			exitCode: 0,
 		};
 	}
