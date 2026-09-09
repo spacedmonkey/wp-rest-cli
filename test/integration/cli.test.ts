@@ -42,10 +42,25 @@ function run( args: string[] ) {
 }
 
 describe( 'wp-rest-cli (integration)', () => {
-	it( 'lists namespaces when run with no args', async () => {
+	it( 'lists namespaces when run with no args, WP-CLI-native NAME/DESCRIPTION/SYNOPSIS/SUBCOMMANDS style', async () => {
 		const result = await run( [] );
 		expect( result.exitCode ).toBe( 0 );
+		expect( result.stdout ).toContain( 'NAME' );
+		expect( result.stdout ).toContain( 'wp-rest-cli' );
+		expect( result.stdout ).toContain( 'DESCRIPTION' );
+		expect( result.stdout ).toContain( 'SYNOPSIS' );
+		expect( result.stdout ).toContain( 'wp-rest-cli <namespace>' );
+		expect( result.stdout ).toContain( 'SUBCOMMANDS' );
 		expect( result.stdout ).toContain( 'wp/v2' );
+		expect( result.stdout ).toContain( 'Application Passwords' );
+	} );
+
+	it( 'still lists namespaces as plain rows for a non-table --format', async () => {
+		const result = await run( [ '--format=json' ] );
+		expect( result.exitCode ).toBe( 0 );
+		expect( JSON.parse( result.stdout ) ).toEqual( [
+			{ namespace: 'wp/v2' },
+		] );
 	} );
 
 	it( 'lists routes for a namespace, with a verbs column instead of raw HTTP methods', async () => {
@@ -59,6 +74,21 @@ describe( 'wp-rest-cli (integration)', () => {
 		expect( widgets?.verbs ).toBe(
 			'list, get, create, update, delete, exists, generate'
 		);
+	} );
+
+	it( 'lists routes for a namespace in table format as a WP-CLI-native SUBCOMMANDS page', async () => {
+		const result = await run( [ 'wp/v2' ] );
+		expect( result.exitCode ).toBe( 0 );
+		expect( result.stdout ).toContain( 'NAME' );
+		expect( result.stdout ).toContain( 'wp-rest-cli wp/v2' );
+		expect( result.stdout ).toContain( 'SYNOPSIS' );
+		expect( result.stdout ).toContain( 'wp-rest-cli wp/v2 <route>' );
+		expect( result.stdout ).toContain( 'SUBCOMMANDS' );
+		expect( result.stdout ).toMatch(
+			/widgets\s+list, get, create, update, delete, exists, generate/
+		);
+		// A pure container (no verbs of its own) shows only the marker.
+		expect( result.stdout ).toMatch( /global-styles\s+\(subcommand\)/ );
 	} );
 
 	it( 'introspects a route via OPTIONS', async () => {

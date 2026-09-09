@@ -556,13 +556,42 @@ function printRouteUsage(
 }
 
 /**
- * Renders the child segments beneath a route prefix (or the namespace root)
- * as the same `{route, verbs}` table shape a leaf route listing already
- * uses, so drilling into a namespace feels the same at every level. A
- * container-only child (no verbs of its own — nothing is registered at
- * exactly this prefix, only deeper) gets a `(subcommand)` marker appended to
- * its verbs column; a "hybrid" child that's both directly addressable *and*
- * has further children shows both its real verbs and the marker.
+ * Builds the child segments beneath a route prefix (or the namespace root)
+ * into the same `{route, verbs}` shape a leaf route listing already uses, so
+ * drilling into a namespace feels the same at every level. A container-only
+ * child (no verbs of its own — nothing is registered at exactly this prefix,
+ * only deeper) gets a `(subcommand)` marker appended to its verbs column; a
+ * "hybrid" child that's both directly addressable *and* has further children
+ * shows both its real verbs and the marker.
+ * @param index     The site's root REST API index.
+ * @param namespace The namespace the children belong to.
+ * @param children  The child segments to render, from `routeChildren`.
+ * @return One `{route, verbs}` row per child.
+ */
+function buildChildRows(
+	index: IndexResponse,
+	namespace: string,
+	children: RouteChildSegment[]
+): { route: string; verbs: string }[] {
+	return children.map( ( child ) => {
+		if ( child.isMeta ) {
+			return { route: child.segment, verbs: '(subcommand)' };
+		}
+		const info = resolveRouteInfo( index, namespace, child.route );
+		const verbList = supportedVerbsForRoute( index, info.path );
+		const parts = child.hasChildren
+			? [ ...verbList, '(subcommand)' ]
+			: verbList;
+		return { route: child.segment, verbs: parts.join( ', ' ) };
+	} );
+}
+
+/**
+ * Renders a route's (or the namespace root's) child segments as a plain
+ * `{route, verbs}` listing in the requested `--format` — the table form used
+ * for a route's own nested-children note, and for any non-`table` format of
+ * the top-level bare listing (see `renderChildListWpCli` for the WP-CLI-style
+ * page `table` format uses there instead).
  * @param index     The site's root REST API index.
  * @param namespace The namespace the children belong to.
  * @param children  The child segments to render, from `routeChildren`.
@@ -575,23 +604,58 @@ async function renderRouteChildren(
 	children: RouteChildSegment[],
 	flags: GlobalFlags
 ): Promise< string > {
-	const rows = children.map( ( child ) => {
-		if ( child.isMeta ) {
-			return { route: child.segment, verbs: '(subcommand)' };
-		}
-		const info = resolveRouteInfo( index, namespace, child.route );
-		const verbList = supportedVerbsForRoute( index, info.path );
-		const parts = child.hasChildren
-			? [ ...verbList, '(subcommand)' ]
-			: verbList;
-		return { route: child.segment, verbs: parts.join( ', ' ) };
-	} );
+	const rows = buildChildRows( index, namespace, children );
 	return formatOutput( rows, {
 		format: flags.format,
 		fields: flags.fields,
 		field: flags.field,
 		color: flags.color,
 	} );
+}
+
+/**
+ * Renders a WP-CLI-native NAME/DESCRIPTION/SYNOPSIS/SUBCOMMANDS page for a
+ * list of child items — namespaces under the bare CLI, or routes under a
+ * namespace — mirroring the page real WP-CLI's own bare `wp` prints. Used
+ * only for the top-level bare `wp-rest-cli` / `wp-rest-cli <namespace>`
+ * listing in `--format=table`; other formats keep returning the raw
+ * `{route, verbs}`-shaped rows (see `buildChildRows`/`renderRouteChildren`)
+ * for scripting, and a route's own nested-children note (`renderChildrenNote`)
+ * keeps its plain table too — this page is for the top-level listing alone.
+ * @param name        The command name line, e.g. "wp-rest-cli" or "wp-rest-cli wp/v2".
+ * @param description One or more description lines (empty string for a blank line).
+ * @param synopsis    The one-line synopsis, e.g. "wp-rest-cli <namespace>".
+ * @param items       Each subcommand's name and one-line description (may be empty).
+ * @return The rendered page.
+ */
+function renderChildListWpCli(
+	name: string,
+	description: string[],
+	synopsis: string,
+	items: { label: string; description: string }[]
+): string {
+	const width = Math.max( ...items.map( ( item ) => item.label.length ) ) + 4;
+	return [
+		pc.bold( 'NAME' ),
+		'',
+		`  ${ name }`,
+		'',
+		pc.bold( 'DESCRIPTION' ),
+		'',
+		...description.map( ( line ) => ( line ? `  ${ line }` : '' ) ),
+		'',
+		pc.bold( 'SYNOPSIS' ),
+		'',
+		`  ${ synopsis }`,
+		'',
+		pc.bold( 'SUBCOMMANDS' ),
+		'',
+		...items.map( ( item ) =>
+			item.description
+				? `  ${ item.label.padEnd( width ) }${ item.description }`
+				: `  ${ item.label }`
+		),
+	].join( '\n' );
 }
 
 /**
@@ -1298,6 +1362,28 @@ export async function runRestCommand(
 			! flags.quiet,
 			() => fetchIndex( client, apiRoot )
 		);
+		const note = isApplicationPasswordsSupported( index )
+			? pc.dim( '\nApplication Passwords are supported on this site.' )
+			: pc.dim(
+					'\nApplication Passwords do not appear to be supported on this site.'
+			  );
+		if ( flags.format === 'table' ) {
+			const output =
+				renderChildListWpCli(
+					'wp-rest-cli',
+					[
+						"Talk to any WordPress site's REST API, WP-CLI style.",
+						'',
+						"Run 'wp-rest-cli help <namespace>' to get more information on a specific namespace.",
+					],
+					'wp-rest-cli <namespace>',
+					index.namespaces.map( ( namespace ) => ( {
+						label: namespace,
+						description: '',
+					} ) )
+				) + '\n';
+			return { output: output + note, exitCode: 0 };
+		}
 		const rows = index.namespaces.map( ( namespace ) => ( { namespace } ) );
 		const output = await formatOutput( rows, {
 			format: flags.format,
@@ -1305,15 +1391,7 @@ export async function runRestCommand(
 			field: flags.field,
 			color: flags.color,
 		} );
-		const note = isApplicationPasswordsSupported( index )
-			? pc.dim( '\nApplication Passwords are supported on this site.' )
-			: pc.dim(
-					'\nApplication Passwords do not appear to be supported on this site.'
-			  );
-		return {
-			output: output + ( flags.format === 'table' ? note : '' ),
-			exitCode: 0,
-		};
+		return { output, exitCode: 0 };
 	}
 
 	if ( parsed.mode === 'routes' ) {
@@ -1323,6 +1401,23 @@ export async function runRestCommand(
 			() => fetchIndex( client, apiRoot )
 		);
 		const children = routeChildren( index, parsed.namespace, '' );
+		if ( flags.format === 'table' ) {
+			const rows = buildChildRows( index, parsed.namespace, children );
+			const output = renderChildListWpCli(
+				`wp-rest-cli ${ parsed.namespace }`,
+				[
+					`Routes available under the "${ parsed.namespace }" namespace.`,
+					'',
+					`Run 'wp-rest-cli help ${ parsed.namespace } <route>' to get more information on a specific route.`,
+				],
+				`wp-rest-cli ${ parsed.namespace } <route>`,
+				rows.map( ( row ) => ( {
+					label: row.route,
+					description: row.verbs,
+				} ) )
+			);
+			return { output, exitCode: 0 };
+		}
 		const output = await renderRouteChildren(
 			index,
 			parsed.namespace,
@@ -1661,6 +1756,23 @@ export async function runHelpCommand(
 			() => fetchIndex( client, apiRoot )
 		);
 		const children = routeChildren( index, parsed.namespace, '' );
+		if ( flags.format === 'table' ) {
+			const rows = buildChildRows( index, parsed.namespace, children );
+			const output = renderChildListWpCli(
+				`wp-rest-cli ${ parsed.namespace }`,
+				[
+					`Routes available under the "${ parsed.namespace }" namespace.`,
+					'',
+					`Run 'wp-rest-cli help ${ parsed.namespace } <route>' to get more information on a specific route.`,
+				],
+				`wp-rest-cli ${ parsed.namespace } <route>`,
+				rows.map( ( row ) => ( {
+					label: row.route,
+					description: row.verbs,
+				} ) )
+			);
+			return { output, exitCode: 0 };
+		}
 		const output = await renderRouteChildren(
 			index,
 			parsed.namespace,
