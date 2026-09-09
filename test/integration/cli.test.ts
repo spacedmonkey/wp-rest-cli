@@ -542,6 +542,28 @@ describe( 'wp-rest-cli (integration)', () => {
 		expect( result.stdout ).toContain( 'context' );
 	} );
 
+	it( "shows a hybrid route's nested-children note as WP-CLI-style rows, not an ASCII table", async () => {
+		const result = await run( [ 'wp/v2', 'global-styles', 'themes' ] );
+		expect( result.exitCode ).toBe( 0 );
+		expect( result.stdout ).toContain(
+			'This route also has nested sub-routes:'
+		);
+		expect( result.stdout ).toMatch( /variations\s+list, get, exists/ );
+		expect( result.stdout ).not.toContain( '+-' );
+	} );
+
+	it( 'shows a pure-container route (no schema of its own) as a WP-CLI-native SUBCOMMANDS page', async () => {
+		const result = await run( [ 'wp/v2', 'posts' ] );
+		expect( result.exitCode ).toBe( 0 );
+		expect( result.stdout ).toContain( 'NAME' );
+		expect( result.stdout ).toContain( 'wp-rest-cli wp/v2 posts' );
+		expect( result.stdout ).toContain( 'SYNOPSIS' );
+		expect( result.stdout ).toContain( 'wp-rest-cli wp/v2 posts <route>' );
+		expect( result.stdout ).toContain( 'SUBCOMMANDS' );
+		expect( result.stdout ).toMatch( /revisions\s+list, get, exists/ );
+		expect( result.stdout ).not.toContain( '+-' );
+	} );
+
 	it( "shows a trailing-parameter route's own URL parameter as required, even though WordPress declares it required: false in the schema", async () => {
 		const result = await run( [ 'wp/v2', 'global-styles', 'themes' ] );
 		expect( result.exitCode ).toBe( 0 );
@@ -807,7 +829,7 @@ describe( 'wp-rest-cli (integration)', () => {
 			expect( result.stdout ).toContain(
 				'This route also has nested sub-routes:'
 			);
-			expect( result.stdout ).toMatch( /meta\s*\|\s*\(subcommand\)/ );
+			expect( result.stdout ).toMatch( /meta\s+\(subcommand\)/ );
 		} );
 
 		it( 'sets and reads back a meta value with update/get', async () => {

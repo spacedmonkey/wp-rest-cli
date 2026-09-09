@@ -614,14 +614,35 @@ async function renderRouteChildren(
 }
 
 /**
+ * Renders a list of `{label, description}` items as WP-CLI's own SUBCOMMANDS
+ * rows: each label padded out to the widest one in the list plus a fixed
+ * gap, followed by its description — or the bare label alone when there's no
+ * description to show (avoids trailing whitespace).
+ * @param items The rows to render.
+ * @return One formatted line per item.
+ */
+function formatSubcommandRows(
+	items: { label: string; description: string }[]
+): string[] {
+	const width = Math.max( ...items.map( ( item ) => item.label.length ) ) + 4;
+	return items.map( ( item ) =>
+		item.description
+			? `  ${ item.label.padEnd( width ) }${ item.description }`
+			: `  ${ item.label }`
+	);
+}
+
+/**
  * Renders a WP-CLI-native NAME/DESCRIPTION/SYNOPSIS/SUBCOMMANDS page for a
  * list of child items — namespaces under the bare CLI, or routes under a
  * namespace — mirroring the page real WP-CLI's own bare `wp` prints. Used
  * only for the top-level bare `wp-rest-cli` / `wp-rest-cli <namespace>`
  * listing in `--format=table`; other formats keep returning the raw
  * `{route, verbs}`-shaped rows (see `buildChildRows`/`renderRouteChildren`)
- * for scripting, and a route's own nested-children note (`renderChildrenNote`)
- * keeps its plain table too — this page is for the top-level listing alone.
+ * for scripting — this page is for the top-level listing alone (a route's
+ * own nested-children note, `renderChildrenNote`, reuses just the
+ * `formatSubcommandRows` row style above, without the NAME/DESCRIPTION/
+ * SYNOPSIS headers, since it's appended to output that already has those).
  * @param name        The command name line, e.g. "wp-rest-cli" or "wp-rest-cli wp/v2".
  * @param description One or more description lines (empty string for a blank line).
  * @param synopsis    The one-line synopsis, e.g. "wp-rest-cli <namespace>".
@@ -634,7 +655,6 @@ function renderChildListWpCli(
 	synopsis: string,
 	items: { label: string; description: string }[]
 ): string {
-	const width = Math.max( ...items.map( ( item ) => item.label.length ) ) + 4;
 	return [
 		pc.bold( 'NAME' ),
 		'',
@@ -650,11 +670,7 @@ function renderChildListWpCli(
 		'',
 		pc.bold( 'SUBCOMMANDS' ),
 		'',
-		...items.map( ( item ) =>
-			item.description
-				? `  ${ item.label.padEnd( width ) }${ item.description }`
-				: `  ${ item.label }`
-		),
+		...formatSubcommandRows( items ),
 	].join( '\n' );
 }
 
@@ -715,29 +731,31 @@ function withMetaChild(
  * A dim note appended after a real route's own introspection output when it
  * also has nested child segments (the "hybrid" case) — otherwise the
  * children would be silently unreachable, since typing the route in full
- * lands on its own schema, not a child listing.
+ * lands on its own schema, not a child listing. Only used for `--format=table`
+ * (see the call sites), so it always renders WP-CLI's own SUBCOMMANDS row
+ * style (`formatSubcommandRows`) rather than the plain `{route, verbs}` table
+ * `renderRouteChildren` still produces for other formats.
  * @param index     The site's root REST API index.
  * @param namespace The route's namespace.
  * @param children  The route's child segments, from `routeChildren`.
- * @param flags     Global CLI flags (format/fields/field/color).
  * @return The rendered note, or an empty string if there are no children.
  */
-async function renderChildrenNote(
+function renderChildrenNote(
 	index: IndexResponse,
 	namespace: string,
-	children: RouteChildSegment[],
-	flags: GlobalFlags
-): Promise< string > {
+	children: RouteChildSegment[]
+): string {
 	if ( ! children.length ) {
 		return '';
 	}
-	const childList = await renderRouteChildren(
-		index,
-		namespace,
-		children,
-		flags
+	const rows = buildChildRows( index, namespace, children );
+	const lines = formatSubcommandRows(
+		rows.map( ( row ) => ( { label: row.route, description: row.verbs } ) )
 	);
-	return pc.dim( '\nThis route also has nested sub-routes:\n' ) + childList;
+	return (
+		pc.dim( '\nThis route also has nested sub-routes:\n' ) +
+		lines.join( '\n' )
+	);
 }
 
 /**
@@ -1438,6 +1456,29 @@ export async function runRestCommand(
 			children.length > 0 &&
 			! isRealRoute( index, parsed.namespace, parsed.route )
 		) {
+			if ( flags.format === 'table' ) {
+				const rows = buildChildRows(
+					index,
+					parsed.namespace,
+					children
+				);
+				const output = renderChildListWpCli(
+					`wp-rest-cli ${ parsed.namespace } ${ displayRoute(
+						parsed.route
+					) }`,
+					[
+						`This route has no schema of its own — it's a pure container for the routes nested beneath it.`,
+					],
+					`wp-rest-cli ${ parsed.namespace } ${ displayRoute(
+						parsed.route
+					) } <route>`,
+					rows.map( ( row ) => ( {
+						label: row.route,
+						description: row.verbs,
+					} ) )
+				);
+				return { output, exitCode: 0 };
+			}
 			const output = await renderRouteChildren(
 				index,
 				parsed.namespace,
@@ -1502,16 +1543,15 @@ export async function runRestCommand(
 					verbs,
 					paramName
 				) +
-				( await renderChildrenNote(
+				renderChildrenNote(
 					index,
 					parsed.namespace,
 					withMetaChild(
 						children,
 						parsed.route,
 						schema.endpoints ?? []
-					),
-					flags
-				) ),
+					)
+				),
 			exitCode: 0,
 		};
 	}
@@ -1811,6 +1851,29 @@ export async function runHelpCommand(
 			children.length > 0 &&
 			! isRealRoute( index, parsed.namespace, parsed.route )
 		) {
+			if ( flags.format === 'table' ) {
+				const rows = buildChildRows(
+					index,
+					parsed.namespace,
+					children
+				);
+				const output = renderChildListWpCli(
+					`wp-rest-cli ${ parsed.namespace } ${ displayRoute(
+						parsed.route
+					) }`,
+					[
+						`This route has no schema of its own — it's a pure container for the routes nested beneath it.`,
+					],
+					`wp-rest-cli ${ parsed.namespace } ${ displayRoute(
+						parsed.route
+					) } <route>`,
+					rows.map( ( row ) => ( {
+						label: row.route,
+						description: row.verbs,
+					} ) )
+				);
+				return { output, exitCode: 0 };
+			}
 			const output = await renderRouteChildren(
 				index,
 				parsed.namespace,
@@ -1846,16 +1909,15 @@ export async function runHelpCommand(
 							verbs,
 							paramName
 					  ) ) +
-				( await renderChildrenNote(
+				renderChildrenNote(
 					index,
 					parsed.namespace,
 					withMetaChild(
 						children,
 						parsed.route,
 						schema.endpoints ?? []
-					),
-					flags
-				) ),
+					)
+				),
 			exitCode: 0,
 		};
 	}
