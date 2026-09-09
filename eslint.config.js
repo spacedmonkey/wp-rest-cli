@@ -1,4 +1,7 @@
 // @ts-check
+/**
+ * WordPress dependencies
+ */
 import wordpress from '@wordpress/eslint-plugin';
 
 export default [
