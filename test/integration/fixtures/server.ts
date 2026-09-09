@@ -118,6 +118,27 @@ export async function startFixture(): Promise< Fixture > {
 							{ methods: [ 'GET', 'POST', 'PUT', 'PATCH' ] },
 						],
 					},
+					// Synthetic fixture, not modelled on any real WordPress controller —
+					// exists purely to exercise route navigation three literal segments
+					// deep (gizmos -> parts -> electronic), beyond the two-segment
+					// global-styles/themes case above.
+					'/wp/v2/gizmos/parts/electronic/(?P<id>[\\d]+)': {
+						namespace: 'wp/v2',
+						methods: [ 'GET' ],
+						endpoints: [
+							{
+								methods: [ 'GET' ],
+								args: {
+									context: {
+										type: 'string',
+										enum: [ 'view', 'edit', 'embed' ],
+										default: 'view',
+										required: false,
+									},
+								},
+							},
+						],
+					},
 				},
 			} );
 			return;
@@ -309,6 +330,14 @@ export async function startFixture(): Promise< Fixture > {
 				return;
 			}
 			send( res, 200, { settings: {}, styles: {} } );
+			return;
+		}
+
+		const gizmoMatch = path.match(
+			/^\/wp-json\/wp\/v2\/gizmos\/parts\/electronic\/([^/]+)$/
+		);
+		if ( gizmoMatch && req.method === 'GET' ) {
+			send( res, 200, { id: gizmoMatch[ 1 ], kind: 'electronic' } );
 			return;
 		}
 

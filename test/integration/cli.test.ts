@@ -216,6 +216,76 @@ describe( 'wp-rest-cli (integration)', () => {
 		expect( stillThere.stdout.trim() ).toBe( '2' );
 	} );
 
+	describe( '--help flag', () => {
+		it( 'shows a WP-CLI-native NAME/DESCRIPTION/SYNOPSIS/SUBCOMMANDS/EXAMPLES page for a route', async () => {
+			const result = await run( [ 'wp/v2', 'widgets', '--help' ] );
+			expect( result.exitCode ).toBe( 0 );
+			expect( result.stdout ).toContain( 'NAME' );
+			expect( result.stdout ).toContain( 'wp-rest-cli wp/v2 widgets' );
+			expect( result.stdout ).toContain( 'DESCRIPTION' );
+			expect( result.stdout ).toContain( 'SYNOPSIS' );
+			expect( result.stdout ).toContain(
+				'wp-rest-cli wp/v2 widgets <command>'
+			);
+			expect( result.stdout ).toContain( 'SUBCOMMANDS' );
+			expect( result.stdout ).toContain( 'Gets a list of widgets.' );
+			expect( result.stdout ).toContain(
+				'Adds, updates, deletes, and lists widgets custom fields.'
+			);
+			expect( result.stdout ).toContain( 'EXAMPLES' );
+		} );
+
+		it( 'shows a WP-CLI-native NAME/DESCRIPTION/SYNOPSIS/OPTIONS/EXAMPLES page for a verb', async () => {
+			const result = await run( [
+				'wp/v2',
+				'widgets',
+				'create',
+				'--help',
+			] );
+			expect( result.exitCode ).toBe( 0 );
+			expect( result.stdout ).toContain(
+				'wp-rest-cli wp/v2 widgets create'
+			);
+			expect( result.stdout ).toContain( 'Creates a new widgets item.' );
+			expect( result.stdout ).toContain( 'OPTIONS' );
+			expect( result.stdout ).toContain( '--title=<title>' );
+			expect( result.stdout ).toContain( 'The widget title.' );
+			expect( result.stdout ).toContain( 'EXAMPLES' );
+			expect( result.stdout ).not.toContain( 'Success' );
+		} );
+
+		it( 'does not perform the request when --help is passed to a mutating verb', async () => {
+			const result = await run( [
+				'wp/v2',
+				'widgets',
+				'delete',
+				'2',
+				'--help',
+			] );
+			expect( result.exitCode ).toBe( 0 );
+			expect( result.stdout ).not.toContain( 'Success' );
+
+			// Widget 2 (from the earlier "creates an item" test) must be untouched.
+			const stillThere = await run( [
+				'wp/v2',
+				'widgets',
+				'get',
+				'2',
+				'--field=id',
+			] );
+			expect( stillThere.stdout.trim() ).toBe( '2' );
+		} );
+
+		it( "leaves `wp help ...`'s output format unchanged", async () => {
+			const result = await run( [ 'help', 'wp/v2', 'widgets' ] );
+			expect( result.exitCode ).toBe( 0 );
+			expect( result.stdout ).toContain(
+				'usage: wp-rest-cli wp/v2 widgets'
+			);
+			expect( result.stdout ).not.toContain( 'SUBCOMMANDS' );
+		} );
+	} );
+
 	it( 'folds an unrecognised verb into the route for `help`, surfacing the live 404 instead of a local error', async () => {
 		const result = await run( [ 'help', 'wp/v2', 'widgets', 'bogus' ] );
 		expect( result.exitCode ).toBe( 1 );
@@ -224,10 +294,97 @@ describe( 'wp-rest-cli (integration)', () => {
 		);
 	} );
 
-	it( 'lists a route that only exists in parameterised form, by its base path', async () => {
-		const result = await run( [ 'wp/v2' ] );
+	it( 'lists a route that only exists in parameterised form, grouped by its first segment', async () => {
+		const result = await run( [ 'wp/v2', '--format=json' ] );
 		expect( result.exitCode ).toBe( 0 );
-		expect( result.stdout ).toContain( 'global-styles/themes' );
+		const rows = JSON.parse( result.stdout ) as Array< {
+			route: string;
+			verbs: string;
+		} >;
+		expect( rows.some( ( r ) => r.route === 'global-styles' ) ).toBe(
+			true
+		);
+		expect( rows.some( ( r ) => r.route === 'global-styles/themes' ) ).toBe(
+			false
+		);
+	} );
+
+	describe( 'route navigation (arbitrary-depth nested routes)', () => {
+		it( "lists a deeply-nested route's first segment at the namespace root, marked as a subcommand", async () => {
+			const result = await run( [ 'wp/v2', '--format=json' ] );
+			expect( result.exitCode ).toBe( 0 );
+			const rows = JSON.parse( result.stdout ) as Array< {
+				route: string;
+				verbs: string;
+			} >;
+			const gizmos = rows.find( ( r ) => r.route === 'gizmos' );
+			expect( gizmos?.verbs ).toContain( '(subcommand)' );
+			expect( rows.some( ( r ) => r.route === 'gizmos/parts' ) ).toBe(
+				false
+			);
+		} );
+
+		it( 'lists the next segment when drilling into a container prefix', async () => {
+			const result = await run( [ 'wp/v2', 'gizmos', '--format=json' ] );
+			expect( result.exitCode ).toBe( 0 );
+			const rows = JSON.parse( result.stdout ) as Array< {
+				route: string;
+				verbs: string;
+			} >;
+			expect( rows ).toEqual( [
+				{ route: 'parts', verbs: '(subcommand)' },
+			] );
+		} );
+
+		it( 'keeps drilling in another level deeper, reaching the parameterised leaf itself', async () => {
+			const result = await run( [
+				'wp/v2',
+				'gizmos',
+				'parts',
+				'--format=json',
+			] );
+			expect( result.exitCode ).toBe( 0 );
+			const rows = JSON.parse( result.stdout ) as Array< {
+				route: string;
+				verbs: string;
+			} >;
+			// "electronic" is the leaf route itself here (parameterised-only,
+			// like global-styles/themes), not a further container, so it shows
+			// its own real verbs rather than a "(subcommand)" marker.
+			expect( rows ).toEqual( [
+				{ route: 'electronic', verbs: 'get, exists' },
+			] );
+		} );
+
+		it( 'shows the param-required note once the full nested route is typed', async () => {
+			const result = await run( [
+				'wp/v2',
+				'gizmos',
+				'parts',
+				'electronic',
+			] );
+			expect( result.exitCode ).toBe( 0 );
+			expect( result.stdout ).toContain(
+				'This route only exists with a value in place of its URL parameter'
+			);
+		} );
+
+		it( 'performs a get against a route nested three nested segments deep', async () => {
+			const result = await run( [
+				'wp/v2',
+				'gizmos',
+				'parts',
+				'electronic',
+				'get',
+				'7',
+				'--format=json',
+			] );
+			expect( result.exitCode ).toBe( 0 );
+			expect( JSON.parse( result.stdout ) ).toEqual( {
+				id: '7',
+				kind: 'electronic',
+			} );
+		} );
 	} );
 
 	it( 'shows a param-required note when introspecting a route with no bare collection', async () => {

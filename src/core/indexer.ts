@@ -75,6 +75,68 @@ export function routesForNamespace(
 	return results;
 }
 
+/**
+ * One next-level path segment beneath a route prefix, for directory-listing-
+ * style navigation.
+ */
+export interface RouteChildSegment {
+	/** The next literal path segment relative to the given prefix, e.g. "themes". */
+	segment: string;
+	/** The full namespace-relative route so far, e.g. "global-styles/themes". */
+	route: string;
+	/** Whether routes exist strictly deeper than `route`. */
+	hasChildren: boolean;
+}
+
+/**
+ * Groups a namespace's leaf routes (from `routesForNamespace`) by their next
+ * path segment beneath `routePrefix`, so a route can be explored one segment
+ * at a time regardless of how many `/`-segments it's actually registered
+ * with. Purely a topology/grouping layer — it doesn't resolve or validate
+ * individual routes; callers still use `resolveRouteInfo` and
+ * `supportedVerbsForRoute` for each child's own verbs, so a route that's
+ * *also* directly addressable at the same prefix as a deeper sibling (a
+ * "hybrid" case) is still discovered that way — this function only reports
+ * what's available to recurse into.
+ * @param index       The site's root REST API index.
+ * @param namespace   The namespace the route lives under.
+ * @param routePrefix The CLI-addressed route prefix to list children of (`''` for the namespace root).
+ * @return One entry per distinct next segment beneath `routePrefix`.
+ */
+export function routeChildren(
+	index: IndexResponse,
+	namespace: string,
+	routePrefix: string
+): RouteChildSegment[] {
+	const leafRoutes = routesForNamespace( index, namespace ).map(
+		( r ) => r.route
+	);
+	const prefixDepth = routePrefix ? routePrefix.split( '/' ).length : 0;
+	const children = new Map< string, RouteChildSegment >();
+	for ( const leafRoute of leafRoutes ) {
+		if (
+			routePrefix &&
+			leafRoute !== routePrefix &&
+			! leafRoute.startsWith( `${ routePrefix }/` )
+		) {
+			continue;
+		}
+		const parts = leafRoute.split( '/' );
+		if ( parts.length <= prefixDepth ) {
+			continue; // leafRoute IS routePrefix itself, not a child level.
+		}
+		const route = parts.slice( 0, prefixDepth + 1 ).join( '/' );
+		const existing = children.get( route );
+		children.set( route, {
+			segment: parts[ prefixDepth ] as string,
+			route,
+			hasChildren:
+				existing?.hasChildren || parts.length > prefixDepth + 1,
+		} );
+	}
+	return [ ...children.values() ];
+}
+
 const VERB_ORDER: Verb[] = [
 	'list',
 	'get',

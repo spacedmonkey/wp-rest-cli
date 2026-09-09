@@ -8,15 +8,17 @@ import { CliError, WpApiError } from '../core/errors.js';
 import { formatOutput } from '../core/formatter.js';
 import {
 	fetchIndex,
-	routesForNamespace,
+	routeChildren,
 	resolveRouteInfo,
 	supportedVerbsForRoute,
 	isApplicationPasswordsSupported,
+	type RouteChildSegment,
 } from '../core/indexer.js';
 import { introspectRoute, supportedContexts } from '../core/introspect.js';
 import { buildVerbRequest } from '../core/verbs.js';
 import type {
 	GlobalFlags,
+	IndexResponse,
 	RouteEndpoint,
 	RouteSchema,
 	Verb,
@@ -464,6 +466,42 @@ function printRouteUsage(
 }
 
 /**
+ * Renders the child segments beneath a route prefix (or the namespace root)
+ * as the same `{route, verbs}` table shape a leaf route listing already
+ * uses, so drilling into a namespace feels the same at every level. A
+ * container-only child (no verbs of its own — nothing is registered at
+ * exactly this prefix, only deeper) gets a `(subcommand)` marker appended to
+ * its verbs column; a "hybrid" child that's both directly addressable *and*
+ * has further children shows both its real verbs and the marker.
+ * @param index     The site's root REST API index.
+ * @param namespace The namespace the children belong to.
+ * @param children  The child segments to render, from `routeChildren`.
+ * @param flags     Global CLI flags (format/fields/field/color).
+ * @return The rendered listing, in the requested `--format`.
+ */
+async function renderRouteChildren(
+	index: IndexResponse,
+	namespace: string,
+	children: RouteChildSegment[],
+	flags: GlobalFlags
+): Promise< string > {
+	const rows = children.map( ( child ) => {
+		const info = resolveRouteInfo( index, namespace, child.route );
+		const verbList = supportedVerbsForRoute( index, info.path );
+		const parts = child.hasChildren
+			? [ ...verbList, '(subcommand)' ]
+			: verbList;
+		return { route: child.segment, verbs: parts.join( ', ' ) };
+	} );
+	return formatOutput( rows, {
+		format: flags.format,
+		fields: flags.fields,
+		field: flags.field,
+		color: flags.color,
+	} );
+}
+
+/**
  * Renders `wp help <namespace> <route> <verb>`'s single-verb help block: its
  * usage line, a warning if the route doesn't actually support it, its argument
  * schema, and any verb-specific notes (e.g. `--force` for delete).
@@ -562,6 +600,7 @@ function printVerbHelp(
  * @param namespace   The route's namespace.
  * @param route       The route name.
  * @param showSpinner Whether to show progress spinners for the underlying requests.
+ * @param index       An already-fetched site index to reuse, if the caller has one on hand.
  * @return The route's schema, whether it required a parameter, and its supported verbs.
  */
 async function getRouteSchema(
@@ -569,17 +608,20 @@ async function getRouteSchema(
 	apiRoot: string,
 	namespace: string,
 	route: string,
-	showSpinner: boolean
+	showSpinner: boolean,
+	index?: IndexResponse
 ): Promise< { schema: RouteSchema; requiresParam: boolean; verbs: Verb[] } > {
-	const index = await withSpinner( 'Fetching API index', showSpinner, () =>
-		fetchIndex( client, apiRoot )
-	);
-	const info = resolveRouteInfo( index, namespace, route );
-	const verbs = supportedVerbsForRoute( index, info.path );
+	const resolvedIndex =
+		index ??
+		( await withSpinner( 'Fetching API index', showSpinner, () =>
+			fetchIndex( client, apiRoot )
+		) );
+	const info = resolveRouteInfo( resolvedIndex, namespace, route );
+	const verbs = supportedVerbsForRoute( resolvedIndex, info.path );
 	if ( info.requiresParam ) {
 		// info.path came from resolveRouteInfo enumerating index.routes' own keys.
 		return {
-			schema: index.routes[ info.path ] as RouteSchema,
+			schema: resolvedIndex.routes[ info.path ] as RouteSchema,
 			requiresParam: true,
 			verbs,
 		};
@@ -694,28 +736,39 @@ export async function runRestCommand(
 			! flags.quiet,
 			() => fetchIndex( client, apiRoot )
 		);
-		const rows = routesForNamespace( index, parsed.namespace ).map(
-			( { route, path } ) => ( {
-				route,
-				verbs: supportedVerbsForRoute( index, path ).join( ', ' ),
-			} )
+		const children = routeChildren( index, parsed.namespace, '' );
+		const output = await renderRouteChildren(
+			index,
+			parsed.namespace,
+			children,
+			flags
 		);
-		const output = await formatOutput( rows, {
-			format: flags.format,
-			fields: flags.fields,
-			field: flags.field,
-			color: flags.color,
-		} );
 		return { output, exitCode: 0 };
 	}
 
 	if ( parsed.mode === 'introspect' ) {
+		const index = await withSpinner(
+			'Fetching API index',
+			! flags.quiet,
+			() => fetchIndex( client, apiRoot )
+		);
+		const children = routeChildren( index, parsed.namespace, parsed.route );
+		if ( children.length > 0 ) {
+			const output = await renderRouteChildren(
+				index,
+				parsed.namespace,
+				children,
+				flags
+			);
+			return { output, exitCode: 0 };
+		}
 		const { schema, requiresParam, verbs } = await getRouteSchema(
 			client,
 			apiRoot,
 			parsed.namespace,
 			parsed.route,
-			! flags.quiet
+			! flags.quiet,
+			index
 		);
 		if ( flags.format !== 'table' ) {
 			const output = await formatOutput( schema, {
@@ -812,6 +865,7 @@ export async function runRestCommand(
 				`--count must be a positive integer, got "${ countRaw }".`
 			);
 		}
+
 		const created: unknown[] = [];
 		for ( let i = 0; i < count; i++ ) {
 			const request = buildVerbRequest( {
@@ -936,18 +990,13 @@ export async function runHelpCommand(
 			! flags.quiet,
 			() => fetchIndex( client, apiRoot )
 		);
-		const rows = routesForNamespace( index, parsed.namespace ).map(
-			( { route, path } ) => ( {
-				route,
-				verbs: supportedVerbsForRoute( index, path ).join( ', ' ),
-			} )
+		const children = routeChildren( index, parsed.namespace, '' );
+		const output = await renderRouteChildren(
+			index,
+			parsed.namespace,
+			children,
+			flags
 		);
-		const output = await formatOutput( rows, {
-			format: flags.format,
-			fields: flags.fields,
-			field: flags.field,
-			color: flags.color,
-		} );
 		return { output, exitCode: 0 };
 	}
 
@@ -969,15 +1018,30 @@ export async function runHelpCommand(
 		};
 	}
 
-	const { schema, requiresParam, verbs } = await getRouteSchema(
-		client,
-		apiRoot,
-		parsed.namespace,
-		parsed.route,
-		! flags.quiet
-	);
-
 	if ( parsed.mode === 'route' ) {
+		const index = await withSpinner(
+			'Fetching API index',
+			! flags.quiet,
+			() => fetchIndex( client, apiRoot )
+		);
+		const children = routeChildren( index, parsed.namespace, parsed.route );
+		if ( children.length > 0 ) {
+			const output = await renderRouteChildren(
+				index,
+				parsed.namespace,
+				children,
+				flags
+			);
+			return { output, exitCode: 0 };
+		}
+		const { schema, requiresParam, verbs } = await getRouteSchema(
+			client,
+			apiRoot,
+			parsed.namespace,
+			parsed.route,
+			! flags.quiet,
+			index
+		);
 		return {
 			output: renderRouteHelp(
 				parsed.namespace,
@@ -991,6 +1055,13 @@ export async function runHelpCommand(
 	}
 
 	// parsed.mode === 'verb'
+	const { schema, verbs } = await getRouteSchema(
+		client,
+		apiRoot,
+		parsed.namespace,
+		parsed.route,
+		! flags.quiet
+	);
 	return {
 		output: printVerbHelp(
 			parsed.namespace,
