@@ -2,31 +2,32 @@
 	"name": "wp-rest-cli",
 	"version": "0.1.0",
 	"description": "A WP-CLI-style command line tool for talking to any WordPress site's REST API over HTTP",
-	"type": "module",
+	"author": "Spacedmonkey <spacedmonkey2@gmail.com>",
 	"license": "MIT",
-	"bin": {
-		"wp-rest-cli": "./dist/cli.js"
+	"keywords": [
+		"wordpress",
+		"wp-cli",
+		"rest-api",
+		"cli",
+		"wp-json"
+	],
+	"homepage": "https://github.com/spacedmonkey/wp-rest-cli#readme",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/spacedmonkey/wp-rest-cli.git"
+	},
+	"bugs": {
+		"url": "https://github.com/spacedmonkey/wp-rest-cli/issues"
+	},
+	"engines": {
+		"node": ">=20"
 	},
 	"files": [
 		"dist"
 	],
-	"engines": {
-		"node": ">=20"
-	},
-	"scripts": {
-		"wp": "tsx src/cli.ts",
-		"build": "tsup",
-		"dev": "tsup --watch",
-		"test": "npm run test:unit && npm run test:integration",
-		"test:unit": "NODE_OPTIONS=--experimental-vm-modules wp-scripts test-unit-js",
-		"test:unit:watch": "NODE_OPTIONS=--experimental-vm-modules wp-scripts test-unit-js --watch",
-		"test:integration": "vitest run",
-		"test:integration:watch": "vitest",
-		"test:watch": "npm run test:unit:watch",
-		"typecheck": "tsc --noEmit",
-		"lint": "wp-scripts lint-js",
-		"lint:md:docs": "wp-scripts lint-md-docs",
-		"format": "wp-scripts format"
+	"type": "module",
+	"bin": {
+		"wp-rest-cli": "./dist/cli.js"
 	},
 	"dependencies": {
 		"@wordpress/url": "^4.54.0",
@@ -54,5 +55,21 @@
 		"tsx": "^4.19.2",
 		"typescript": "^5.7.2",
 		"vitest": "^5.0.0"
+	},
+	"scripts": {
+		"wp": "tsx src/cli.ts",
+		"build": "tsup",
+		"dev": "tsup --watch",
+		"test": "npm run test:unit && npm run test:integration",
+		"test:unit": "NODE_OPTIONS=--experimental-vm-modules wp-scripts test-unit-js",
+		"test:unit:watch": "NODE_OPTIONS=--experimental-vm-modules wp-scripts test-unit-js --watch",
+		"test:integration": "vitest run",
+		"test:integration:watch": "vitest",
+		"test:watch": "npm run test:unit:watch",
+		"typecheck": "tsc --noEmit",
+		"lint": "wp-scripts lint-js",
+		"lint:md:docs": "wp-scripts lint-md-docs",
+		"lint:pkg-json": "wp-scripts lint-pkg-json",
+		"format": "wp-scripts format"
 	}
 }

@@ -18,6 +18,7 @@ npm run test:integration # vitest run, integration suite only
 npm run test:watch       # wp-scripts test-unit-js --watch (unit only; see test:integration:watch for the integration suite)
 npm run typecheck       # tsc --noEmit
 npm run lint            # wp-scripts lint-js (WordPress/Gutenberg coding standards, via @wordpress/eslint-plugin)
+npm run lint:pkg-json   # wp-scripts lint-pkg-json (validates package.json, via npm-package-json-lint)
 npm run format          # wp-scripts format (WordPress/Gutenberg coding standards, via @wordpress/prettier-config)
 ```
 
@@ -29,6 +30,7 @@ This project follows WordPress/Gutenberg JavaScript coding standards, enforced v
 
 - `eslint.config.js` spreads `@wordpress/eslint-plugin`'s flat `recommended` config (which itself pulls in `@wordpress/prettier-config`-aware formatting rules and TypeScript support via `typescript-eslint`, since both `prettier` and `typescript` are installed). Project-specific overrides on top: a `_`-prefixed-arg allowance for `@typescript-eslint/no-unused-vars`, and `no-console: off` for `src/cli.ts`/`src/core/debug.ts` (a CLI's whole job is printing).
 - `.prettierrc.cjs` re-exports `@wordpress/prettier-config` as-is (tabs, single quotes, `printWidth: 80`). `prettier` itself is aliased to `npm:wp-prettier` (WordPress's own Prettier fork) in `devDependencies`, since `wp-scripts format`/`lint-js` require that exact package to be installed under the `prettier` name — a plain `prettier` install will not satisfy them.
+- `.npmpackagejsonlintrc.json` extends `@wordpress/npm-package-json-lint-config` (used by `npm run lint:pkg-json`) but overrides `valid-values-license` to allow `MIT` — the WordPress default expects `GPL-2.0-or-later`, which fits a WP plugin but not this project (an independent, MIT-licensed CLI tool, not a WP-CLI plugin — see "What this is" above).
 - `.prettierignore` excludes `.github/`, `*.yml`/`*.yaml`, and `mkdocs.yml` — the WordPress formatting/tab-indent rules apply to this project's JS/TS/JSON, not to CI workflow or docs-site YAML.
 - JSDoc is required on functions (`jsdoc/require-param` etc., from the WordPress config) — see the existing `src/` files for the expected style (a one-line summary, `@param`/`@return` with real descriptions, not bare tags).
 
