@@ -120,9 +120,7 @@ describe( 'routeChildren', () => {
 		expect( routeChildren( deepIndex, 'wp/v2', 'gizmos' ) ).toEqual( [
 			{ segment: 'parts', route: 'gizmos/parts', hasChildren: true },
 		] );
-		expect(
-			routeChildren( deepIndex, 'wp/v2', 'gizmos/parts' )
-		).toEqual( [
+		expect( routeChildren( deepIndex, 'wp/v2', 'gizmos/parts' ) ).toEqual( [
 			{
 				segment: 'electronic',
 				route: 'gizmos/parts/electronic',
