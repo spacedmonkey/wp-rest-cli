@@ -715,6 +715,15 @@ describe( 'wp-rest-cli (integration)', () => {
 			);
 		} );
 
+		it( 'also lists meta as a discoverable sub-route, alongside the detailed synopsis', async () => {
+			const result = await run( [ 'wp/v2', 'widgets' ] );
+			expect( result.exitCode ).toBe( 0 );
+			expect( result.stdout ).toContain(
+				'This route also has nested sub-routes:'
+			);
+			expect( result.stdout ).toMatch( /meta\s*\|\s*\(subcommand\)/ );
+		} );
+
 		it( 'sets and reads back a meta value with update/get', async () => {
 			const id = await createWidget( 'Meta target' );
 			const updateResult = await run( [

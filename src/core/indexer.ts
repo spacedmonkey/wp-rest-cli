@@ -325,6 +325,14 @@ export interface RouteChildSegment {
 	route: string;
 	/** Whether routes exist strictly deeper than `route`. */
 	hasChildren: boolean;
+	/**
+	 * True for the synthetic "meta" pseudo-child callers may append when a
+	 * route's schema declares a `meta` field — meta commands are a CLI-only
+	 * concept layered on top of the REST resource, not a route this index
+	 * knows about, so `route`/`hasChildren` don't resolve against it the way
+	 * they do for a real child.
+	 */
+	isMeta?: boolean;
 }
 
 /**

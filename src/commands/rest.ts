@@ -542,6 +542,9 @@ async function renderRouteChildren(
 	flags: GlobalFlags
 ): Promise< string > {
 	const rows = children.map( ( child ) => {
+		if ( child.isMeta ) {
+			return { route: child.segment, verbs: '(subcommand)' };
+		}
 		const info = resolveRouteInfo( index, namespace, child.route );
 		const verbList = supportedVerbsForRoute( index, info.path );
 		const parts = child.hasChildren
@@ -577,6 +580,37 @@ function isRealRoute(
 ): boolean {
 	const info = resolveRouteInfo( index, namespace, route );
 	return info.requiresParam || Boolean( index.routes[ info.path ] );
+}
+
+/**
+ * Appends a synthetic "meta" child to `children` when the route's schema
+ * declares a `meta` field, so `meta` shows up as a discoverable sub-route
+ * alongside any real ones — it isn't a route the site's index knows about
+ * (it's a CLI-only concept layered on top of the REST resource), but it's
+ * navigable the same way (`wp <namespace> <route> meta ...`), so it belongs
+ * in the same listing.
+ * @param children  The route's real child segments, from `routeChildren`.
+ * @param route     The route name, to build the synthetic child's `route` field.
+ * @param endpoints The route's introspected endpoints.
+ * @return `children`, with a trailing "meta" entry appended if the route supports it.
+ */
+function withMetaChild(
+	children: RouteChildSegment[],
+	route: string,
+	endpoints: RouteEndpoint[]
+): RouteChildSegment[] {
+	if ( ! routeSupportsMeta( endpoints ) ) {
+		return children;
+	}
+	return [
+		...children,
+		{
+			segment: 'meta',
+			route: `${ route }/meta`,
+			hasChildren: false,
+			isMeta: true,
+		},
+	];
 }
 
 /**
@@ -978,7 +1012,11 @@ export async function runRestCommand(
 				( await renderChildrenNote(
 					index,
 					parsed.namespace,
-					children,
+					withMetaChild(
+						children,
+						parsed.route,
+						schema.endpoints ?? []
+					),
 					flags
 				) ),
 			exitCode: 0,
@@ -1271,7 +1309,11 @@ export async function runHelpCommand(
 				( await renderChildrenNote(
 					index,
 					parsed.namespace,
-					children,
+					withMetaChild(
+						children,
+						parsed.route,
+						schema.endpoints ?? []
+					),
 					flags
 				) ),
 			exitCode: 0,
