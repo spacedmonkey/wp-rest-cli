@@ -4,7 +4,7 @@
 
 The whole CLI is one dynamic grammar built from whatever routes a site's REST API actually registers — there's no fixed command tree to memorize:
 
-```
+```text
 wp                                                              # discover: list namespaces from the site's REST API index
 wp <namespace>                                                  # list routes registered under that namespace
 wp <namespace> <route>                                          # introspect: show the route's supported methods/args/context (an OPTIONS request)

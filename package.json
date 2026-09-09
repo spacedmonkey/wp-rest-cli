@@ -25,6 +25,7 @@
 		"test:watch": "npm run test:unit:watch",
 		"typecheck": "tsc --noEmit",
 		"lint": "wp-scripts lint-js",
+		"lint:md:docs": "wp-scripts lint-md-docs",
 		"format": "wp-scripts format"
 	},
 	"dependencies": {
