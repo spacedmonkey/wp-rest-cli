@@ -170,6 +170,17 @@ export async function startFixture(): Promise< Fixture > {
 							},
 						],
 					},
+					// Modelled on WP_REST_Revisions_Controller's single-revision
+					// endpoint: TWO URL parameters (parent post id, then revision id) —
+					// addressed as `wp wp/v2 posts revisions <parent> <id>` (no verb;
+					// this is the multi-parameter case, unlike every single-parameter
+					// route above which needs get/exists).
+					'/wp/v2/posts/(?P<parent>[\\d]+)/revisions/(?P<id>[\\d]+)':
+						{
+							namespace: 'wp/v2',
+							methods: [ 'GET' ],
+							endpoints: [ { methods: [ 'GET' ] } ],
+						},
 					// Modelled on WP_REST_Global_Styles_Revisions_Controller's sibling
 					// (real WP's .../themes/<stylesheet>/variations): a mid-path
 					// parameter *and* a hybrid node — "global-styles/themes" is both
@@ -380,6 +391,24 @@ export async function startFixture(): Promise< Fixture > {
 		);
 		if ( gizmoMatch && req.method === 'GET' ) {
 			send( res, 200, { id: gizmoMatch[ 1 ], kind: 'electronic' } );
+			return;
+		}
+
+		const singleRevisionMatch = path.match(
+			/^\/wp-json\/wp\/v2\/posts\/([^/]+)\/revisions\/([^/]+)$/
+		);
+		if ( singleRevisionMatch && req.method === 'GET' ) {
+			const parent = singleRevisionMatch[ 1 ] as string;
+			const id = singleRevisionMatch[ 2 ] as string;
+			if ( parent !== '10' || id !== '101' ) {
+				send( res, 404, {
+					code: 'rest_post_invalid_id',
+					message: 'Invalid post parent or revision ID.',
+					data: { status: 404 },
+				} );
+				return;
+			}
+			send( res, 200, { id: 101, parent: 10 } );
 			return;
 		}
 

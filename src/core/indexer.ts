@@ -79,6 +79,75 @@ function placeholderName( segment: string ): string {
 }
 
 /**
+ * One `(?P<name>...)` URL parameter found by `splitPlaceholders`.
+ */
+export interface PlaceholderParam {
+	/** Where this value belongs among the route's literal segments (see `splitPlaceholders`). */
+	index: number;
+	/** The placeholder's captured name, e.g. "parent". */
+	name: string;
+}
+
+/**
+ * Splits any `/`-joined path into its literal segments and every
+ * `(?P<name>...)` URL parameter placeholder it contains, in the order they
+ * appear — generalizing to any number of parameters (0, 1, or more), for
+ * routes that need more than one value to address a specific item, e.g.
+ * `posts/(?P<parent>[\d]+)/revisions/(?P<id>[\d]+)` (one specific revision
+ * of one specific post) has literal segments `['posts', 'revisions']` with
+ * params `[{index: 1, name: 'parent'}, {index: 2, name: 'id'}]` — "parent"
+ * belongs between "posts" and "revisions", "id" after "revisions" (i.e.
+ * once "parent" has already been spliced in ahead of it).
+ * @param path A `/`-joined path to split.
+ * @return The literal segments (placeholders removed) and each placeholder's
+ *         position among them plus its captured name, in path order.
+ */
+export function splitPlaceholders( path: string ): {
+	segments: string[];
+	params: PlaceholderParam[];
+} {
+	const rawSegments = splitPathSegments( path );
+	const segments: string[] = [];
+	const params: PlaceholderParam[] = [];
+	for ( const segment of rawSegments ) {
+		if ( isPlaceholderSegment( segment ) ) {
+			params.push( {
+				index: segments.length,
+				name: placeholderName( segment ),
+			} );
+		} else {
+			segments.push( segment );
+		}
+	}
+	return { segments, params };
+}
+
+/**
+ * Splices parameter values into a route's literal segments at their
+ * declared positions (see `splitPlaceholders`), building the segment list
+ * for the real, instantiated URL.
+ * @param segments The route's literal segments (placeholders already removed).
+ * @param params   Each parameter's position and name, in path order.
+ * @param values   The values to splice in, one per `params` entry, in the same order.
+ * @return `segments` with each value inserted at its position, URI-encoded.
+ */
+export function spliceParams(
+	segments: string[],
+	params: PlaceholderParam[],
+	values: string[]
+): string[] {
+	const result = [ ...segments ];
+	params.forEach( ( param, i ) => {
+		result.splice(
+			param.index + i,
+			0,
+			encodeURIComponent( values[ i ] as string )
+		);
+	} );
+	return result;
+}
+
+/**
  * Strips a trailing `/(?P<name>...)` URL parameter segment, if the path ends with one.
  * @param path A route path, as it appears in the index's `routes` map.
  * @return `path` with any trailing regex parameter segment removed.
@@ -102,10 +171,10 @@ export function stripTrailingPlaceholder( path: string ): string {
  * belongs between them); a trailing placeholder like
  * `global-styles/themes/(?P<stylesheet>%s)` yields `paramIndex` equal to
  * `segments.length`, matching the CLI's existing "append the id at the end"
- * behaviour. A path with more than one placeholder returns `null` — this
- * CLI's single-`<id>` verb grammar can't address a route needing two
- * parameters (e.g. one specific revision, addressed by parent post *and*
- * revision id).
+ * behaviour. A path with more than one placeholder returns `null` — routes
+ * needing two or more parameters are handled separately, by
+ * `resolveMultiParamRoute`, since this CLI's ordinary verb grammar takes
+ * only one `<id>`.
  * @param path A `/`-joined path to split.
  * @return The literal segments, the placeholder's position and captured
  *         name (both `null` if there isn't one), or `null` if there's more
@@ -116,31 +185,75 @@ export function splitPlaceholder( path: string ): {
 	paramIndex: number | null;
 	paramName: string | null;
 } | null {
-	const rawSegments = splitPathSegments( path );
-	const placeholderIndexes = rawSegments.reduce< number[] >(
-		( indexes, segment, i ) => {
-			if ( isPlaceholderSegment( segment ) ) {
-				indexes.push( i );
-			}
-			return indexes;
-		},
-		[]
-	);
-	if ( placeholderIndexes.length > 1 ) {
+	const { segments, params } = splitPlaceholders( path );
+	if ( params.length > 1 ) {
 		return null;
 	}
-	if ( placeholderIndexes.length === 0 ) {
-		return { segments: rawSegments, paramIndex: null, paramName: null };
+	if ( params.length === 0 ) {
+		return { segments, paramIndex: null, paramName: null };
 	}
-	const paramIndex = placeholderIndexes[ 0 ] as number;
+	const [ param ] = params;
 	return {
-		segments: [
-			...rawSegments.slice( 0, paramIndex ),
-			...rawSegments.slice( paramIndex + 1 ),
-		],
-		paramIndex,
-		paramName: placeholderName( rawSegments[ paramIndex ] as string ),
+		segments,
+		paramIndex: ( param as PlaceholderParam ).index,
+		paramName: ( param as PlaceholderParam ).name,
 	};
+}
+
+/**
+ * Finds a registered route with two or more URL parameters whose literal
+ * segments, followed by exactly that many trailing tokens, match
+ * `typedSegments` in full — e.g. typing `['posts', 'revisions', '5', '12']`
+ * against a route registered as
+ * `.../posts/(?P<parent>[\d]+)/revisions/(?P<id>[\d]+)` matches, with route
+ * `"posts/revisions"` and the trailing `['5', '12']` as the values for
+ * "parent" then "id", in that order. Zero- or one-parameter routes are
+ * handled by `resolveRouteInfo` instead — this is specifically for the
+ * two-or-more case, which is otherwise entirely unaddressable (every verb
+ * here otherwise takes only one `<id>`).
+ * @param index         The site's root REST API index.
+ * @param namespace     The namespace to search.
+ * @param typedSegments The full route as typed, already split on `/`.
+ * @return The matched route (its index path, literal route name, and
+ *         parameters) and the values typed for it, or `null` if no
+ *         multi-parameter route matches.
+ */
+export function resolveMultiParamRoute(
+	index: IndexResponse,
+	namespace: string,
+	typedSegments: string[]
+): {
+	path: string;
+	route: string;
+	params: PlaceholderParam[];
+	values: string[];
+} | null {
+	const prefix = `/${ namespace }/`;
+	for ( const path of Object.keys( index.routes ) ) {
+		if ( ! path.startsWith( prefix ) || ! path.includes( '(?P<' ) ) {
+			continue;
+		}
+		const { segments, params } = splitPlaceholders(
+			path.slice( prefix.length )
+		);
+		if ( params.length < 2 ) {
+			continue;
+		}
+		if ( typedSegments.length !== segments.length + params.length ) {
+			continue;
+		}
+		const candidateLiteral = typedSegments.slice( 0, segments.length );
+		if ( candidateLiteral.join( '/' ) !== segments.join( '/' ) ) {
+			continue;
+		}
+		return {
+			path,
+			route: segments.join( '/' ),
+			params,
+			values: typedSegments.slice( segments.length ),
+		};
+	}
+	return null;
 }
 
 /**

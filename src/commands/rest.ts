@@ -10,6 +10,8 @@ import {
 	fetchIndex,
 	routeChildren,
 	resolveRouteInfo,
+	resolveMultiParamRoute,
+	spliceParams,
 	supportedVerbsForRoute,
 	isApplicationPasswordsSupported,
 	type RouteChildSegment,
@@ -413,6 +415,18 @@ function formatArgsInline(
 }
 
 /**
+ * Renders a route name the way it's actually typed at the CLI — as separate
+ * words (`posts revisions`), not the internal `/`-joined form
+ * (`posts/revisions`) used everywhere else to identify it — for use only in
+ * literal example command lines meant to be copy-pasted and run.
+ * @param route The route name.
+ * @return `route` with every `/` replaced by a space.
+ */
+function displayRoute( route: string ): string {
+	return route.replace( /\//g, ' ' );
+}
+
+/**
  * A single WP-CLI-style synopsis line for one verb, e.g. `wp-rest-cli wp/v2 posts create [--title=<title>] [--<field>=<value>]`.
  * @param namespace    The route's namespace.
  * @param route        The route name.
@@ -428,30 +442,37 @@ function buildVerbSynopsis(
 	endpoints: RouteEndpoint[],
 	urlParamName?: string
 ): string {
-	const base = `wp-rest-cli ${ namespace } ${ route } ${ verb }`;
+	const base = `wp-rest-cli ${ namespace } ${ displayRoute(
+		route
+	) } ${ verb }`;
 	const method = COLLECTION_VERB_METHOD[ verb ];
 	const endpoint = method
 		? endpoints.find( ( e ) => e.methods.includes( method ) )
 		: undefined;
 	const inlineArgs = formatArgsInline( endpoint?.args, urlParamName );
+	const idPlaceholder = `<${ urlParamName ?? 'id' }>`;
 
 	switch ( verb ) {
 		case 'list':
 			return [ base, inlineArgs ].filter( Boolean ).join( ' ' );
 		case 'get':
-			return `${ base } <id> [--context=<context>]`;
+			return `${ base } ${ idPlaceholder } [--context=<context>]`;
 		case 'create':
 			return [ base, inlineArgs, '[--<field>=<value>]' ]
 				.filter( Boolean )
 				.join( ' ' );
 		case 'update':
-			return [ `${ base } <id>`, inlineArgs, '[--<field>=<value>]' ]
+			return [
+				`${ base } ${ idPlaceholder }`,
+				inlineArgs,
+				'[--<field>=<value>]',
+			]
 				.filter( Boolean )
 				.join( ' ' );
 		case 'delete':
-			return `${ base } <id> [--force]`;
+			return `${ base } ${ idPlaceholder } [--force]`;
 		case 'exists':
-			return `${ base } <id>`;
+			return `${ base } ${ idPlaceholder }`;
 		case 'generate':
 			return [
 				base,
@@ -650,7 +671,9 @@ function printVerbHelp(
 		lines.push(
 			'',
 			pc.dim(
-				`  This operates on a single item (${ namespace }/${ route }/<id>); its argument schema ` +
+				`  This operates on a single item (${ namespace }/${ route }/<${
+					urlParamName ?? 'id'
+				}>); its argument schema ` +
 					`isn't exposed by the collection endpoint's OPTIONS response, but field=value pairs ` +
 					`(if any) are still sent through as query parameters.`
 			)
@@ -788,7 +811,9 @@ function renderRouteHelp(
 	const paramNote = requiresParam
 		? pc.dim(
 				`\nThis route only exists with a value in place of its URL parameter, e.g.:\n` +
-					`  wp-rest-cli ${ namespace } ${ route } get <value>\n`
+					`  wp-rest-cli ${ namespace } ${ displayRoute(
+						route
+					) } get <${ paramName ?? 'value' }>\n`
 		  )
 		: '';
 	const noIdNote =
@@ -892,6 +917,34 @@ export async function runRestCommand(
 				children,
 				flags
 			);
+			return { output, exitCode: 0 };
+		}
+		const multiParamMatch = resolveMultiParamRoute(
+			index,
+			parsed.namespace,
+			parsed.route.split( '/' )
+		);
+		if ( multiParamMatch ) {
+			const instantiatedSegments = spliceParams(
+				multiParamMatch.route.split( '/' ),
+				multiParamMatch.params,
+				multiParamMatch.values
+			);
+			const url = new URL(
+				`${ parsed.namespace }/${ instantiatedSegments.join( '/' ) }`,
+				apiRoot
+			).toString();
+			const { body } = await withSpinner(
+				`GET ${ parsed.namespace }/${ displayRoute( parsed.route ) }`,
+				! flags.quiet,
+				() => client.request( url, { method: 'GET' } )
+			);
+			const output = await formatOutput( body, {
+				format: flags.format,
+				fields: flags.fields,
+				field: flags.field,
+				color: flags.color,
+			} );
 			return { output, exitCode: 0 };
 		}
 		const { schema, requiresParam, paramName, verbs } =

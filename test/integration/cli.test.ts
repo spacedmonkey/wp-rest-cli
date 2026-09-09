@@ -413,6 +413,45 @@ describe( 'wp-rest-cli (integration)', () => {
 		} );
 	} );
 
+	describe( 'routes with two URL parameters', () => {
+		it( 'performs a get, with no verb needed, when exactly enough trailing values are given', async () => {
+			const result = await run( [
+				'wp/v2',
+				'posts',
+				'revisions',
+				'10',
+				'101',
+				'--format=json',
+			] );
+			expect( result.exitCode ).toBe( 0 );
+			expect( JSON.parse( result.stdout ) ).toEqual( {
+				id: 101,
+				parent: 10,
+			} );
+		} );
+
+		it( '404s naturally for a value combination the fixture does not recognise', async () => {
+			const result = await run( [
+				'wp/v2',
+				'posts',
+				'revisions',
+				'10',
+				'999',
+			] );
+			expect( result.exitCode ).toBe( 1 );
+		} );
+
+		it( 'does not misfire with only one trailing value (needs exactly two)', async () => {
+			// Only one trailing value doesn't match the two-parameter route at
+			// all (it needs exactly two), and — with no verb — isn't the
+			// single-parameter "revisions get <value>" form either, so this
+			// falls all the way through to a live 404, same as any other
+			// unrecognised bare route.
+			const result = await run( [ 'wp/v2', 'posts', 'revisions', '10' ] );
+			expect( result.exitCode ).toBe( 1 );
+		} );
+	} );
+
 	it( 'shows a param-required note when introspecting a route with no bare collection', async () => {
 		const result = await run( [ 'wp/v2', 'global-styles', 'themes' ] );
 		expect( result.exitCode ).toBe( 0 );
@@ -442,8 +481,10 @@ describe( 'wp-rest-cli (integration)', () => {
 		);
 		// list's synopsis line pulls args in inline (unlike get/exists, which are
 		// hardcoded to just <id>) — the parameter shows bare, not bracketed.
+		// The route itself is shown as separate words ("posts revisions"), the
+		// way it's actually typed at the CLI, not the internal "posts/revisions".
 		expect( result.stdout ).toContain(
-			'usage: wp-rest-cli wp/v2 posts/revisions list --parent=<parent>'
+			'usage: wp-rest-cli wp/v2 posts revisions list --parent=<parent>'
 		);
 	} );
 

@@ -7,9 +7,11 @@ import { describe, expect, it } from '@jest/globals';
  * Internal dependencies
  */
 import {
+	resolveMultiParamRoute,
 	resolveRouteInfo,
 	routeChildren,
 	routesForNamespace,
+	spliceParams,
 	supportedVerbsForRoute,
 } from '../../src/core/indexer.js';
 import type { IndexResponse } from '../../src/types.js';
@@ -310,5 +312,85 @@ describe( 'real-world placeholder patterns (embedded slashes/parens)', () => {
 				.map( ( c ) => c.segment )
 				.sort()
 		).toEqual( [ 'revisions', 'themes' ] );
+	} );
+} );
+
+describe( 'resolveMultiParamRoute / spliceParams', () => {
+	const twoParamIndex: IndexResponse = {
+		namespaces: [ 'wp/v2' ],
+		routes: {
+			'/wp/v2/posts/(?P<parent>[\\d]+)/revisions': schema( [ 'GET' ] ),
+			'/wp/v2/posts/(?P<parent>[\\d]+)/revisions/(?P<id>[\\d]+)': schema(
+				[ 'GET' ]
+			),
+		},
+	};
+
+	it( 'matches a route with two parameters when exactly enough trailing values are given', () => {
+		const match = resolveMultiParamRoute( twoParamIndex, 'wp/v2', [
+			'posts',
+			'revisions',
+			'5',
+			'12',
+		] );
+		expect( match ).toEqual( {
+			path: '/wp/v2/posts/(?P<parent>[\\d]+)/revisions/(?P<id>[\\d]+)',
+			route: 'posts/revisions',
+			params: [
+				{ index: 1, name: 'parent' },
+				{ index: 2, name: 'id' },
+			],
+			values: [ '5', '12' ],
+		} );
+	} );
+
+	it( 'does not match with too few or too many trailing values', () => {
+		expect(
+			resolveMultiParamRoute( twoParamIndex, 'wp/v2', [
+				'posts',
+				'revisions',
+				'5',
+			] )
+		).toBeNull();
+		expect(
+			resolveMultiParamRoute( twoParamIndex, 'wp/v2', [
+				'posts',
+				'revisions',
+				'5',
+				'12',
+				'99',
+			] )
+		).toBeNull();
+	} );
+
+	it( 'does not match a route with only one parameter (handled by resolveRouteInfo instead)', () => {
+		const oneParamIndex: IndexResponse = {
+			namespaces: [ 'wp/v2' ],
+			routes: {
+				'/wp/v2/posts/(?P<parent>[\\d]+)/revisions': schema( [
+					'GET',
+				] ),
+			},
+		};
+		expect(
+			resolveMultiParamRoute( oneParamIndex, 'wp/v2', [
+				'posts',
+				'revisions',
+				'5',
+			] )
+		).toBeNull();
+	} );
+
+	it( 'splices values into their declared positions, shifting later ones as earlier ones are inserted', () => {
+		expect(
+			spliceParams(
+				[ 'posts', 'revisions' ],
+				[
+					{ index: 1, name: 'parent' },
+					{ index: 2, name: 'id' },
+				],
+				[ '5', '12' ]
+			)
+		).toEqual( [ 'posts', '5', 'revisions', '12' ] );
 	} );
 } );
