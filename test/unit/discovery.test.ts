@@ -1,4 +1,11 @@
+/**
+ * External dependencies
+ */
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
+
+/**
+ * Internal dependencies
+ */
 import { resolveApiRoot } from '../../src/core/discovery.js';
 import { CliError } from '../../src/core/errors.js';
 

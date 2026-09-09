@@ -1,6 +1,9 @@
+/**
+ * Internal dependencies
+ */
 import type { AuthProvider } from './auth/types.js';
-import { parseErrorResponse } from './errors.js';
 import { debugLog, redactHeaders } from './debug.js';
+import { parseErrorResponse } from './errors.js';
 
 export interface RequestOptions {
 	method?: string;

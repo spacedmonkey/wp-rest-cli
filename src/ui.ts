@@ -1,3 +1,6 @@
+/**
+ * External dependencies
+ */
 import ora, { type Ora } from 'ora';
 import pc from 'picocolors';
 

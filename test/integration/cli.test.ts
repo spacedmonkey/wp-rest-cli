@@ -1,6 +1,13 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+/**
+ * External dependencies
+ */
 import { execa } from 'execa';
 import { fileURLToPath } from 'node:url';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+/**
+ * Internal dependencies
+ */
 import { startFixture, type Fixture } from './fixtures/server.js';
 
 const cliEntry = fileURLToPath(

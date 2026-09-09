@@ -1,3 +1,6 @@
+/**
+ * Internal dependencies
+ */
 import type { WpRestClient } from './client.js';
 import type { RouteSchema } from '../types.js';
 

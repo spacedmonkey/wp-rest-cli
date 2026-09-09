@@ -1,3 +1,6 @@
+/**
+ * Internal dependencies
+ */
 import type { WpApiErrorBody } from '../types.js';
 
 /** An error returned by the WordPress REST API itself (parsed {code,message,data} body). */

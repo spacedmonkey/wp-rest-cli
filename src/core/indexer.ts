@@ -1,3 +1,6 @@
+/**
+ * Internal dependencies
+ */
 import type { WpRestClient } from './client.js';
 import type { IndexResponse, Verb } from '../types.js';
 

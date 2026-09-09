@@ -1,6 +1,13 @@
+/**
+ * External dependencies
+ */
 import { describe, expect, it } from '@jest/globals';
-import { buildVerbRequest } from '../../src/core/verbs.js';
+
+/**
+ * Internal dependencies
+ */
 import { CliError } from '../../src/core/errors.js';
+import { buildVerbRequest } from '../../src/core/verbs.js';
 
 const apiRoot = 'https://example.com/wp-json/';
 

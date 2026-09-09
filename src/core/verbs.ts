@@ -1,4 +1,11 @@
+/**
+ * WordPress dependencies
+ */
 import { addQueryArgs } from '@wordpress/url';
+
+/**
+ * Internal dependencies
+ */
 import { CliError } from './errors.js';
 import type { Context, Verb } from '../types.js';
 

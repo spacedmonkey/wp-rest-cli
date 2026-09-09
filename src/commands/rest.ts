@@ -1,6 +1,11 @@
-import { resolveApiRoot } from '../core/discovery.js';
-import { WpRestClient } from '../core/client.js';
+/**
+ * Internal dependencies
+ */
 import { BasicAuthProvider } from '../core/auth/basic.js';
+import { WpRestClient } from '../core/client.js';
+import { resolveApiRoot } from '../core/discovery.js';
+import { CliError, WpApiError } from '../core/errors.js';
+import { formatOutput } from '../core/formatter.js';
 import {
 	fetchIndex,
 	routesForNamespace,
@@ -10,9 +15,13 @@ import {
 } from '../core/indexer.js';
 import { introspectRoute, supportedContexts } from '../core/introspect.js';
 import { buildVerbRequest } from '../core/verbs.js';
-import { formatOutput } from '../core/formatter.js';
+import type {
+	GlobalFlags,
+	RouteEndpoint,
+	RouteSchema,
+	Verb,
+} from '../types.js';
 import { withSpinner, pc } from '../ui.js';
-import { CliError, WpApiError } from '../core/errors.js';
 import {
 	META_VERBS,
 	parseMetaArgs,
@@ -23,12 +32,6 @@ import {
 	type MetaVerb,
 	type ParsedMeta,
 } from './meta.js';
-import type {
-	GlobalFlags,
-	RouteEndpoint,
-	RouteSchema,
-	Verb,
-} from '../types.js';
 
 const VERBS: Verb[] = [
 	'list',

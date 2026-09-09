@@ -1,4 +1,11 @@
+/**
+ * External dependencies
+ */
 import { describe, expect, it } from '@jest/globals';
+
+/**
+ * Internal dependencies
+ */
 import {
 	resolveRouteInfo,
 	routesForNamespace,
