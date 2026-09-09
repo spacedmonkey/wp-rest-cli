@@ -48,21 +48,38 @@ function matchesType( value: string, type: string ): boolean {
 
 /**
  * Validates `field=value` CLI arguments against a route's declared arg
- * schema (as introspected via OPTIONS), catching type mismatches locally
- * — e.g. `--per_page=abc` when the schema declares `per_page` as `integer`
- * — before they're ever sent to the API.
- * @param  fields The parsed `field=value` arguments.
- * @param  args   The matching endpoint's argument schema, if any.
- * @throws {CliError} Listing every field whose value doesn't match its declared type.
+ * schema (as introspected via OPTIONS), catching problems locally before
+ * they're ever sent to the API: a value whose type doesn't match its
+ * declared schema type (e.g. `--per_page=abc` when `per_page` is `integer`),
+ * and — when `checkRequired` is set — any `required` arg missing from
+ * `fields` altogether.
+ * @param  fields        The parsed `field=value` arguments.
+ * @param  args          The matching endpoint's argument schema, if any.
+ * @param  checkRequired Whether to also flag the endpoint's `required` args
+ *                       that `fields` doesn't set at all. Only meaningful
+ *                       for a verb whose schema reflects the *full* set of
+ *                       fields the request must carry (`create`/`generate`)
+ *                       — a schema borrowed for `update`, say, still lists
+ *                       create-time required fields that a partial update
+ *                       legitimately omits, so callers must opt in per verb.
+ * @throws {CliError} Listing every missing-required and type-mismatched field at once.
  */
 export function validateFieldTypes(
 	fields: Record< string, string >,
-	args: Record< string, EndpointArgSchema > | undefined
+	args: Record< string, EndpointArgSchema > | undefined,
+	checkRequired = false
 ): void {
 	if ( ! args ) {
 		return;
 	}
 	const problems: string[] = [];
+	if ( checkRequired ) {
+		for ( const [ name, arg ] of Object.entries( args ) ) {
+			if ( arg?.required && ! ( name in fields ) ) {
+				problems.push( `--${ name } is required.` );
+			}
+		}
+	}
 	for ( const [ name, value ] of Object.entries( fields ) ) {
 		const arg = args[ name ];
 		if ( ! arg?.type ) {

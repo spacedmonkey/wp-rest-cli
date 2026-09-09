@@ -171,6 +171,23 @@ describe( 'wp-rest-cli (integration)', () => {
 		);
 	} );
 
+	it( 'rejects create when a required field is missing, before sending the request', async () => {
+		const result = await run( [ 'wp/v2', 'widgets', 'create' ] );
+		expect( result.exitCode ).toBe( 1 );
+		expect( result.stderr ).toContain( '--title is required.' );
+	} );
+
+	it( 'does not require create-time fields on a partial update', async () => {
+		const result = await run( [
+			'wp/v2',
+			'widgets',
+			'update',
+			'2',
+			'--format=json',
+		] );
+		expect( result.exitCode ).toBe( 0 );
+	} );
+
 	it( 'deletes an item by id', async () => {
 		const result = await run( [ 'wp/v2', 'widgets', 'delete', '1' ] );
 		expect( result.exitCode ).toBe( 0 );

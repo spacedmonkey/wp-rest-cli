@@ -832,10 +832,11 @@ async function resolveParamIndex(
 /**
  * Validates a verb's `field=value` arguments against the route's live schema
  * for the matching HTTP method (see `COLLECTION_VERB_METHOD`), catching
- * type mismatches (e.g. `--per_page=abc` for an `integer` arg) locally
- * before the request is ever sent. A no-op for verbs with no entry in
- * `COLLECTION_VERB_METHOD` (get/delete/exists), which have no reliable
- * arg schema to check against.
+ * type mismatches (e.g. `--per_page=abc` for an `integer` arg), and — for
+ * `create`/`generate` only — any `required` arg missing from `fields`
+ * altogether, locally before the request is ever sent. A no-op for verbs
+ * with no entry in `COLLECTION_VERB_METHOD` (get/delete/exists), which have
+ * no reliable arg schema to check against.
  * @param client      The REST client to issue the underlying schema request with.
  * @param apiRoot     The resolved REST API root URL.
  * @param namespace   The route's namespace.
@@ -867,7 +868,12 @@ async function validateVerbFields(
 	const endpoint = ( schema.endpoints ?? [] ).find( ( e ) =>
 		e.methods.includes( method )
 	);
-	validateFieldTypes( fields, endpoint?.args );
+	// Only 'create'/'generate' send the full set of fields a new item needs —
+	// 'update' borrows the same (POST) schema but a partial update
+	// legitimately omits create-time required fields, so it must not be held
+	// to them.
+	const checkRequired = verb === 'create' || verb === 'generate';
+	validateFieldTypes( fields, endpoint?.args, checkRequired );
 }
 
 /**

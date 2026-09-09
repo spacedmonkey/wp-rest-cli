@@ -94,4 +94,54 @@ describe( 'validateFieldTypes', () => {
 			expect( ( error as CliError ).message ).toContain( '--price' );
 		}
 	} );
+
+	describe( 'checkRequired', () => {
+		const requiredArgs: Record< string, EndpointArgSchema > = {
+			title: { type: 'string', required: true },
+			status: { type: 'string', required: false },
+		};
+
+		it( 'does not check for missing required fields by default', () => {
+			expect( () =>
+				validateFieldTypes( {}, requiredArgs )
+			).not.toThrow();
+		} );
+
+		it( 'rejects a missing required field when checkRequired is set', () => {
+			expect( () =>
+				validateFieldTypes( {}, requiredArgs, true )
+			).toThrow( '--title is required.' );
+		} );
+
+		it( 'passes when the required field is present', () => {
+			expect( () =>
+				validateFieldTypes( { title: 'Hello' }, requiredArgs, true )
+			).not.toThrow();
+		} );
+
+		it( 'does not require an optional field', () => {
+			expect( () =>
+				validateFieldTypes( { title: 'Hello' }, requiredArgs, true )
+			).not.toThrow();
+		} );
+
+		it( 'reports a missing required field alongside a type mismatch', () => {
+			try {
+				validateFieldTypes(
+					{ per_page: 'abc' },
+					{ ...requiredArgs, per_page: { type: 'integer' } },
+					true
+				);
+				throw new Error( 'expected validateFieldTypes to throw' );
+			} catch ( error ) {
+				expect( error ).toBeInstanceOf( CliError );
+				expect( ( error as CliError ).message ).toContain(
+					'--title is required.'
+				);
+				expect( ( error as CliError ).message ).toContain(
+					'--per_page must be of type integer'
+				);
+			}
+		} );
+	} );
 } );
