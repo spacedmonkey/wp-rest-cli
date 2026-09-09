@@ -188,6 +188,25 @@ describe( 'wp-rest-cli (integration)', () => {
 		expect( result.exitCode ).toBe( 0 );
 	} );
 
+	it( 'rejects list when a required query arg is missing, before sending the request', async () => {
+		const result = await run( [ 'wp/v2', 'file-size', 'list' ] );
+		expect( result.exitCode ).toBe( 1 );
+		expect( result.stderr ).toContain( '--url is required.' );
+	} );
+
+	it( 'accepts list once the required query arg is provided', async () => {
+		const result = await run( [
+			'wp/v2',
+			'file-size',
+			'list',
+			'url=https://example.com/image.jpg',
+			'--format=json',
+		] );
+		expect( result.exitCode ).toBe( 0 );
+		const body = JSON.parse( result.stdout );
+		expect( body.url ).toBe( 'https://example.com/image.jpg' );
+	} );
+
 	it( 'deletes an item by id', async () => {
 		const result = await run( [ 'wp/v2', 'widgets', 'delete', '1' ] );
 		expect( result.exitCode ).toBe( 0 );
