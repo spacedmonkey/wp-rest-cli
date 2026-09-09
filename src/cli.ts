@@ -12,6 +12,7 @@ import {
 	runRestCommand,
 	parseHelpArgs,
 	runHelpCommand,
+	type HelpStyle,
 } from './commands/rest.js';
 import {
 	getDefaultUrl,
@@ -96,6 +97,7 @@ interface RawOptions {
 	color: boolean;
 	quiet?: boolean;
 	debug?: boolean;
+	help?: boolean;
 }
 
 /**
@@ -191,11 +193,13 @@ async function handleConfigCommand(
  * and prints the result.
  * @param args    The positional arguments following `help`.
  * @param options Commander's raw parsed options.
+ * @param style
  * @return The process exit code.
  */
 async function handleHelpCommand(
 	args: string[],
-	options: RawOptions
+	options: RawOptions,
+	style: HelpStyle = 'usage'
 ): Promise< number > {
 	if ( args.length === 0 ) {
 		program.outputHelp();
@@ -209,7 +213,12 @@ async function handleHelpCommand(
 		);
 	}
 	const parsed = parseHelpArgs( args );
-	const { output, exitCode } = await runHelpCommand( parsed, flags, siteUrl );
+	const { output, exitCode } = await runHelpCommand(
+		parsed,
+		flags,
+		siteUrl,
+		style
+	);
 	console.log( output );
 	return exitCode;
 }
@@ -243,6 +252,11 @@ program
 		'--debug',
 		'Log each HTTP request/response (to stderr) and show extra output on error'
 	)
+	.helpOption( false )
+	.option(
+		'-h, --help',
+		'Show help for the given namespace/route/verb (WP-CLI-style), or the top-level help if none is given'
+	)
 	.addHelpText(
 		'after',
 		`
@@ -256,6 +270,8 @@ Examples:
   $ wp-rest-cli wp/v2 posts delete 42 --force --url=https://example.com
   $ wp-rest-cli config set --url=https://example.com --username=admin
   $ wp-rest-cli help wp/v2 posts list --url=https://example.com
+  $ wp-rest-cli wp/v2 posts --help --url=https://example.com
+  $ wp-rest-cli wp/v2 posts create --help --url=https://example.com
 
 Dynamic field/query arguments (e.g. --per_page=, --title=, --force) are passed
 straight through to the WordPress REST API and are not fixed ahead of time —
@@ -266,6 +282,13 @@ run "wp-rest-cli <namespace> <route>" to see which ones a given route supports.
 		setColorEnabled( options.color );
 		try {
 			if ( args[ 0 ] === 'config' ) {
+				if ( options.help ) {
+					console.log(
+						'Usage: wp config <get|set|clear> [--url=] [--username=]'
+					);
+					process.exitCode = 0;
+					return;
+				}
 				process.exitCode = await handleConfigCommand( args, options );
 				return;
 			}
@@ -273,7 +296,22 @@ run "wp-rest-cli <namespace> <route>" to see which ones a given route supports.
 			if ( args[ 0 ] === 'help' ) {
 				process.exitCode = await handleHelpCommand(
 					args.slice( 1 ),
-					options
+					options,
+					'usage'
+				);
+				return;
+			}
+
+			if ( options.help ) {
+				if ( args.length === 0 ) {
+					program.outputHelp();
+					process.exitCode = 0;
+					return;
+				}
+				process.exitCode = await handleHelpCommand(
+					args,
+					options,
+					'wpcli'
 				);
 				return;
 			}

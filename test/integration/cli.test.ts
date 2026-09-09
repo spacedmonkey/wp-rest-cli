@@ -158,6 +158,19 @@ describe( 'wp-rest-cli (integration)', () => {
 		expect( body.title.rendered ).toBe( 'Renamed' );
 	} );
 
+	it( 'rejects a non-integer value for an integer-typed field before sending the request', async () => {
+		const result = await run( [
+			'wp/v2',
+			'widgets',
+			'list',
+			'--per_page=abc',
+		] );
+		expect( result.exitCode ).toBe( 1 );
+		expect( result.stderr ).toContain(
+			'--per_page must be of type integer, got "abc".'
+		);
+	} );
+
 	it( 'deletes an item by id', async () => {
 		const result = await run( [ 'wp/v2', 'widgets', 'delete', '1' ] );
 		expect( result.exitCode ).toBe( 0 );

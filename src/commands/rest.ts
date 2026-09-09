@@ -17,6 +17,7 @@ import {
 	type RouteChildSegment,
 } from '../core/indexer.js';
 import { introspectRoute, supportedContexts } from '../core/introspect.js';
+import { validateFieldTypes } from '../core/validate.js';
 import { buildVerbRequest } from '../core/verbs.js';
 import type {
 	GlobalFlags,
@@ -209,6 +210,15 @@ export type ParsedHelp =
 			route: string;
 			metaVerb: MetaVerb;
 	  };
+
+/**
+ * Which help renderer `runHelpCommand` should use: `'usage'` is the existing
+ * dense, schema-driven `usage: ... \n   or: ...` block (`wp help ...` and bare
+ * introspection); `'wpcli'` is the NAME/DESCRIPTION/SYNOPSIS/SUBCOMMANDS or
+ * NAME/DESCRIPTION/SYNOPSIS/OPTIONS/EXAMPLES page real WP-CLI prints for
+ * `--help`, used only when a command is run with a trailing `--help` flag.
+ */
+export type HelpStyle = 'usage' | 'wpcli';
 
 /**
  * Parses `wp help [<namespace> [<route...> [<verb>]]]`'s arguments into a
@@ -820,6 +830,47 @@ async function resolveParamIndex(
 }
 
 /**
+ * Validates a verb's `field=value` arguments against the route's live schema
+ * for the matching HTTP method (see `COLLECTION_VERB_METHOD`), catching
+ * type mismatches (e.g. `--per_page=abc` for an `integer` arg) locally
+ * before the request is ever sent. A no-op for verbs with no entry in
+ * `COLLECTION_VERB_METHOD` (get/delete/exists), which have no reliable
+ * arg schema to check against.
+ * @param client      The REST client to issue the underlying schema request with.
+ * @param apiRoot     The resolved REST API root URL.
+ * @param namespace   The route's namespace.
+ * @param route       The route name.
+ * @param verb        The verb being run.
+ * @param fields      The parsed `field=value` arguments to validate.
+ * @param showSpinner Whether to show a progress spinner for the schema request.
+ */
+async function validateVerbFields(
+	client: WpRestClient,
+	apiRoot: string,
+	namespace: string,
+	route: string,
+	verb: Verb,
+	fields: Record< string, string >,
+	showSpinner: boolean
+): Promise< void > {
+	const method = COLLECTION_VERB_METHOD[ verb ];
+	if ( ! method ) {
+		return;
+	}
+	const { schema } = await getRouteSchema(
+		client,
+		apiRoot,
+		namespace,
+		route,
+		showSpinner
+	);
+	const endpoint = ( schema.endpoints ?? [] ).find( ( e ) =>
+		e.methods.includes( method )
+	);
+	validateFieldTypes( fields, endpoint?.args );
+}
+
+/**
  * Combines the WP-CLI-style usage synopsis with the existing detailed per-method arg listing.
  * @param namespace     The route's namespace.
  * @param route         The route name.
@@ -870,6 +921,322 @@ function renderRouteHelp(
 		'\n\n' +
 		printIntrospection( namespace, route, endpoints, paramName )
 	);
+}
+
+/**
+ * A short, generic one-line description of what each verb does to a route,
+ * parameterised by the route name — the closest available approximation of
+ * WP-CLI's own hardcoded per-subcommand descriptions (e.g. `wp post create`'s
+ * "Creates a new post."), since this CLI's routes aren't known ahead of time.
+ */
+const VERB_DESCRIPTIONS: Record< Verb, ( route: string ) => string > = {
+	list: ( route ) => `Gets a list of ${ route }.`,
+	get: ( route ) => `Gets details about a ${ route } item.`,
+	create: ( route ) => `Creates a new ${ route } item.`,
+	update: ( route ) => `Updates one or more existing ${ route } items.`,
+	delete: ( route ) => `Deletes an existing ${ route } item.`,
+	exists: ( route ) => `Verifies whether a ${ route } item exists.`,
+	generate: ( route ) => `Generates some ${ route } items.`,
+};
+
+/** Verb-specific notes shown beneath OPTIONS/SUBCOMMANDS in the `--help` page. */
+const VERB_NOTES: Partial< Record< Verb, string > > = {
+	delete: 'Pass --force to bypass trash and permanently delete, where supported.',
+	exists: 'Exits 0 if a GET for <id> succeeds, 1 if it 404s; prints nothing else in table format.',
+	generate:
+		'Pass --count=<n> to create that many items (default 1); the same fields are reused for every one.',
+};
+
+/**
+ * Renders one endpoint's arguments WP-CLI `--help`-style: `[--name=<name>]`
+ * (or bare `--name=<name>` if required), its description indented beneath,
+ * and a `---` default/enum block when the schema declares them — matching
+ * the shape of WP-CLI's own OPTIONS listings.
+ * @param endpoint The endpoint whose args to render.
+ * @return One or more formatted lines per argument.
+ */
+function formatOptionsWpCli( endpoint: RouteEndpoint ): string[] {
+	const args = endpoint.args ?? {};
+	const names = Object.keys( args );
+	if ( names.length === 0 ) {
+		return [ '  (no arguments)' ];
+	}
+	const lines: string[] = [];
+	for ( const name of names ) {
+		const arg = args[ name ];
+		if ( ! arg ) {
+			continue;
+		}
+		lines.push(
+			`  ${
+				arg.required
+					? `--${ name }=<${ name }>`
+					: `[--${ name }=<${ name }>]`
+			}`
+		);
+		if ( arg.description ) {
+			lines.push( `      ${ arg.description }` );
+		}
+		if ( arg.enum || arg.default !== undefined ) {
+			lines.push( '      ---' );
+			if ( arg.default !== undefined ) {
+				lines.push(
+					`      default: ${ JSON.stringify( arg.default ) }`
+				);
+			}
+			if ( arg.enum ) {
+				lines.push( '      options:' );
+				lines.push(
+					...arg.enum.map( ( value ) => `        - ${ value }` )
+				);
+			}
+			lines.push( '      ---' );
+		}
+		lines.push( '' );
+	}
+	if ( lines[ lines.length - 1 ] === '' ) {
+		lines.pop();
+	}
+	return lines;
+}
+
+/**
+ * A single realistic-looking example invocation for a verb, e.g.
+ * `wp-rest-cli wp/v2 widgets create --title=<title> --url=https://example.com`
+ * — unlike {@link buildVerbSynopsis}, this only includes an endpoint's
+ * *required* args (no `[--optional=<optional>]` bracket noise), since it's
+ * meant to read as a command a user could actually type.
+ * @param namespace The route's namespace.
+ * @param route     The route name.
+ * @param verb      The verb to build an example for.
+ * @param endpoint  The matching HTTP method's endpoint schema, if any.
+ * @return The example command line, without its leading `$ `.
+ */
+function buildExampleInvocation(
+	namespace: string,
+	route: string,
+	verb: Verb,
+	endpoint: RouteEndpoint | undefined
+): string {
+	const base = `wp-rest-cli ${ namespace } ${ route } ${ verb }`;
+	const id =
+		verb === 'get' ||
+		verb === 'update' ||
+		verb === 'delete' ||
+		verb === 'exists'
+			? ' <id>'
+			: '';
+	const requiredArgs = Object.entries( endpoint?.args ?? {} )
+		.filter( ( [ , arg ] ) => arg?.required )
+		.map( ( [ name ] ) => `--${ name }=<${ name }>` )
+		.join( ' ' );
+	return [ base + id, requiredArgs, '--url=https://example.com' ]
+		.filter( Boolean )
+		.join( ' ' );
+}
+
+/**
+ * Renders `<namespace> <route> --help`'s WP-CLI-native help page — NAME,
+ * DESCRIPTION, SYNOPSIS, SUBCOMMANDS and EXAMPLES — mirroring the format real
+ * WP-CLI prints for a resource command like `wp post --help`. This is a
+ * separate, friendlier rendering from {@link renderRouteHelp}'s denser
+ * `usage:`/`or:` block, which `wp help ...` and bare introspection keep using.
+ * @param namespace      The route's namespace.
+ * @param route          The route name.
+ * @param schema         The route's introspected schema.
+ * @param requiresParam  Whether the route only exists in parameterised form.
+ * @param supportedVerbs The verbs this route actually supports.
+ * @return The rendered help page.
+ */
+function renderRouteHelpWpCli(
+	namespace: string,
+	route: string,
+	schema: RouteSchema,
+	requiresParam: boolean,
+	supportedVerbs: Verb[]
+): string {
+	const endpoints = schema.endpoints ?? [];
+	const hasMeta = routeSupportsMeta( endpoints );
+	const commands = VERBS.filter( ( verb ) =>
+		supportedVerbs.includes( verb )
+	);
+	const subcommandNames: string[] = [
+		...commands,
+		...( hasMeta ? [ META_KEYWORD ] : [] ),
+	];
+	const width =
+		Math.max( ...subcommandNames.map( ( name ) => name.length ) ) + 4;
+
+	const descriptionLines = [
+		`  Manage the "${ route }" resource under ${ namespace }.`,
+	];
+	if ( requiresParam ) {
+		descriptionLines.push(
+			'',
+			'  This route only exists with a value in place of its URL parameter, e.g.:',
+			`    wp-rest-cli ${ namespace } ${ route } get <value>`
+		);
+	}
+	if (
+		! requiresParam &&
+		! commands.some(
+			( verb ) => verb === 'get' || verb === 'update' || verb === 'delete'
+		)
+	) {
+		descriptionLines.push(
+			'',
+			"  This resource has no addressable <id> — read and write it directly via 'list'/'create'."
+		);
+	}
+	const contexts = supportedContexts( schema );
+	if ( contexts.length ) {
+		descriptionLines.push(
+			'',
+			`  Supported --context values: ${ contexts.join( ', ' ) }`
+		);
+	}
+
+	const subcommandLines = [
+		...commands.map(
+			( verb ) =>
+				`  ${ verb.padEnd( width ) }${ VERB_DESCRIPTIONS[ verb ](
+					route
+				) }`
+		),
+		...( hasMeta
+			? [
+					`  ${ META_KEYWORD.padEnd(
+						width
+					) }Adds, updates, deletes, and lists ${ route } custom fields.`,
+			  ]
+			: [] ),
+	];
+
+	const exampleVerbs: Verb[] = [
+		'list',
+		'get',
+		'create',
+		'update',
+		'delete',
+	];
+	const exampleLines = exampleVerbs
+		.filter( ( verb ) => commands.includes( verb ) )
+		.map( ( verb ) => {
+			const method = COLLECTION_VERB_METHOD[ verb ];
+			const endpoint = method
+				? endpoints.find( ( e ) => e.methods.includes( method ) )
+				: undefined;
+			return (
+				`    # ${ VERB_DESCRIPTIONS[ verb ]( route ) }\n` +
+				`    $ ${ buildExampleInvocation(
+					namespace,
+					route,
+					verb,
+					endpoint
+				) }`
+			);
+		} );
+
+	return [
+		pc.bold( 'NAME' ),
+		'',
+		`  wp-rest-cli ${ namespace } ${ route }`,
+		'',
+		pc.bold( 'DESCRIPTION' ),
+		'',
+		...descriptionLines,
+		'',
+		pc.bold( 'SYNOPSIS' ),
+		'',
+		`  wp-rest-cli ${ namespace } ${ route } <command>`,
+		'',
+		pc.bold( 'SUBCOMMANDS' ),
+		'',
+		...subcommandLines,
+		'',
+		pc.bold( 'EXAMPLES' ),
+		'',
+		exampleLines.join( '\n\n' ),
+	].join( '\n' );
+}
+
+/**
+ * Renders `<namespace> <route> <verb> --help`'s WP-CLI-native help page —
+ * NAME, DESCRIPTION, SYNOPSIS, OPTIONS (when the verb has a live arg schema)
+ * and EXAMPLES — mirroring the format real WP-CLI prints for a leaf command
+ * like `wp post create --help`. A separate, friendlier rendering from
+ * {@link printVerbHelp}, which `wp help ...` keeps using.
+ * @param namespace      The route's namespace.
+ * @param route          The route name.
+ * @param verb           The verb to describe.
+ * @param endpoints      The route's introspected endpoints.
+ * @param supportedVerbs The verbs this route actually supports.
+ * @return The rendered help page.
+ */
+function renderVerbHelpWpCli(
+	namespace: string,
+	route: string,
+	verb: Verb,
+	endpoints: RouteEndpoint[],
+	supportedVerbs: Verb[]
+): string {
+	const lines: string[] = [
+		pc.bold( 'NAME' ),
+		'',
+		`  wp-rest-cli ${ namespace } ${ route } ${ verb }`,
+		'',
+		pc.bold( 'DESCRIPTION' ),
+		'',
+		`  ${ VERB_DESCRIPTIONS[ verb ]( route ) }`,
+	];
+
+	if ( ! supportedVerbs.includes( verb ) ) {
+		lines.push(
+			'',
+			pc.red(
+				`  Warning: ${ namespace }/${ route } doesn't appear to support "${ verb }" — its registered ` +
+					`methods are: ${
+						supportedVerbs.length
+							? supportedVerbs.join( ', ' )
+							: '(none detected)'
+					}.`
+			)
+		);
+	}
+
+	lines.push(
+		'',
+		pc.bold( 'SYNOPSIS' ),
+		'',
+		`  ${ buildVerbSynopsis( namespace, route, verb, endpoints ) }`
+	);
+
+	const method = COLLECTION_VERB_METHOD[ verb ];
+	const endpoint = method
+		? endpoints.find( ( e ) => e.methods.includes( method ) )
+		: undefined;
+	if ( endpoint ) {
+		lines.push(
+			'',
+			pc.bold( 'OPTIONS' ),
+			'',
+			...formatOptionsWpCli( endpoint )
+		);
+	}
+
+	if ( VERB_NOTES[ verb ] ) {
+		lines.push( '', pc.dim( `  ${ VERB_NOTES[ verb ] }` ) );
+	}
+
+	lines.push(
+		'',
+		pc.bold( 'EXAMPLES' ),
+		'',
+		`    # ${ VERB_DESCRIPTIONS[ verb ]( route ) }`,
+		`    $ ${ buildExampleInvocation( namespace, route, verb, endpoint ) }`
+	);
+
+	return lines.join( '\n' );
 }
 
 /**
@@ -1105,6 +1472,15 @@ export async function runRestCommand(
 				`--count must be a positive integer, got "${ countRaw }".`
 			);
 		}
+		await validateVerbFields(
+			client,
+			apiRoot,
+			parsed.namespace,
+			parsed.route,
+			'generate',
+			createFields,
+			! flags.quiet
+		);
 
 		const created: unknown[] = [];
 		for ( let i = 0; i < count; i++ ) {
@@ -1151,6 +1527,15 @@ export async function runRestCommand(
 	}
 
 	// parsed.mode === 'verb', parsed.verb is now one of list/get/create/update/delete
+	await validateVerbFields(
+		client,
+		apiRoot,
+		parsed.namespace,
+		parsed.route,
+		parsed.verb,
+		parsed.fields,
+		! flags.quiet
+	);
 	const paramIndex = parsed.id
 		? await resolveParamIndex(
 				client,
@@ -1220,12 +1605,16 @@ export async function runRestCommand(
  * @param parsed  The parsed help request.
  * @param flags   Global CLI flags.
  * @param siteUrl The bare site URL or hostname to run the lookup against.
+ * @param style   Which help page to render for `'route'`/`'verb'` modes —
+ *                the existing dense `usage:` block, or the WP-CLI-native
+ *                NAME/DESCRIPTION/SYNOPSIS page used for a trailing `--help`.
  * @return The rendered help output and exit code.
  */
 export async function runHelpCommand(
 	parsed: ParsedHelp,
 	flags: GlobalFlags,
-	siteUrl: string
+	siteUrl: string,
+	style: HelpStyle = 'usage'
 ): Promise< { output: string; exitCode: number } > {
 	const client = new WpRestClient( buildAuth( flags ), flags.debug );
 	const apiRoot = await withSpinner(
@@ -1298,14 +1687,22 @@ export async function runHelpCommand(
 			);
 		return {
 			output:
-				renderRouteHelp(
-					parsed.namespace,
-					parsed.route,
-					schema,
-					requiresParam,
-					verbs,
-					paramName
-				) +
+				( style === 'wpcli'
+					? renderRouteHelpWpCli(
+							parsed.namespace,
+							parsed.route,
+							schema,
+							requiresParam,
+							verbs
+					  )
+					: renderRouteHelp(
+							parsed.namespace,
+							parsed.route,
+							schema,
+							requiresParam,
+							verbs,
+							paramName
+					  ) ) +
 				( await renderChildrenNote(
 					index,
 					parsed.namespace,
@@ -1329,14 +1726,23 @@ export async function runHelpCommand(
 		! flags.quiet
 	);
 	return {
-		output: printVerbHelp(
-			parsed.namespace,
-			parsed.route,
-			parsed.verb,
-			schema.endpoints ?? [],
-			verbs,
-			paramName
-		),
+		output:
+			style === 'wpcli'
+				? renderVerbHelpWpCli(
+						parsed.namespace,
+						parsed.route,
+						parsed.verb,
+						schema.endpoints ?? [],
+						verbs
+				  )
+				: printVerbHelp(
+						parsed.namespace,
+						parsed.route,
+						parsed.verb,
+						schema.endpoints ?? [],
+						verbs,
+						paramName
+				  ),
 		exitCode: 0,
 	};
 }
