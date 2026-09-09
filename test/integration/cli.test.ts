@@ -224,10 +224,232 @@ describe( 'wp-rest-cli (integration)', () => {
 		);
 	} );
 
-	it( 'lists a route that only exists in parameterised form, by its base path', async () => {
-		const result = await run( [ 'wp/v2' ] );
+	it( 'lists a route that only exists in parameterised form, grouped by its first segment', async () => {
+		const result = await run( [ 'wp/v2', '--format=json' ] );
 		expect( result.exitCode ).toBe( 0 );
-		expect( result.stdout ).toContain( 'global-styles/themes' );
+		const rows = JSON.parse( result.stdout ) as Array< {
+			route: string;
+			verbs: string;
+		} >;
+		expect( rows.some( ( r ) => r.route === 'global-styles' ) ).toBe(
+			true
+		);
+		expect( rows.some( ( r ) => r.route === 'global-styles/themes' ) ).toBe(
+			false
+		);
+	} );
+
+	describe( 'route navigation (arbitrary-depth nested routes)', () => {
+		it( "lists a deeply-nested route's first segment at the namespace root, marked as a subcommand", async () => {
+			const result = await run( [ 'wp/v2', '--format=json' ] );
+			expect( result.exitCode ).toBe( 0 );
+			const rows = JSON.parse( result.stdout ) as Array< {
+				route: string;
+				verbs: string;
+			} >;
+			const gizmos = rows.find( ( r ) => r.route === 'gizmos' );
+			expect( gizmos?.verbs ).toContain( '(subcommand)' );
+			expect( rows.some( ( r ) => r.route === 'gizmos/parts' ) ).toBe(
+				false
+			);
+		} );
+
+		it( 'lists the next segment when drilling into a container prefix', async () => {
+			const result = await run( [ 'wp/v2', 'gizmos', '--format=json' ] );
+			expect( result.exitCode ).toBe( 0 );
+			const rows = JSON.parse( result.stdout ) as Array< {
+				route: string;
+				verbs: string;
+			} >;
+			expect( rows ).toEqual( [
+				{ route: 'parts', verbs: '(subcommand)' },
+			] );
+		} );
+
+		it( 'keeps drilling in another level deeper, reaching the parameterised leaf itself', async () => {
+			const result = await run( [
+				'wp/v2',
+				'gizmos',
+				'parts',
+				'--format=json',
+			] );
+			expect( result.exitCode ).toBe( 0 );
+			const rows = JSON.parse( result.stdout ) as Array< {
+				route: string;
+				verbs: string;
+			} >;
+			// "electronic" is the leaf route itself here (parameterised-only,
+			// like global-styles/themes), not a further container, so it shows
+			// its own real verbs rather than a "(subcommand)" marker.
+			expect( rows ).toEqual( [
+				{ route: 'electronic', verbs: 'get, exists' },
+			] );
+		} );
+
+		it( 'shows the param-required note once the full nested route is typed', async () => {
+			const result = await run( [
+				'wp/v2',
+				'gizmos',
+				'parts',
+				'electronic',
+			] );
+			expect( result.exitCode ).toBe( 0 );
+			expect( result.stdout ).toContain(
+				'This route only exists with a value in place of its URL parameter'
+			);
+		} );
+
+		it( 'performs a get against a route nested three nested segments deep', async () => {
+			const result = await run( [
+				'wp/v2',
+				'gizmos',
+				'parts',
+				'electronic',
+				'get',
+				'7',
+				'--format=json',
+			] );
+			expect( result.exitCode ).toBe( 0 );
+			expect( JSON.parse( result.stdout ) ).toEqual( {
+				id: '7',
+				kind: 'electronic',
+			} );
+		} );
+	} );
+
+	describe( 'routes with a mid-path URL parameter (not at the end)', () => {
+		it( 'lists a route whose parameter sits in the middle of the path, joined by its literal segments', async () => {
+			const result = await run( [ 'wp/v2', 'posts', '--format=json' ] );
+			expect( result.exitCode ).toBe( 0 );
+			const rows = JSON.parse( result.stdout ) as Array< {
+				route: string;
+				verbs: string;
+			} >;
+			expect( rows ).toEqual( [
+				{ route: 'revisions', verbs: 'list, get, exists' },
+			] );
+		} );
+
+		it( 'shows the param-required note for a mid-path route with no value given', async () => {
+			const result = await run( [ 'wp/v2', 'posts', 'revisions' ] );
+			expect( result.exitCode ).toBe( 0 );
+			expect( result.stdout ).toContain(
+				'This route only exists with a value in place of its URL parameter'
+			);
+		} );
+
+		it( 'splices the value into the middle of the URL for `get`, not the end', async () => {
+			const result = await run( [
+				'wp/v2',
+				'posts',
+				'revisions',
+				'get',
+				'10',
+				'--format=json',
+			] );
+			expect( result.exitCode ).toBe( 0 );
+			expect( JSON.parse( result.stdout ) ).toEqual( [
+				{ id: 101, parent: 10 },
+			] );
+		} );
+
+		it( '404s naturally for a parent id the fixture does not recognise', async () => {
+			const result = await run( [
+				'wp/v2',
+				'posts',
+				'revisions',
+				'get',
+				'999',
+			] );
+			expect( result.exitCode ).toBe( 1 );
+		} );
+
+		it( 'marks a route as both directly addressable and a subcommand when it has a mid-path-parameter child', async () => {
+			const result = await run( [
+				'wp/v2',
+				'global-styles',
+				'--format=json',
+			] );
+			expect( result.exitCode ).toBe( 0 );
+			const rows = JSON.parse( result.stdout ) as Array< {
+				route: string;
+				verbs: string;
+			} >;
+			expect( rows ).toEqual( [
+				{ route: 'themes', verbs: 'get, exists, (subcommand)' },
+			] );
+		} );
+
+		it( 'still performs a get against the hybrid route itself (unaffected by its new child)', async () => {
+			const result = await run( [
+				'wp/v2',
+				'global-styles',
+				'themes',
+				'get',
+				'twentytwentyfour',
+				'--format=json',
+			] );
+			expect( result.exitCode ).toBe( 0 );
+			expect( JSON.parse( result.stdout ) ).toEqual( {
+				settings: {},
+				styles: {},
+			} );
+		} );
+
+		it( 'performs a get against the child nested beneath the hybrid route', async () => {
+			const result = await run( [
+				'wp/v2',
+				'global-styles',
+				'themes',
+				'variations',
+				'get',
+				'twentytwentyfour',
+				'--format=json',
+			] );
+			expect( result.exitCode ).toBe( 0 );
+			expect( JSON.parse( result.stdout ) ).toEqual( [
+				{ title: 'Default', settings: {} },
+			] );
+		} );
+	} );
+
+	describe( 'routes with two URL parameters', () => {
+		it( 'performs a get, with no verb needed, when exactly enough trailing values are given', async () => {
+			const result = await run( [
+				'wp/v2',
+				'posts',
+				'revisions',
+				'10',
+				'101',
+				'--format=json',
+			] );
+			expect( result.exitCode ).toBe( 0 );
+			expect( JSON.parse( result.stdout ) ).toEqual( {
+				id: 101,
+				parent: 10,
+			} );
+		} );
+
+		it( '404s naturally for a value combination the fixture does not recognise', async () => {
+			const result = await run( [
+				'wp/v2',
+				'posts',
+				'revisions',
+				'10',
+				'999',
+			] );
+			expect( result.exitCode ).toBe( 1 );
+		} );
+
+		it( 'does not misfire with only one trailing value (needs exactly two)', async () => {
+			// Only one trailing value doesn't match the two-parameter route at
+			// all (it needs exactly two), and — with no verb — isn't the
+			// single-parameter "revisions get <value>" form either, so this
+			// falls all the way through to a live 404, same as any other
+			// unrecognised bare route.
+			const result = await run( [ 'wp/v2', 'posts', 'revisions', '10' ] );
+			expect( result.exitCode ).toBe( 1 );
+		} );
 	} );
 
 	it( 'shows a param-required note when introspecting a route with no bare collection', async () => {
@@ -237,6 +459,33 @@ describe( 'wp-rest-cli (integration)', () => {
 			'This route only exists with a value in place of its URL parameter'
 		);
 		expect( result.stdout ).toContain( 'context' );
+	} );
+
+	it( "shows a trailing-parameter route's own URL parameter as required, even though WordPress declares it required: false in the schema", async () => {
+		const result = await run( [ 'wp/v2', 'global-styles', 'themes' ] );
+		expect( result.exitCode ).toBe( 0 );
+		expect( result.stdout ).toContain(
+			'--stylesheet=<string> [required] (this route’s own URL parameter)'
+		);
+		// --context stays optional — only the route's own URL parameter is forced.
+		expect( result.stdout ).toContain(
+			'--context=<string> enum(view,edit,embed) default("view") [optional]'
+		);
+	} );
+
+	it( "shows a mid-path route's own URL parameter as required, both in the detailed listing and the usage synopsis", async () => {
+		const result = await run( [ 'wp/v2', 'posts', 'revisions' ] );
+		expect( result.exitCode ).toBe( 0 );
+		expect( result.stdout ).toContain(
+			'--parent=<integer> [required] (this route’s own URL parameter)'
+		);
+		// list's synopsis line pulls args in inline (unlike get/exists, which are
+		// hardcoded to just <id>) — the parameter shows bare, not bracketed.
+		// The route itself is shown as separate words ("posts revisions"), the
+		// way it's actually typed at the CLI, not the internal "posts/revisions".
+		expect( result.stdout ).toContain(
+			'usage: wp-rest-cli wp/v2 posts revisions list --parent=<parent>'
+		);
 	} );
 
 	it( 'performs a get against a route addressed as separate CLI arguments', async () => {
@@ -464,6 +713,15 @@ describe( 'wp-rest-cli (integration)', () => {
 			expect( result.stdout ).toContain(
 				'wp-rest-cli wp/v2 widgets meta list <id>'
 			);
+		} );
+
+		it( 'also lists meta as a discoverable sub-route, alongside the detailed synopsis', async () => {
+			const result = await run( [ 'wp/v2', 'widgets' ] );
+			expect( result.exitCode ).toBe( 0 );
+			expect( result.stdout ).toContain(
+				'This route also has nested sub-routes:'
+			);
+			expect( result.stdout ).toMatch( /meta\s*\|\s*\(subcommand\)/ );
 		} );
 
 		it( 'sets and reads back a meta value with update/get', async () => {

@@ -98,6 +98,15 @@ export async function startFixture(): Promise< Fixture > {
 							{
 								methods: [ 'GET' ],
 								args: {
+									// WordPress core declares a route's own URL parameter as
+									// required: false in its schema (it's filled from the URL
+									// match, not validated as caller input) even though it's
+									// never actually optional — modelled here to exercise that.
+									stylesheet: {
+										type: 'string',
+										description: 'The theme identifier',
+										required: false,
+									},
 									context: {
 										type: 'string',
 										enum: [ 'view', 'edit', 'embed' ],
@@ -118,6 +127,71 @@ export async function startFixture(): Promise< Fixture > {
 							{ methods: [ 'GET', 'POST', 'PUT', 'PATCH' ] },
 						],
 					},
+					// Synthetic fixture, not modelled on any real WordPress controller —
+					// exists purely to exercise route navigation three literal segments
+					// deep (gizmos -> parts -> electronic), beyond the two-segment
+					// global-styles/themes case above.
+					'/wp/v2/gizmos/parts/electronic/(?P<id>[\\d]+)': {
+						namespace: 'wp/v2',
+						methods: [ 'GET' ],
+						endpoints: [
+							{
+								methods: [ 'GET' ],
+								args: {
+									context: {
+										type: 'string',
+										enum: [ 'view', 'edit', 'embed' ],
+										default: 'view',
+										required: false,
+									},
+								},
+							},
+						],
+					},
+					// Modelled on WP_REST_Revisions_Controller: the URL parameter sits
+					// in the *middle* of the path (a parent post id), not at the end —
+					// addressed as `wp wp/v2 posts revisions get <parent>`.
+					'/wp/v2/posts/(?P<parent>[\\d]+)/revisions': {
+						namespace: 'wp/v2',
+						methods: [ 'GET' ],
+						endpoints: [
+							{
+								methods: [ 'GET' ],
+								args: {
+									// Same required: false-despite-being-mandatory convention
+									// as the "stylesheet" arg above, for the mid-path case.
+									parent: {
+										type: 'integer',
+										description:
+											'The ID for the parent of the revision.',
+										required: false,
+									},
+								},
+							},
+						],
+					},
+					// Modelled on WP_REST_Revisions_Controller's single-revision
+					// endpoint: TWO URL parameters (parent post id, then revision id) —
+					// addressed as `wp wp/v2 posts revisions <parent> <id>` (no verb;
+					// this is the multi-parameter case, unlike every single-parameter
+					// route above which needs get/exists).
+					'/wp/v2/posts/(?P<parent>[\\d]+)/revisions/(?P<id>[\\d]+)':
+						{
+							namespace: 'wp/v2',
+							methods: [ 'GET' ],
+							endpoints: [ { methods: [ 'GET' ] } ],
+						},
+					// Modelled on WP_REST_Global_Styles_Revisions_Controller's sibling
+					// (real WP's .../themes/<stylesheet>/variations): a mid-path
+					// parameter *and* a hybrid node — "global-styles/themes" is both
+					// directly addressable (the themes route above) and has this as a
+					// child.
+					'/wp/v2/global-styles/themes/(?P<stylesheet>%s)/variations':
+						{
+							namespace: 'wp/v2',
+							methods: [ 'GET' ],
+							endpoints: [ { methods: [ 'GET' ] } ],
+						},
 				},
 			} );
 			return;
@@ -309,6 +383,68 @@ export async function startFixture(): Promise< Fixture > {
 				return;
 			}
 			send( res, 200, { settings: {}, styles: {} } );
+			return;
+		}
+
+		const gizmoMatch = path.match(
+			/^\/wp-json\/wp\/v2\/gizmos\/parts\/electronic\/([^/]+)$/
+		);
+		if ( gizmoMatch && req.method === 'GET' ) {
+			send( res, 200, { id: gizmoMatch[ 1 ], kind: 'electronic' } );
+			return;
+		}
+
+		const singleRevisionMatch = path.match(
+			/^\/wp-json\/wp\/v2\/posts\/([^/]+)\/revisions\/([^/]+)$/
+		);
+		if ( singleRevisionMatch && req.method === 'GET' ) {
+			const parent = singleRevisionMatch[ 1 ] as string;
+			const id = singleRevisionMatch[ 2 ] as string;
+			if ( parent !== '10' || id !== '101' ) {
+				send( res, 404, {
+					code: 'rest_post_invalid_id',
+					message: 'Invalid post parent or revision ID.',
+					data: { status: 404 },
+				} );
+				return;
+			}
+			send( res, 200, { id: 101, parent: 10 } );
+			return;
+		}
+
+		const revisionsMatch = path.match(
+			/^\/wp-json\/wp\/v2\/posts\/([^/]+)\/revisions$/
+		);
+		if ( revisionsMatch && req.method === 'GET' ) {
+			const parent = revisionsMatch[ 1 ] as string;
+			if ( parent !== '10' ) {
+				send( res, 404, {
+					code: 'rest_post_invalid_id',
+					message: 'Invalid post parent ID.',
+					data: { status: 404 },
+				} );
+				return;
+			}
+			send( res, 200, [ { id: 101, parent: 10 } ] );
+			return;
+		}
+
+		const variationsMatch = path.match(
+			/^\/wp-json\/wp\/v2\/global-styles\/themes\/([^/]+)\/variations$/
+		);
+		if ( variationsMatch && req.method === 'GET' ) {
+			const stylesheet = decodeURIComponent(
+				variationsMatch[ 1 ] as string
+			);
+			if ( stylesheet !== 'twentytwentyfour' ) {
+				send( res, 404, {
+					code: 'rest_theme_not_found',
+					message: 'Theme not found.',
+					data: { status: 404 },
+				} );
+				return;
+			}
+			send( res, 200, [ { title: 'Default', settings: {} } ] );
 			return;
 		}
 

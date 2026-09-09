@@ -8,15 +8,19 @@ import { CliError, WpApiError } from '../core/errors.js';
 import { formatOutput } from '../core/formatter.js';
 import {
 	fetchIndex,
-	routesForNamespace,
+	routeChildren,
 	resolveRouteInfo,
+	resolveMultiParamRoute,
+	spliceParams,
 	supportedVerbsForRoute,
 	isApplicationPasswordsSupported,
+	type RouteChildSegment,
 } from '../core/indexer.js';
 import { introspectRoute, supportedContexts } from '../core/introspect.js';
 import { buildVerbRequest } from '../core/verbs.js';
 import type {
 	GlobalFlags,
+	IndexResponse,
 	RouteEndpoint,
 	RouteSchema,
 	Verb,
@@ -297,10 +301,21 @@ function resolveContent( raw: string | undefined ): unknown {
 /**
  * Renders one endpoint's arguments as detailed, one-per-line descriptions
  * (type, required/optional, enum, default) for the introspection view.
- * @param endpoint The endpoint whose args to render.
+ * @param endpoint     The endpoint whose args to render.
+ * @param urlParamName The name of this route's own URL parameter (e.g.
+ *                     "stylesheet"), if it has one — WordPress commonly
+ *                     declares it `required: false` in the schema itself,
+ *                     since it's filled from the URL match rather than
+ *                     validated as caller input, but it's never actually
+ *                     optional: without it there's no valid URL to
+ *                     request at all. This forces its display to
+ *                     "required" regardless of what the schema says.
  * @return One formatted line per argument.
  */
-function formatEndpointArgs( endpoint: RouteEndpoint ): string[] {
+function formatEndpointArgs(
+	endpoint: RouteEndpoint,
+	urlParamName?: string
+): string[] {
 	const args = endpoint.args ?? {};
 	const names = Object.keys( args );
 	if ( names.length === 0 ) {
@@ -312,7 +327,10 @@ function formatEndpointArgs( endpoint: RouteEndpoint ): string[] {
 		if ( ! arg ) {
 			continue;
 		}
-		const required = arg.required ? pc.red( 'required' ) : 'optional';
+		const required =
+			arg.required || name === urlParamName
+				? pc.red( 'required' )
+				: 'optional';
 		const type = Array.isArray( arg.type )
 			? arg.type.join( '|' )
 			: arg.type ?? 'any';
@@ -321,8 +339,10 @@ function formatEndpointArgs( endpoint: RouteEndpoint ): string[] {
 			arg.default !== undefined
 				? ` default(${ JSON.stringify( arg.default ) })`
 				: '';
+		const urlParamSuffix =
+			name === urlParamName ? ' (this route’s own URL parameter)' : '';
 		lines.push(
-			`    --${ name }=<${ type }>${ enumSuffix }${ defaultSuffix } [${ required }]` +
+			`    --${ name }=<${ type }>${ enumSuffix }${ defaultSuffix } [${ required }]${ urlParamSuffix }` +
 				( arg.description ? ` — ${ arg.description }` : '' )
 		);
 	}
@@ -332,21 +352,23 @@ function formatEndpointArgs( endpoint: RouteEndpoint ): string[] {
 /**
  * Renders `wp <namespace> <route>`'s full introspection output: one section
  * per HTTP method, each with its detailed argument listing.
- * @param namespace The route's namespace.
- * @param route     The route name.
- * @param endpoints The route's introspected endpoints.
+ * @param namespace    The route's namespace.
+ * @param route        The route name.
+ * @param endpoints    The route's introspected endpoints.
+ * @param urlParamName The name of this route's own URL parameter, if it has one (see `formatEndpointArgs`).
  * @return The rendered introspection block.
  */
 function printIntrospection(
 	namespace: string,
 	route: string,
-	endpoints: RouteEndpoint[]
+	endpoints: RouteEndpoint[],
+	urlParamName?: string
 ): string {
 	const lines: string[] = [ pc.bold( `${ namespace }/${ route }` ) ];
 	for ( const endpoint of endpoints ) {
 		lines.push( '' );
 		lines.push( pc.cyan( `  ${ endpoint.methods.join( ', ' ) }` ) );
-		lines.push( ...formatEndpointArgs( endpoint ) );
+		lines.push( ...formatEndpointArgs( endpoint, urlParamName ) );
 	}
 	return lines.join( '\n' );
 }
@@ -368,17 +390,24 @@ const COLLECTION_VERB_METHOD: Partial< Record< Verb, string > > = {
 };
 
 /**
- * Renders an endpoint's args WP-CLI-synopsis-style: `[--name=<name>]`, or bare `--name=<name>` if required.
- * @param args The endpoint's argument schema.
+ * Renders an endpoint's args WP-CLI-synopsis-style: `[--name=<name>]`, or
+ * bare `--name=<name>` if required — including when `name` is the route's
+ * own URL parameter (see `formatEndpointArgs`), which the schema itself
+ * commonly (and misleadingly) marks optional.
+ * @param args         The endpoint's argument schema.
+ * @param urlParamName The name of this route's own URL parameter, if it has one.
  * @return The space-joined inline synopsis fragment.
  */
-function formatArgsInline( args: RouteEndpoint[ 'args' ] ): string {
+function formatArgsInline(
+	args: RouteEndpoint[ 'args' ],
+	urlParamName?: string
+): string {
 	if ( ! args ) {
 		return '';
 	}
 	return Object.keys( args )
 		.map( ( name ) =>
-			args[ name ]?.required
+			args[ name ]?.required || name === urlParamName
 				? `--${ name }=<${ name }>`
 				: `[--${ name }=<${ name }>]`
 		)
@@ -386,43 +415,64 @@ function formatArgsInline( args: RouteEndpoint[ 'args' ] ): string {
 }
 
 /**
+ * Renders a route name the way it's actually typed at the CLI — as separate
+ * words (`posts revisions`), not the internal `/`-joined form
+ * (`posts/revisions`) used everywhere else to identify it — for use only in
+ * literal example command lines meant to be copy-pasted and run.
+ * @param route The route name.
+ * @return `route` with every `/` replaced by a space.
+ */
+function displayRoute( route: string ): string {
+	return route.replace( /\//g, ' ' );
+}
+
+/**
  * A single WP-CLI-style synopsis line for one verb, e.g. `wp-rest-cli wp/v2 posts create [--title=<title>] [--<field>=<value>]`.
- * @param namespace The route's namespace.
- * @param route     The route name.
- * @param verb      The verb to build a synopsis for.
- * @param endpoints The route's introspected endpoints.
+ * @param namespace    The route's namespace.
+ * @param route        The route name.
+ * @param verb         The verb to build a synopsis for.
+ * @param endpoints    The route's introspected endpoints.
+ * @param urlParamName The name of this route's own URL parameter, if it has one.
  * @return The one-line synopsis.
  */
 function buildVerbSynopsis(
 	namespace: string,
 	route: string,
 	verb: Verb,
-	endpoints: RouteEndpoint[]
+	endpoints: RouteEndpoint[],
+	urlParamName?: string
 ): string {
-	const base = `wp-rest-cli ${ namespace } ${ route } ${ verb }`;
+	const base = `wp-rest-cli ${ namespace } ${ displayRoute(
+		route
+	) } ${ verb }`;
 	const method = COLLECTION_VERB_METHOD[ verb ];
 	const endpoint = method
 		? endpoints.find( ( e ) => e.methods.includes( method ) )
 		: undefined;
-	const inlineArgs = formatArgsInline( endpoint?.args );
+	const inlineArgs = formatArgsInline( endpoint?.args, urlParamName );
+	const idPlaceholder = `<${ urlParamName ?? 'id' }>`;
 
 	switch ( verb ) {
 		case 'list':
 			return [ base, inlineArgs ].filter( Boolean ).join( ' ' );
 		case 'get':
-			return `${ base } <id> [--context=<context>]`;
+			return `${ base } ${ idPlaceholder } [--context=<context>]`;
 		case 'create':
 			return [ base, inlineArgs, '[--<field>=<value>]' ]
 				.filter( Boolean )
 				.join( ' ' );
 		case 'update':
-			return [ `${ base } <id>`, inlineArgs, '[--<field>=<value>]' ]
+			return [
+				`${ base } ${ idPlaceholder }`,
+				inlineArgs,
+				'[--<field>=<value>]',
+			]
 				.filter( Boolean )
 				.join( ' ' );
 		case 'delete':
-			return `${ base } <id> [--force]`;
+			return `${ base } ${ idPlaceholder } [--force]`;
 		case 'exists':
-			return `${ base } <id>`;
+			return `${ base } ${ idPlaceholder }`;
 		case 'generate':
 			return [
 				base,
@@ -446,21 +496,150 @@ function buildVerbSynopsis(
  * @param route          The route name.
  * @param endpoints      The route's introspected endpoints.
  * @param supportedVerbs The verbs this route actually supports.
+ * @param urlParamName   The name of this route's own URL parameter, if it has one.
  * @return The rendered `usage: ... \n   or: ...` block.
  */
 function printRouteUsage(
 	namespace: string,
 	route: string,
 	endpoints: RouteEndpoint[],
-	supportedVerbs: Verb[]
+	supportedVerbs: Verb[],
+	urlParamName?: string
 ): string {
 	return VERBS.filter( ( verb ) => supportedVerbs.includes( verb ) )
 		.map(
 			( verb, i ) =>
 				( i === 0 ? 'usage: ' : '   or: ' ) +
-				buildVerbSynopsis( namespace, route, verb, endpoints )
+				buildVerbSynopsis(
+					namespace,
+					route,
+					verb,
+					endpoints,
+					urlParamName
+				)
 		)
 		.join( '\n' );
+}
+
+/**
+ * Renders the child segments beneath a route prefix (or the namespace root)
+ * as the same `{route, verbs}` table shape a leaf route listing already
+ * uses, so drilling into a namespace feels the same at every level. A
+ * container-only child (no verbs of its own — nothing is registered at
+ * exactly this prefix, only deeper) gets a `(subcommand)` marker appended to
+ * its verbs column; a "hybrid" child that's both directly addressable *and*
+ * has further children shows both its real verbs and the marker.
+ * @param index     The site's root REST API index.
+ * @param namespace The namespace the children belong to.
+ * @param children  The child segments to render, from `routeChildren`.
+ * @param flags     Global CLI flags (format/fields/field/color).
+ * @return The rendered listing, in the requested `--format`.
+ */
+async function renderRouteChildren(
+	index: IndexResponse,
+	namespace: string,
+	children: RouteChildSegment[],
+	flags: GlobalFlags
+): Promise< string > {
+	const rows = children.map( ( child ) => {
+		if ( child.isMeta ) {
+			return { route: child.segment, verbs: '(subcommand)' };
+		}
+		const info = resolveRouteInfo( index, namespace, child.route );
+		const verbList = supportedVerbsForRoute( index, info.path );
+		const parts = child.hasChildren
+			? [ ...verbList, '(subcommand)' ]
+			: verbList;
+		return { route: child.segment, verbs: parts.join( ', ' ) };
+	} );
+	return formatOutput( rows, {
+		format: flags.format,
+		fields: flags.fields,
+		field: flags.field,
+		color: flags.color,
+	} );
+}
+
+/**
+ * Whether `route` is itself a real, addressable route — as opposed to a pure
+ * container that only exists because deeper routes are registered beneath
+ * it (e.g. "global-styles" has no route of its own, only the "themes" child
+ * beneath it). A "hybrid" route (both real *and* having children, like
+ * "global-styles/themes" once a "variations" child is registered beneath
+ * it) counts as real here — `routeChildren`'s presence check alone can't
+ * distinguish a hybrid from a pure container, since both have children.
+ * @param index     The site's root REST API index.
+ * @param namespace The route's namespace.
+ * @param route     The route name.
+ * @return Whether `route` resolves to an actual registered route.
+ */
+function isRealRoute(
+	index: IndexResponse,
+	namespace: string,
+	route: string
+): boolean {
+	const info = resolveRouteInfo( index, namespace, route );
+	return info.requiresParam || Boolean( index.routes[ info.path ] );
+}
+
+/**
+ * Appends a synthetic "meta" child to `children` when the route's schema
+ * declares a `meta` field, so `meta` shows up as a discoverable sub-route
+ * alongside any real ones — it isn't a route the site's index knows about
+ * (it's a CLI-only concept layered on top of the REST resource), but it's
+ * navigable the same way (`wp <namespace> <route> meta ...`), so it belongs
+ * in the same listing.
+ * @param children  The route's real child segments, from `routeChildren`.
+ * @param route     The route name, to build the synthetic child's `route` field.
+ * @param endpoints The route's introspected endpoints.
+ * @return `children`, with a trailing "meta" entry appended if the route supports it.
+ */
+function withMetaChild(
+	children: RouteChildSegment[],
+	route: string,
+	endpoints: RouteEndpoint[]
+): RouteChildSegment[] {
+	if ( ! routeSupportsMeta( endpoints ) ) {
+		return children;
+	}
+	return [
+		...children,
+		{
+			segment: 'meta',
+			route: `${ route }/meta`,
+			hasChildren: false,
+			isMeta: true,
+		},
+	];
+}
+
+/**
+ * A dim note appended after a real route's own introspection output when it
+ * also has nested child segments (the "hybrid" case) — otherwise the
+ * children would be silently unreachable, since typing the route in full
+ * lands on its own schema, not a child listing.
+ * @param index     The site's root REST API index.
+ * @param namespace The route's namespace.
+ * @param children  The route's child segments, from `routeChildren`.
+ * @param flags     Global CLI flags (format/fields/field/color).
+ * @return The rendered note, or an empty string if there are no children.
+ */
+async function renderChildrenNote(
+	index: IndexResponse,
+	namespace: string,
+	children: RouteChildSegment[],
+	flags: GlobalFlags
+): Promise< string > {
+	if ( ! children.length ) {
+		return '';
+	}
+	const childList = await renderRouteChildren(
+		index,
+		namespace,
+		children,
+		flags
+	);
+	return pc.dim( '\nThis route also has nested sub-routes:\n' ) + childList;
 }
 
 /**
@@ -472,6 +651,7 @@ function printRouteUsage(
  * @param verb           The verb to describe.
  * @param endpoints      The route's introspected endpoints.
  * @param supportedVerbs The verbs this route actually supports.
+ * @param urlParamName   The name of this route's own URL parameter, if it has one (see `formatEndpointArgs`).
  * @return The rendered help block.
  */
 function printVerbHelp(
@@ -479,12 +659,19 @@ function printVerbHelp(
 	route: string,
 	verb: Verb,
 	endpoints: RouteEndpoint[],
-	supportedVerbs: Verb[]
+	supportedVerbs: Verb[],
+	urlParamName?: string
 ): string {
 	const lines: string[] = [
 		pc.bold( `${ namespace }/${ route } ${ verb }` ),
 		'',
-		`  usage: ${ buildVerbSynopsis( namespace, route, verb, endpoints ) }`,
+		`  usage: ${ buildVerbSynopsis(
+			namespace,
+			route,
+			verb,
+			endpoints,
+			urlParamName
+		) }`,
 	];
 
 	if ( ! supportedVerbs.includes( verb ) ) {
@@ -513,12 +700,14 @@ function printVerbHelp(
 			label = `  ${ method } ${ namespace }/${ route } accepts (same writable fields as create, applied to each item):`;
 		}
 		lines.push( '', pc.cyan( label ) );
-		lines.push( ...formatEndpointArgs( endpoint ) );
+		lines.push( ...formatEndpointArgs( endpoint, urlParamName ) );
 	} else {
 		lines.push(
 			'',
 			pc.dim(
-				`  This operates on a single item (${ namespace }/${ route }/<id>); its argument schema ` +
+				`  This operates on a single item (${ namespace }/${ route }/<${
+					urlParamName ?? 'id'
+				}>); its argument schema ` +
 					`isn't exposed by the collection endpoint's OPTIONS response, but field=value pairs ` +
 					`(if any) are still sent through as query parameters.`
 			)
@@ -562,25 +751,36 @@ function printVerbHelp(
  * @param namespace   The route's namespace.
  * @param route       The route name.
  * @param showSpinner Whether to show progress spinners for the underlying requests.
- * @return The route's schema, whether it required a parameter, and its supported verbs.
+ * @param index       An already-fetched site index to reuse, if the caller has one on hand.
+ * @return The route's schema, whether it required a parameter (and, when it
+ *         does, that parameter's declared name), and its supported verbs.
  */
 async function getRouteSchema(
 	client: WpRestClient,
 	apiRoot: string,
 	namespace: string,
 	route: string,
-	showSpinner: boolean
-): Promise< { schema: RouteSchema; requiresParam: boolean; verbs: Verb[] } > {
-	const index = await withSpinner( 'Fetching API index', showSpinner, () =>
-		fetchIndex( client, apiRoot )
-	);
-	const info = resolveRouteInfo( index, namespace, route );
-	const verbs = supportedVerbsForRoute( index, info.path );
+	showSpinner: boolean,
+	index?: IndexResponse
+): Promise< {
+	schema: RouteSchema;
+	requiresParam: boolean;
+	paramName?: string;
+	verbs: Verb[];
+} > {
+	const resolvedIndex =
+		index ??
+		( await withSpinner( 'Fetching API index', showSpinner, () =>
+			fetchIndex( client, apiRoot )
+		) );
+	const info = resolveRouteInfo( resolvedIndex, namespace, route );
+	const verbs = supportedVerbsForRoute( resolvedIndex, info.path );
 	if ( info.requiresParam ) {
 		// info.path came from resolveRouteInfo enumerating index.routes' own keys.
 		return {
-			schema: index.routes[ info.path ] as RouteSchema,
+			schema: resolvedIndex.routes[ info.path ] as RouteSchema,
 			requiresParam: true,
+			paramName: info.paramName,
 			verbs,
 		};
 	}
@@ -594,12 +794,39 @@ async function getRouteSchema(
 }
 
 /**
+ * Looks up where a route's URL parameter belongs (see `resolveRouteInfo`),
+ * for verbs that are about to splice an `<id>` into the route. Requires a
+ * fresh index fetch — unlike `getRouteSchema`, there's no schema to cache
+ * here, just the position — so it's only called where an id is actually
+ * present.
+ * @param client      The REST client to issue the underlying index request with.
+ * @param apiRoot     The resolved REST API root URL.
+ * @param namespace   The route's namespace.
+ * @param route       The route name.
+ * @param showSpinner Whether to show a progress spinner for the index request.
+ * @return The position within `route.split('/')` the id belongs at, or `undefined` for the default (append at the end).
+ */
+async function resolveParamIndex(
+	client: WpRestClient,
+	apiRoot: string,
+	namespace: string,
+	route: string,
+	showSpinner: boolean
+): Promise< number | undefined > {
+	const index = await withSpinner( 'Fetching API index', showSpinner, () =>
+		fetchIndex( client, apiRoot )
+	);
+	return resolveRouteInfo( index, namespace, route ).paramIndex;
+}
+
+/**
  * Combines the WP-CLI-style usage synopsis with the existing detailed per-method arg listing.
  * @param namespace     The route's namespace.
  * @param route         The route name.
  * @param schema        The route's introspected schema.
  * @param requiresParam Whether the route only exists in parameterised form.
  * @param verbs         The verbs this route actually supports.
+ * @param paramName     The name of this route's own URL parameter, if it requires one (see `formatEndpointArgs`).
  * @return The full rendered route help block.
  */
 function renderRouteHelp(
@@ -607,7 +834,8 @@ function renderRouteHelp(
 	route: string,
 	schema: RouteSchema,
 	requiresParam: boolean,
-	verbs: Verb[]
+	verbs: Verb[],
+	paramName?: string
 ): string {
 	const endpoints = schema.endpoints ?? [];
 	const contexts = supportedContexts( schema );
@@ -617,7 +845,9 @@ function renderRouteHelp(
 	const paramNote = requiresParam
 		? pc.dim(
 				`\nThis route only exists with a value in place of its URL parameter, e.g.:\n` +
-					`  wp-rest-cli ${ namespace } ${ route } get <value>\n`
+					`  wp-rest-cli ${ namespace } ${ displayRoute(
+						route
+					) } get <${ paramName ?? 'value' }>\n`
 		  )
 		: '';
 	const noIdNote =
@@ -632,13 +862,13 @@ function renderRouteHelp(
 		? pc.dim( `\nSupported --context values: ${ contexts.join( ', ' ) }\n` )
 		: '';
 	return (
-		printRouteUsage( namespace, route, endpoints, verbs ) +
+		printRouteUsage( namespace, route, endpoints, verbs, paramName ) +
 		metaUsage +
 		paramNote +
 		noIdNote +
 		contextNote +
 		'\n\n' +
-		printIntrospection( namespace, route, endpoints )
+		printIntrospection( namespace, route, endpoints, paramName )
 	);
 }
 
@@ -694,29 +924,72 @@ export async function runRestCommand(
 			! flags.quiet,
 			() => fetchIndex( client, apiRoot )
 		);
-		const rows = routesForNamespace( index, parsed.namespace ).map(
-			( { route, path } ) => ( {
-				route,
-				verbs: supportedVerbsForRoute( index, path ).join( ', ' ),
-			} )
+		const children = routeChildren( index, parsed.namespace, '' );
+		const output = await renderRouteChildren(
+			index,
+			parsed.namespace,
+			children,
+			flags
 		);
-		const output = await formatOutput( rows, {
-			format: flags.format,
-			fields: flags.fields,
-			field: flags.field,
-			color: flags.color,
-		} );
 		return { output, exitCode: 0 };
 	}
 
 	if ( parsed.mode === 'introspect' ) {
-		const { schema, requiresParam, verbs } = await getRouteSchema(
-			client,
-			apiRoot,
-			parsed.namespace,
-			parsed.route,
-			! flags.quiet
+		const index = await withSpinner(
+			'Fetching API index',
+			! flags.quiet,
+			() => fetchIndex( client, apiRoot )
 		);
+		const children = routeChildren( index, parsed.namespace, parsed.route );
+		if (
+			children.length > 0 &&
+			! isRealRoute( index, parsed.namespace, parsed.route )
+		) {
+			const output = await renderRouteChildren(
+				index,
+				parsed.namespace,
+				children,
+				flags
+			);
+			return { output, exitCode: 0 };
+		}
+		const multiParamMatch = resolveMultiParamRoute(
+			index,
+			parsed.namespace,
+			parsed.route.split( '/' )
+		);
+		if ( multiParamMatch ) {
+			const instantiatedSegments = spliceParams(
+				multiParamMatch.route.split( '/' ),
+				multiParamMatch.params,
+				multiParamMatch.values
+			);
+			const url = new URL(
+				`${ parsed.namespace }/${ instantiatedSegments.join( '/' ) }`,
+				apiRoot
+			).toString();
+			const { body } = await withSpinner(
+				`GET ${ parsed.namespace }/${ displayRoute( parsed.route ) }`,
+				! flags.quiet,
+				() => client.request( url, { method: 'GET' } )
+			);
+			const output = await formatOutput( body, {
+				format: flags.format,
+				fields: flags.fields,
+				field: flags.field,
+				color: flags.color,
+			} );
+			return { output, exitCode: 0 };
+		}
+		const { schema, requiresParam, paramName, verbs } =
+			await getRouteSchema(
+				client,
+				apiRoot,
+				parsed.namespace,
+				parsed.route,
+				! flags.quiet,
+				index
+			);
 		if ( flags.format !== 'table' ) {
 			const output = await formatOutput( schema, {
 				format: flags.format,
@@ -727,13 +1000,25 @@ export async function runRestCommand(
 			return { output, exitCode: 0 };
 		}
 		return {
-			output: renderRouteHelp(
-				parsed.namespace,
-				parsed.route,
-				schema,
-				requiresParam,
-				verbs
-			),
+			output:
+				renderRouteHelp(
+					parsed.namespace,
+					parsed.route,
+					schema,
+					requiresParam,
+					verbs,
+					paramName
+				) +
+				( await renderChildrenNote(
+					index,
+					parsed.namespace,
+					withMetaChild(
+						children,
+						parsed.route,
+						schema.endpoints ?? []
+					),
+					flags
+				) ),
 			exitCode: 0,
 		};
 	}
@@ -757,12 +1042,20 @@ export async function runRestCommand(
 	}
 
 	if ( parsed.verb === 'exists' ) {
+		const paramIndex = await resolveParamIndex(
+			client,
+			apiRoot,
+			parsed.namespace,
+			parsed.route,
+			! flags.quiet
+		);
 		const request = buildVerbRequest( {
 			verb: 'exists',
 			apiRoot,
 			namespace: parsed.namespace,
 			route: parsed.route,
 			id: parsed.id,
+			paramIndex,
 			context: flags.context,
 			fields: parsed.fields,
 		} );
@@ -812,6 +1105,7 @@ export async function runRestCommand(
 				`--count must be a positive integer, got "${ countRaw }".`
 			);
 		}
+
 		const created: unknown[] = [];
 		for ( let i = 0; i < count; i++ ) {
 			const request = buildVerbRequest( {
@@ -857,12 +1151,22 @@ export async function runRestCommand(
 	}
 
 	// parsed.mode === 'verb', parsed.verb is now one of list/get/create/update/delete
+	const paramIndex = parsed.id
+		? await resolveParamIndex(
+				client,
+				apiRoot,
+				parsed.namespace,
+				parsed.route,
+				! flags.quiet
+		  )
+		: undefined;
 	const request = buildVerbRequest( {
 		verb: parsed.verb,
 		apiRoot,
 		namespace: parsed.namespace,
 		route: parsed.route,
 		id: parsed.id,
+		paramIndex,
 		context: flags.context,
 		fields: parsed.fields,
 		content: resolveContent( flags.content ),
@@ -936,18 +1240,13 @@ export async function runHelpCommand(
 			! flags.quiet,
 			() => fetchIndex( client, apiRoot )
 		);
-		const rows = routesForNamespace( index, parsed.namespace ).map(
-			( { route, path } ) => ( {
-				route,
-				verbs: supportedVerbsForRoute( index, path ).join( ', ' ),
-			} )
+		const children = routeChildren( index, parsed.namespace, '' );
+		const output = await renderRouteChildren(
+			index,
+			parsed.namespace,
+			children,
+			flags
 		);
-		const output = await formatOutput( rows, {
-			format: flags.format,
-			fields: flags.fields,
-			field: flags.field,
-			color: flags.color,
-		} );
 		return { output, exitCode: 0 };
 	}
 
@@ -969,35 +1268,74 @@ export async function runHelpCommand(
 		};
 	}
 
-	const { schema, requiresParam, verbs } = await getRouteSchema(
+	if ( parsed.mode === 'route' ) {
+		const index = await withSpinner(
+			'Fetching API index',
+			! flags.quiet,
+			() => fetchIndex( client, apiRoot )
+		);
+		const children = routeChildren( index, parsed.namespace, parsed.route );
+		if (
+			children.length > 0 &&
+			! isRealRoute( index, parsed.namespace, parsed.route )
+		) {
+			const output = await renderRouteChildren(
+				index,
+				parsed.namespace,
+				children,
+				flags
+			);
+			return { output, exitCode: 0 };
+		}
+		const { schema, requiresParam, paramName, verbs } =
+			await getRouteSchema(
+				client,
+				apiRoot,
+				parsed.namespace,
+				parsed.route,
+				! flags.quiet,
+				index
+			);
+		return {
+			output:
+				renderRouteHelp(
+					parsed.namespace,
+					parsed.route,
+					schema,
+					requiresParam,
+					verbs,
+					paramName
+				) +
+				( await renderChildrenNote(
+					index,
+					parsed.namespace,
+					withMetaChild(
+						children,
+						parsed.route,
+						schema.endpoints ?? []
+					),
+					flags
+				) ),
+			exitCode: 0,
+		};
+	}
+
+	// parsed.mode === 'verb'
+	const { schema, paramName, verbs } = await getRouteSchema(
 		client,
 		apiRoot,
 		parsed.namespace,
 		parsed.route,
 		! flags.quiet
 	);
-
-	if ( parsed.mode === 'route' ) {
-		return {
-			output: renderRouteHelp(
-				parsed.namespace,
-				parsed.route,
-				schema,
-				requiresParam,
-				verbs
-			),
-			exitCode: 0,
-		};
-	}
-
-	// parsed.mode === 'verb'
 	return {
 		output: printVerbHelp(
 			parsed.namespace,
 			parsed.route,
 			parsed.verb,
 			schema.endpoints ?? [],
-			verbs
+			verbs,
+			paramName
 		),
 		exitCode: 0,
 	};
