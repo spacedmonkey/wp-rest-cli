@@ -229,3 +229,82 @@ describe( 'supportedVerbsForRoute', () => {
 		).toEqual( [ 'get', 'exists' ] );
 	} );
 } );
+
+// Regression coverage for real-world WordPress route regexes pulled from a
+// live site's /wp-json/ index — WordPress core routinely embeds a literal
+// `/` (and even nested parens) *inside* a placeholder's own character class
+// (e.g. to allow a child theme's "parent/child" stylesheet form, or a
+// slash-separated hierarchical id), which naive `path.split('/')` shreds
+// into unrelated fragments instead of treating as the one segment it is.
+describe( 'real-world placeholder patterns (embedded slashes/parens)', () => {
+	const realIndex: IndexResponse = {
+		namespaces: [ 'wp/v2' ],
+		routes: {
+			'/wp/v2/global-styles/(?P<parent>[\\d]+)/revisions': schema( [
+				'GET',
+			] ),
+			'/wp/v2/global-styles/(?P<parent>[\\d]+)/revisions/(?P<id>[\\d]+)':
+				schema( [ 'GET' ] ),
+			'/wp/v2/global-styles/themes/(?P<stylesheet>[\\/\\s%\\w\\.\\(\\)\\[\\]\\@_\\-]+)/variations':
+				schema( [ 'GET' ] ),
+			'/wp/v2/global-styles/themes/(?P<stylesheet>[^\\/:<>\\*\\?"\\|]+(?:\\/[^\\/:<>\\*\\?"\\|]+)?)':
+				schema( [ 'GET' ] ),
+			'/wp/v2/global-styles/(?P<id>[\\/\\d+]+)': schema( [
+				'GET',
+				'POST',
+				'PUT',
+				'PATCH',
+			] ),
+		},
+	};
+
+	it( 'lists every route by its literal segments, despite embedded slashes/parens inside the placeholders', () => {
+		const routes = routesForNamespace( realIndex, 'wp/v2' ).map(
+			( r ) => r.route
+		);
+		expect( routes.sort() ).toEqual(
+			[
+				'global-styles',
+				'global-styles/revisions',
+				'global-styles/themes',
+				'global-styles/themes/variations',
+			].sort()
+		);
+	} );
+
+	it( 'resolves the id route (a slash-tolerant character class) without corrupting its literal segments', () => {
+		expect(
+			resolveRouteInfo( realIndex, 'wp/v2', 'global-styles' )
+		).toEqual( {
+			path: '/wp/v2/global-styles/(?P<id>[\\/\\d+]+)',
+			requiresParam: true,
+			paramIndex: 1,
+		} );
+	} );
+
+	it( 'resolves the themes route (a nested non-capturing group inside the placeholder)', () => {
+		expect(
+			resolveRouteInfo( realIndex, 'wp/v2', 'global-styles/themes' )
+		).toEqual( {
+			path: '/wp/v2/global-styles/themes/(?P<stylesheet>[^\\/:<>\\*\\?"\\|]+(?:\\/[^\\/:<>\\*\\?"\\|]+)?)',
+			requiresParam: true,
+			paramIndex: 2,
+		} );
+	} );
+
+	it( 'lists "global-styles" as a hybrid: directly addressable and with children', () => {
+		const rootChildren = routeChildren( realIndex, 'wp/v2', '' );
+		expect(
+			rootChildren.find( ( c ) => c.segment === 'global-styles' )
+		).toEqual( {
+			segment: 'global-styles',
+			route: 'global-styles',
+			hasChildren: true,
+		} );
+		expect(
+			routeChildren( realIndex, 'wp/v2', 'global-styles' )
+				.map( ( c ) => c.segment )
+				.sort()
+		).toEqual( [ 'revisions', 'themes' ] );
+	} );
+} );

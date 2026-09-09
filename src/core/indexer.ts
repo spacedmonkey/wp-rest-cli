@@ -19,15 +19,64 @@ export async function fetchIndex(
 }
 
 /**
- * Strips a trailing /(?P<name>...) URL parameter segment, if the path ends with one.
+ * Splits a path into its top-level `/`-separated segments, the way
+ * WordPress's own route matching treats it — a `/` is only a separator when
+ * it's outside any `(...)` group. Real route regexes routinely embed a
+ * literal `/` (or even nested parens) *inside* a URL parameter's own
+ * character class — e.g. WordPress core registers a stylesheet placeholder
+ * as `(?P<stylesheet>[^\/:<>\*\?"\|]+(?:\/[^\/:<>\*\?"\|]+)?)` (to allow a
+ * child theme's "parent/child" form) and an id placeholder as
+ * `(?P<id>[\/\d+]+)`. Naively splitting on every `/` character (ignoring
+ * that some of them sit inside such a group) would shred a placeholder like
+ * that into unrelated fragments instead of treating it as the one segment
+ * it actually is.
+ * @param path A `/`-joined path to split.
+ * @return `path`'s top-level segments.
+ */
+function splitPathSegments( path: string ): string[] {
+	const segments: string[] = [];
+	let current = '';
+	let depth = 0;
+	for ( const char of path ) {
+		if ( char === '(' ) {
+			depth++;
+		} else if ( char === ')' ) {
+			depth--;
+		}
+		if ( char === '/' && depth === 0 ) {
+			segments.push( current );
+			current = '';
+		} else {
+			current += char;
+		}
+	}
+	segments.push( current );
+	return segments;
+}
+
+/**
+ * Whether an already-isolated path segment (see `splitPathSegments`) is
+ * entirely a `(?P<name>...)` URL parameter placeholder, however complex its
+ * inner pattern is.
+ * @param segment One top-level segment of a route path.
+ * @return Whether `segment` is a placeholder.
+ */
+function isPlaceholderSegment( segment: string ): boolean {
+	return /^\(\?P<[^>]+>/.test( segment ) && segment.endsWith( ')' );
+}
+
+/**
+ * Strips a trailing `/(?P<name>...)` URL parameter segment, if the path ends with one.
  * @param path A route path, as it appears in the index's `routes` map.
  * @return `path` with any trailing regex parameter segment removed.
  */
 export function stripTrailingPlaceholder( path: string ): string {
-	return path.replace( /\/\(\?P<[^>]+>[^)]*\)$/, '' );
+	const parsed = splitPlaceholder( path );
+	if ( parsed && parsed.paramIndex === parsed.segments.length ) {
+		return parsed.segments.join( '/' );
+	}
+	return path;
 }
-
-const PLACEHOLDER_SEGMENT = /^\(\?P<[^>]+>[^)]*\)$/;
 
 /**
  * Splits any `/`-joined path (a full index path, or one already relative to
@@ -50,10 +99,10 @@ const PLACEHOLDER_SEGMENT = /^\(\?P<[^>]+>[^)]*\)$/;
 export function splitPlaceholder(
 	path: string
 ): { segments: string[]; paramIndex: number | null } | null {
-	const rawSegments = path.split( '/' );
+	const rawSegments = splitPathSegments( path );
 	const placeholderIndexes = rawSegments.reduce< number[] >(
 		( indexes, segment, i ) => {
-			if ( PLACEHOLDER_SEGMENT.test( segment ) ) {
+			if ( isPlaceholderSegment( segment ) ) {
 				indexes.push( i );
 			}
 			return indexes;
