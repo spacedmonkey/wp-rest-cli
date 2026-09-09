@@ -22,7 +22,7 @@ import {
 } from './config.js';
 import { formatErrorForDisplay, CliError, WpApiError } from './core/errors.js';
 import type { Context, GlobalFlags, OutputFormat } from './types.js';
-import { pc } from './ui.js';
+import { pc, setColorEnabled } from './ui.js';
 
 const CONTEXTS: Context[] = [ 'view', 'edit', 'embed' ];
 const FORMATS: OutputFormat[] = [
@@ -100,6 +100,7 @@ interface RawOptions {
 
 /**
  * Validates and narrows Commander's raw parsed options into typed {@link GlobalFlags}.
+ * Color is on by default; `--no-color` is the only way to turn it off.
  * @param options Commander's raw parsed options.
  * @return The validated global flags.
  */
@@ -262,6 +263,7 @@ run "wp-rest-cli <namespace> <route>" to see which ones a given route supports.
 `
 	)
 	.action( async ( args: string[], options: RawOptions ) => {
+		setColorEnabled( options.color );
 		try {
 			if ( args[ 0 ] === 'config' ) {
 				process.exitCode = await handleConfigCommand( args, options );

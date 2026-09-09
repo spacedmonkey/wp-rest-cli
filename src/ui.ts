@@ -2,7 +2,23 @@
  * External dependencies
  */
 import ora, { type Ora } from 'ora';
-import pc from 'picocolors';
+import picocolors from 'picocolors';
+
+// Every colorized call site in this codebase imports `pc` from here (rather
+// than straight from `picocolors`) so that `setColorEnabled` - called once,
+// at startup, from the resolved `--no-color` flag - can override picocolors'
+// own TTY-based auto-detection everywhere at once via this live binding.
+let pc = picocolors.createColors( true );
+
+/**
+ * Enables or disables color for every `pc.*` call in the app, overriding
+ * picocolors' own TTY-based auto-detection so `--no-color` is the only thing
+ * that turns color off (it's on by default even when output is piped).
+ * @param enabled Whether colorized output should be emitted.
+ */
+export function setColorEnabled( enabled: boolean ): void {
+	pc = picocolors.createColors( enabled );
+}
 
 /**
  * Starts a terminal spinner, unless spinners are disabled (e.g. non-TTY output).

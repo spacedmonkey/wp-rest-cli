@@ -4,7 +4,6 @@
 import { flatten } from 'flat';
 import { json2csv } from 'json-2-csv';
 import { inspect } from 'node:util';
-import pc from 'picocolors';
 import { table as renderTable, getBorderCharacters } from 'table';
 import { stringify as stringifyYaml } from 'yaml';
 
@@ -13,6 +12,7 @@ import { stringify as stringifyYaml } from 'yaml';
  */
 import { CliError } from './errors.js';
 import type { OutputFormat } from '../types.js';
+import { pc } from '../ui.js';
 
 export interface FormatOptions {
 	format: OutputFormat;
