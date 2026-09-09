@@ -812,24 +812,20 @@ describe( 'wp-rest-cli (integration)', () => {
 			return String( JSON.parse( result.stdout ).id );
 		}
 
-		it( 'shows the meta usage synopsis for a route that supports meta', async () => {
-			const result = await run( [ 'wp/v2', 'widgets' ] );
-			expect( result.exitCode ).toBe( 0 );
-			expect( result.stdout ).toContain(
-				'usage: wp-rest-cli wp/v2 widgets meta add <id> <key>'
-			);
-			expect( result.stdout ).toContain(
-				'wp-rest-cli wp/v2 widgets meta list <id>'
-			);
-		} );
-
-		it( 'also lists meta as a discoverable sub-route, alongside the detailed synopsis', async () => {
+		it( 'lists meta as a discoverable sub-route, without repeating its own full meta usage synopsis', async () => {
 			const result = await run( [ 'wp/v2', 'widgets' ] );
 			expect( result.exitCode ).toBe( 0 );
 			expect( result.stdout ).toContain(
 				'This route also has nested sub-routes:'
 			);
 			expect( result.stdout ).toMatch( /meta\s+\(subcommand\)/ );
+			// The full "usage: ... meta add/clean-duplicates/.../update"
+			// block is redundant once meta is already listed above as a
+			// discoverable subcommand — `wp <namespace> <route> meta` (or
+			// `wp help ... meta`) is where that detail belongs instead.
+			expect( result.stdout ).not.toContain(
+				'usage: wp-rest-cli wp/v2 widgets meta add <id> <key>'
+			);
 		} );
 
 		it( 'sets and reads back a meta value with update/get', async () => {

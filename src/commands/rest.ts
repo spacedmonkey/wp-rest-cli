@@ -984,7 +984,14 @@ async function validateVerbFields(
 }
 
 /**
- * Combines the WP-CLI-style usage synopsis with the existing detailed per-method arg listing.
+ * Combines the WP-CLI-style usage synopsis with the existing detailed
+ * per-method arg listing. Doesn't say anything about `meta` itself even when
+ * the route supports it (no `usage: ... meta add ...` dump) — the caller
+ * already appends a nested-children note (`renderChildrenNote`, with `meta`
+ * folded in via `withMetaChild`) right after this, which is where `meta`
+ * shows up as a discoverable subcommand; repeating its full 8-line usage
+ * block here as well was pure noise on every single route that supports it.
+ * Run `wp <namespace> <route> meta` (or `wp help ... meta`) for that detail.
  * @param namespace     The route's namespace.
  * @param route         The route name.
  * @param schema        The route's introspected schema.
@@ -1003,9 +1010,6 @@ function renderRouteHelp(
 ): string {
 	const endpoints = schema.endpoints ?? [];
 	const contexts = supportedContexts( schema );
-	const metaUsage = routeSupportsMeta( endpoints )
-		? '\n\n' + printMetaUsage( namespace, route )
-		: '';
 	const paramNote = requiresParam
 		? pc.dim(
 				`\nThis route only exists with a value in place of its URL parameter, e.g.:\n` +
@@ -1027,7 +1031,6 @@ function renderRouteHelp(
 		: '';
 	return (
 		printRouteUsage( namespace, route, endpoints, verbs, paramName ) +
-		metaUsage +
 		paramNote +
 		noIdNote +
 		contextNote +
