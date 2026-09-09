@@ -65,7 +65,9 @@ describe( 'wp-rest-cli (integration)', () => {
 		const result = await run( [ 'wp/v2', 'widgets' ] );
 		expect( result.exitCode ).toBe( 0 );
 		expect( result.stdout ).toContain( 'per_page' );
-		expect( result.stdout ).toContain( 'required' );
+		// A required arg is shown bare (no brackets), unlike an optional one.
+		expect( result.stdout ).toContain( '--title=<string>' );
+		expect( result.stdout ).not.toContain( '[--title=<string>]' );
 	} );
 
 	it( 'shows a WP-CLI-style usage synopsis covering every verb', async () => {
@@ -230,7 +232,7 @@ describe( 'wp-rest-cli (integration)', () => {
 		const result = await run( [ 'help', 'wp/v2', 'widgets' ] );
 		expect( result.exitCode ).toBe( 0 );
 		expect( result.stdout ).toContain( 'per_page' );
-		expect( result.stdout ).toContain( 'required' );
+		expect( result.stdout ).toContain( '--title=<string>' );
 	} );
 
 	it( 'shows list-verb help with the matching collection GET args', async () => {
@@ -513,20 +515,25 @@ describe( 'wp-rest-cli (integration)', () => {
 	it( "shows a trailing-parameter route's own URL parameter as required, even though WordPress declares it required: false in the schema", async () => {
 		const result = await run( [ 'wp/v2', 'global-styles', 'themes' ] );
 		expect( result.exitCode ).toBe( 0 );
+		// A required arg (including the route's own forced-required URL
+		// parameter) is shown bare, no brackets — an optional one is bracketed.
 		expect( result.stdout ).toContain(
-			'--stylesheet=<string> [required] (this route’s own URL parameter)'
+			'--stylesheet=<string> (this route’s own URL parameter)'
 		);
-		// --context stays optional — only the route's own URL parameter is forced.
-		expect( result.stdout ).toContain( '--context=<string> [optional]' );
+		expect( result.stdout ).not.toContain( '[--stylesheet=<string>]' );
+		expect( result.stdout ).toContain( '[--context=<string>]' );
 		expect( result.stdout ).toContain( 'default: "view"' );
-		expect( result.stdout ).toContain( 'options: view, edit, embed' );
+		expect( result.stdout ).toContain( 'options:' );
+		expect( result.stdout ).toContain( '- view' );
+		expect( result.stdout ).toContain( '- edit' );
+		expect( result.stdout ).toContain( '- embed' );
 	} );
 
 	it( "shows a mid-path route's own URL parameter as required, both in the detailed listing and the usage synopsis", async () => {
 		const result = await run( [ 'wp/v2', 'posts', 'revisions' ] );
 		expect( result.exitCode ).toBe( 0 );
 		expect( result.stdout ).toContain(
-			'--parent=<integer> [required] (this route’s own URL parameter)'
+			'--parent=<integer> (this route’s own URL parameter)'
 		);
 		// list's synopsis line pulls args in inline (unlike get/exists, which are
 		// hardcoded to just <id>) — the parameter shows bare, not bracketed.

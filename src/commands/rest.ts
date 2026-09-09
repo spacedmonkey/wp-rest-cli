@@ -309,11 +309,15 @@ function resolveContent( raw: string | undefined ): unknown {
 }
 
 /**
- * Renders one endpoint's arguments for the introspection view, one block per
- * argument: a `--name=<type> [required|optional]` header line, then its
- * description, default and enum options each on their own indented line
- * (only the ones that apply) — easier to scan than cramming everything onto
- * a single long line, especially once a description or enum runs long.
+ * Renders one endpoint's arguments for the introspection view, in real
+ * WP-CLI's own `--help` OPTIONS style: `[--name=<type>]` (bare, no brackets,
+ * if required), its description indented beneath, and a `---`-delimited
+ * `default:`/`options:` block when the schema declares them — rather than
+ * this project's own type/enum/default shorthand it used before, which
+ * didn't match anything a WP-CLI user would recognise. `<type>` (not the arg
+ * name, as real WP-CLI's own hardcoded synopses use) is the placeholder,
+ * since — unlike a real WP-CLI command — this route's fields aren't known
+ * ahead of time, so the type is the more useful thing to show.
  * @param endpoint     The endpoint whose args to render.
  * @param urlParamName The name of this route's own URL parameter (e.g.
  *                     "stylesheet"), if it has one — WordPress commonly
@@ -322,7 +326,8 @@ function resolveContent( raw: string | undefined ): unknown {
  *                     validated as caller input, but it's never actually
  *                     optional: without it there's no valid URL to
  *                     request at all. This forces its display to
- *                     "required" regardless of what the schema says.
+ *                     required (bare, no brackets) regardless of what the
+ *                     schema says.
  * @return The formatted lines, one block per argument (blank-line separated).
  */
 function formatEndpointArgs(
@@ -340,32 +345,35 @@ function formatEndpointArgs(
 		if ( ! arg ) {
 			continue;
 		}
-		const required =
-			arg.required || name === urlParamName
-				? pc.red( 'required' )
-				: 'optional';
+		const required = arg.required || name === urlParamName;
 		const type = Array.isArray( arg.type )
 			? arg.type.join( '|' )
 			: arg.type ?? 'any';
+		const header = required
+			? `--${ name }=<${ type }>`
+			: `[--${ name }=<${ type }>]`;
 		const urlParamSuffix =
 			name === urlParamName
 				? pc.dim( ' (this route’s own URL parameter)' )
 				: '';
-		lines.push(
-			`    --${ name }=<${ type }> [${ required }]${ urlParamSuffix }`
-		);
+		lines.push( `    ${ header }${ urlParamSuffix }` );
 		if ( arg.description ) {
 			lines.push( `        ${ arg.description }` );
 		}
-		if ( arg.default !== undefined ) {
-			lines.push(
-				pc.dim( `        default: ${ JSON.stringify( arg.default ) }` )
-			);
-		}
-		if ( arg.enum ) {
-			lines.push(
-				pc.dim( `        options: ${ arg.enum.join( ', ' ) }` )
-			);
+		if ( arg.enum || arg.default !== undefined ) {
+			lines.push( '        ---' );
+			if ( arg.default !== undefined ) {
+				lines.push(
+					`        default: ${ JSON.stringify( arg.default ) }`
+				);
+			}
+			if ( arg.enum ) {
+				lines.push( '        options:' );
+				lines.push(
+					...arg.enum.map( ( value ) => `          - ${ value }` )
+				);
+			}
+			lines.push( '        ---' );
 		}
 		lines.push( '' );
 	}
