@@ -309,8 +309,11 @@ function resolveContent( raw: string | undefined ): unknown {
 }
 
 /**
- * Renders one endpoint's arguments as detailed, one-per-line descriptions
- * (type, required/optional, enum, default) for the introspection view.
+ * Renders one endpoint's arguments for the introspection view, one block per
+ * argument: a `--name=<type> [required|optional]` header line, then its
+ * description, default and enum options each on their own indented line
+ * (only the ones that apply) — easier to scan than cramming everything onto
+ * a single long line, especially once a description or enum runs long.
  * @param endpoint     The endpoint whose args to render.
  * @param urlParamName The name of this route's own URL parameter (e.g.
  *                     "stylesheet"), if it has one — WordPress commonly
@@ -320,7 +323,7 @@ function resolveContent( raw: string | undefined ): unknown {
  *                     optional: without it there's no valid URL to
  *                     request at all. This forces its display to
  *                     "required" regardless of what the schema says.
- * @return One formatted line per argument.
+ * @return The formatted lines, one block per argument (blank-line separated).
  */
 function formatEndpointArgs(
 	endpoint: RouteEndpoint,
@@ -344,17 +347,30 @@ function formatEndpointArgs(
 		const type = Array.isArray( arg.type )
 			? arg.type.join( '|' )
 			: arg.type ?? 'any';
-		const enumSuffix = arg.enum ? ` enum(${ arg.enum.join( ',' ) })` : '';
-		const defaultSuffix =
-			arg.default !== undefined
-				? ` default(${ JSON.stringify( arg.default ) })`
-				: '';
 		const urlParamSuffix =
-			name === urlParamName ? ' (this route’s own URL parameter)' : '';
+			name === urlParamName
+				? pc.dim( ' (this route’s own URL parameter)' )
+				: '';
 		lines.push(
-			`    --${ name }=<${ type }>${ enumSuffix }${ defaultSuffix } [${ required }]${ urlParamSuffix }` +
-				( arg.description ? ` — ${ arg.description }` : '' )
+			`    --${ name }=<${ type }> [${ required }]${ urlParamSuffix }`
 		);
+		if ( arg.description ) {
+			lines.push( `        ${ arg.description }` );
+		}
+		if ( arg.default !== undefined ) {
+			lines.push(
+				pc.dim( `        default: ${ JSON.stringify( arg.default ) }` )
+			);
+		}
+		if ( arg.enum ) {
+			lines.push(
+				pc.dim( `        options: ${ arg.enum.join( ', ' ) }` )
+			);
+		}
+		lines.push( '' );
+	}
+	if ( lines[ lines.length - 1 ] === '' ) {
+		lines.pop();
 	}
 	return lines;
 }

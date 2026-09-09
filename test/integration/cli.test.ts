@@ -517,9 +517,9 @@ describe( 'wp-rest-cli (integration)', () => {
 			'--stylesheet=<string> [required] (this route’s own URL parameter)'
 		);
 		// --context stays optional — only the route's own URL parameter is forced.
-		expect( result.stdout ).toContain(
-			'--context=<string> enum(view,edit,embed) default("view") [optional]'
-		);
+		expect( result.stdout ).toContain( '--context=<string> [optional]' );
+		expect( result.stdout ).toContain( 'default: "view"' );
+		expect( result.stdout ).toContain( 'options: view, edit, embed' );
 	} );
 
 	it( "shows a mid-path route's own URL parameter as required, both in the detailed listing and the usage synopsis", async () => {
