@@ -31,6 +31,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Lint Markdown docs
+        run: npm run lint:md:docs
+
       - name: Typecheck
         run: npm run typecheck
 

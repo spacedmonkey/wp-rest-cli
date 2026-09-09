@@ -26,7 +26,7 @@ npm run wp -- <namespace> <route> [<verb>] [<id>] [--flag=value...] --url=<site>
 
 ## Command grammar
 
-```
+```text
 wp                                                              # discover: list namespaces from the site's REST API index
 wp <namespace>                                                  # list routes registered under that namespace
 wp <namespace> <route>                                          # introspect: show the route's supported methods/args/context (an OPTIONS request)

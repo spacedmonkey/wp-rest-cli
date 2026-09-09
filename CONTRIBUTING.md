@@ -31,10 +31,11 @@ npm run dev        # tsup --watch
 Run the full local check suite:
 
 ```sh
-npm test          # jest (unit tests, via wp-scripts) + vitest (the execa-driven integration suite)
-npm run lint       # wp-scripts lint-js (WordPress/Gutenberg coding standards)
-npm run typecheck  # tsc --noEmit
-npm run format     # wp-scripts format
+npm test              # jest (unit tests, via wp-scripts) + vitest (the execa-driven integration suite)
+npm run lint          # wp-scripts lint-js (WordPress/Gutenberg coding standards)
+npm run lint:md:docs  # wp-scripts lint-md-docs (lints this repo's Markdown docs)
+npm run typecheck     # tsc --noEmit
+npm run format        # wp-scripts format
 ```
 
 Run a single test file or a single test by name while iterating:
@@ -83,7 +84,8 @@ conventions), and keeping it up to date is part of any architectural change.
 
 - Pull requests target `main`.
 - Keep PRs focused on a single change; unrelated cleanups are easier to review separately.
-- Make sure `npm test`, `npm run lint`, and `npm run typecheck` all pass before requesting review.
+- Make sure `npm test`, `npm run lint`, `npm run lint:md:docs`, and `npm run typecheck` all pass before
+  requesting review.
 - If your change affects behavior or architecture, update `CLAUDE.md` and/or `README.md` alongside the
   code change, not as a follow-up.
 

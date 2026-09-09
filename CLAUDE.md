@@ -38,7 +38,7 @@ This project follows WordPress/Gutenberg JavaScript coding standards, enforced v
 
 The whole CLI is one dynamic grammar, not a fixed command tree:
 
-```
+```text
 wp                                                              # list namespaces
 wp <namespace>                                                  # list routes under that namespace
 wp <namespace> <route>                                          # introspect: methods/args/context via OPTIONS
