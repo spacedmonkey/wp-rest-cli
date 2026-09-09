@@ -680,4 +680,32 @@ describe( 'wp-rest-cli (integration)', () => {
 			expect( after.stdout.trim() ).toBe( 'light' );
 		} );
 	} );
+
+	describe( '--no-color', () => {
+		// execa's stdio is always a pipe, never a TTY - color is on by
+		// default regardless, so these don't need to fake a TTY to assert on.
+		function runRaw( args: string[] ) {
+			return execa(
+				'tsx',
+				[ cliEntry, ...args, `--url=${ fixture.baseUrl }`, '--quiet' ],
+				{
+					reject: false,
+					preferLocal: true,
+					env: { FORCE_COLOR: undefined, NO_COLOR: undefined },
+				}
+			);
+		}
+
+		it( 'colorizes by default, even when piped', async () => {
+			const result = await runRaw( [ 'config', 'get' ] );
+			expect( result.exitCode ).toBe( 0 );
+			expect( result.stdout ).toMatch( /\x1b\[/ );
+		} );
+
+		it( '--no-color disables color', async () => {
+			const result = await runRaw( [ '--no-color', 'config', 'get' ] );
+			expect( result.exitCode ).toBe( 0 );
+			expect( result.stdout ).not.toMatch( /\x1b\[/ );
+		} );
+	} );
 } );
