@@ -66,6 +66,19 @@ function isPlaceholderSegment( segment: string ): boolean {
 }
 
 /**
+ * Extracts a placeholder segment's captured name, e.g. `"stylesheet"` from
+ * `(?P<stylesheet>...)`. Assumes `segment` already satisfies
+ * `isPlaceholderSegment`.
+ * @param segment A placeholder path segment.
+ * @return The placeholder's name.
+ */
+function placeholderName( segment: string ): string {
+	return (
+		/^\(\?P<([^>]+)>/.exec( segment ) as RegExpExecArray
+	 )[ 1 ] as string;
+}
+
+/**
  * Strips a trailing `/(?P<name>...)` URL parameter segment, if the path ends with one.
  * @param path A route path, as it appears in the index's `routes` map.
  * @return `path` with any trailing regex parameter segment removed.
@@ -94,11 +107,15 @@ export function stripTrailingPlaceholder( path: string ): string {
  * parameters (e.g. one specific revision, addressed by parent post *and*
  * revision id).
  * @param path A `/`-joined path to split.
- * @return The literal segments and the placeholder's position (`null` if there isn't one), or `null` if there's more than one placeholder.
+ * @return The literal segments, the placeholder's position and captured
+ *         name (both `null` if there isn't one), or `null` if there's more
+ *         than one placeholder.
  */
-export function splitPlaceholder(
-	path: string
-): { segments: string[]; paramIndex: number | null } | null {
+export function splitPlaceholder( path: string ): {
+	segments: string[];
+	paramIndex: number | null;
+	paramName: string | null;
+} | null {
 	const rawSegments = splitPathSegments( path );
 	const placeholderIndexes = rawSegments.reduce< number[] >(
 		( indexes, segment, i ) => {
@@ -113,7 +130,7 @@ export function splitPlaceholder(
 		return null;
 	}
 	if ( placeholderIndexes.length === 0 ) {
-		return { segments: rawSegments, paramIndex: null };
+		return { segments: rawSegments, paramIndex: null, paramName: null };
 	}
 	const paramIndex = placeholderIndexes[ 0 ] as number;
 	return {
@@ -122,6 +139,7 @@ export function splitPlaceholder(
 			...rawSegments.slice( paramIndex + 1 ),
 		],
 		paramIndex,
+		paramName: placeholderName( rawSegments[ paramIndex ] as string ),
 	};
 }
 
@@ -340,13 +358,19 @@ export function supportedVerbsForRoute(
  * @param route     The CLI-addressed route name (the `<route>` argument, `/`-joined).
  * @return The route's real index path, whether it needs an instantiated
  *         parameter value before it can be introspected, and (when it does)
- *         the position within `route.split('/')` that value belongs at.
+ *         the position within `route.split('/')` that value belongs at and
+ *         the parameter's declared name (e.g. "stylesheet", "parent").
  */
 export function resolveRouteInfo(
 	index: IndexResponse,
 	namespace: string,
 	route: string
-): { path: string; requiresParam: boolean; paramIndex?: number } {
+): {
+	path: string;
+	requiresParam: boolean;
+	paramIndex?: number;
+	paramName?: string;
+} {
 	const exactPath = `/${ namespace }/${ route }`;
 	if ( index.routes[ exactPath ] ) {
 		return { path: exactPath, requiresParam: false };
@@ -361,7 +385,12 @@ export function resolveRouteInfo(
 			continue;
 		}
 		if ( parsed.segments.join( '/' ) === route ) {
-			return { path, requiresParam: true, paramIndex: parsed.paramIndex };
+			return {
+				path,
+				requiresParam: true,
+				paramIndex: parsed.paramIndex,
+				paramName: parsed.paramName ?? undefined,
+			};
 		}
 	}
 	return { path: exactPath, requiresParam: false };

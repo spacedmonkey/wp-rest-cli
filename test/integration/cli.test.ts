@@ -422,6 +422,31 @@ describe( 'wp-rest-cli (integration)', () => {
 		expect( result.stdout ).toContain( 'context' );
 	} );
 
+	it( "shows a trailing-parameter route's own URL parameter as required, even though WordPress declares it required: false in the schema", async () => {
+		const result = await run( [ 'wp/v2', 'global-styles', 'themes' ] );
+		expect( result.exitCode ).toBe( 0 );
+		expect( result.stdout ).toContain(
+			'--stylesheet=<string> [required] (this route’s own URL parameter)'
+		);
+		// --context stays optional — only the route's own URL parameter is forced.
+		expect( result.stdout ).toContain(
+			'--context=<string> enum(view,edit,embed) default("view") [optional]'
+		);
+	} );
+
+	it( "shows a mid-path route's own URL parameter as required, both in the detailed listing and the usage synopsis", async () => {
+		const result = await run( [ 'wp/v2', 'posts', 'revisions' ] );
+		expect( result.exitCode ).toBe( 0 );
+		expect( result.stdout ).toContain(
+			'--parent=<integer> [required] (this route’s own URL parameter)'
+		);
+		// list's synopsis line pulls args in inline (unlike get/exists, which are
+		// hardcoded to just <id>) — the parameter shows bare, not bracketed.
+		expect( result.stdout ).toContain(
+			'usage: wp-rest-cli wp/v2 posts/revisions list --parent=<parent>'
+		);
+	} );
+
 	it( 'performs a get against a route addressed as separate CLI arguments', async () => {
 		const result = await run( [
 			'wp/v2',

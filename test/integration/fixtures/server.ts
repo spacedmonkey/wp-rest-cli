@@ -98,6 +98,15 @@ export async function startFixture(): Promise< Fixture > {
 							{
 								methods: [ 'GET' ],
 								args: {
+									// WordPress core declares a route's own URL parameter as
+									// required: false in its schema (it's filled from the URL
+									// match, not validated as caller input) even though it's
+									// never actually optional — modelled here to exercise that.
+									stylesheet: {
+										type: 'string',
+										description: 'The theme identifier',
+										required: false,
+									},
 									context: {
 										type: 'string',
 										enum: [ 'view', 'edit', 'embed' ],
@@ -145,7 +154,21 @@ export async function startFixture(): Promise< Fixture > {
 					'/wp/v2/posts/(?P<parent>[\\d]+)/revisions': {
 						namespace: 'wp/v2',
 						methods: [ 'GET' ],
-						endpoints: [ { methods: [ 'GET' ] } ],
+						endpoints: [
+							{
+								methods: [ 'GET' ],
+								args: {
+									// Same required: false-despite-being-mandatory convention
+									// as the "stylesheet" arg above, for the mid-path case.
+									parent: {
+										type: 'integer',
+										description:
+											'The ID for the parent of the revision.',
+										required: false,
+									},
+								},
+							},
+						],
 					},
 					// Modelled on WP_REST_Global_Styles_Revisions_Controller's sibling
 					// (real WP's .../themes/<stylesheet>/variations): a mid-path

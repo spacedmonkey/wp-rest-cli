@@ -171,6 +171,7 @@ describe( 'resolveRouteInfo', () => {
 			path: '/wp/v2/global-styles/themes/(?P<stylesheet>%s)',
 			requiresParam: true,
 			paramIndex: 2,
+			paramName: 'stylesheet',
 		} );
 	} );
 
@@ -180,6 +181,7 @@ describe( 'resolveRouteInfo', () => {
 				path: '/wp/v2/posts/(?P<parent>[\\d]+)/autosaves',
 				requiresParam: true,
 				paramIndex: 1,
+				paramName: 'parent',
 			}
 		);
 	} );
@@ -279,6 +281,7 @@ describe( 'real-world placeholder patterns (embedded slashes/parens)', () => {
 			path: '/wp/v2/global-styles/(?P<id>[\\/\\d+]+)',
 			requiresParam: true,
 			paramIndex: 1,
+			paramName: 'id',
 		} );
 	} );
 
@@ -289,6 +292,7 @@ describe( 'real-world placeholder patterns (embedded slashes/parens)', () => {
 			path: '/wp/v2/global-styles/themes/(?P<stylesheet>[^\\/:<>\\*\\?"\\|]+(?:\\/[^\\/:<>\\*\\?"\\|]+)?)',
 			requiresParam: true,
 			paramIndex: 2,
+			paramName: 'stylesheet',
 		} );
 	} );
 
