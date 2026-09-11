@@ -117,6 +117,15 @@ export async function startFixture(): Promise< Fixture > {
 							},
 						],
 					},
+					// Synthetic fixture modelled on Yoast SEO's `yoast/v1/file_size`
+					// route: a bare GET collection whose only arg is `url`, and it's
+					// required — exercises local validation of a `required` GET/`list`
+					// arg (as opposed to a `create`/POST one).
+					'/wp/v2/file-size': {
+						namespace: 'wp/v2',
+						methods: [ 'GET' ],
+						endpoints: [ { methods: [ 'GET' ] } ],
+					},
 					// Modelled on WP_REST_Settings_Controller: a singleton resource with
 					// no <id> at all — GET/POST/PUT/PATCH all act on this one bare path,
 					// and there's no `/settings/(?P<id>)` sibling.
@@ -329,6 +338,40 @@ export async function startFixture(): Promise< Fixture > {
 				send( res, 200, { deleted: true, previous: existing } );
 				return;
 			}
+		}
+
+		if ( path === '/wp-json/wp/v2/file-size' && req.method === 'OPTIONS' ) {
+			send( res, 200, {
+				namespace: 'wp/v2',
+				methods: [ 'GET' ],
+				endpoints: [
+					{
+						methods: [ 'GET' ],
+						args: {
+							url: {
+								type: 'string',
+								description: 'The URL of the file to check.',
+								required: true,
+							},
+						},
+					},
+				],
+			} );
+			return;
+		}
+
+		if ( path === '/wp-json/wp/v2/file-size' && req.method === 'GET' ) {
+			const fileUrl = url.searchParams.get( 'url' );
+			if ( ! fileUrl ) {
+				send( res, 400, {
+					code: 'rest_missing_callback_param',
+					message: 'Missing parameter(s): url',
+					data: { status: 400, params: [ 'url' ] },
+				} );
+				return;
+			}
+			send( res, 200, { url: fileUrl, size: 12345 } );
+			return;
 		}
 
 		if ( path === '/wp-json/wp/v2/settings' && req.method === 'OPTIONS' ) {

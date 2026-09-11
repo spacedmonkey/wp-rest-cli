@@ -17,6 +17,7 @@ import {
 	type RouteChildSegment,
 } from '../core/indexer.js';
 import { introspectRoute, supportedContexts } from '../core/introspect.js';
+import { validateFieldTypes } from '../core/validate.js';
 import { buildVerbRequest } from '../core/verbs.js';
 import type {
 	GlobalFlags,
@@ -211,6 +212,15 @@ export type ParsedHelp =
 	  };
 
 /**
+ * Which help renderer `runHelpCommand` should use: `'usage'` is the existing
+ * dense, schema-driven `usage: ... \n   or: ...` block (`wp help ...` and bare
+ * introspection); `'wpcli'` is the NAME/DESCRIPTION/SYNOPSIS/SUBCOMMANDS or
+ * NAME/DESCRIPTION/SYNOPSIS/OPTIONS/EXAMPLES page real WP-CLI prints for
+ * `--help`, used only when a command is run with a trailing `--help` flag.
+ */
+export type HelpStyle = 'usage' | 'wpcli';
+
+/**
  * Parses `wp help [<namespace> [<route...> [<verb>]]]`'s arguments into a
  * typed {@link ParsedHelp}, mirroring {@link parseCommandArgs}'s shapes but
  * never expecting an `<id>` or `field=value` pairs, since help never performs
@@ -299,8 +309,15 @@ function resolveContent( raw: string | undefined ): unknown {
 }
 
 /**
- * Renders one endpoint's arguments as detailed, one-per-line descriptions
- * (type, required/optional, enum, default) for the introspection view.
+ * Renders one endpoint's arguments for the introspection view, in real
+ * WP-CLI's own `--help` OPTIONS style: `[--name=<type>]` (bare, no brackets,
+ * if required), its description indented beneath, and a `---`-delimited
+ * `default:`/`options:` block when the schema declares them — rather than
+ * this project's own type/enum/default shorthand it used before, which
+ * didn't match anything a WP-CLI user would recognise. `<type>` (not the arg
+ * name, as real WP-CLI's own hardcoded synopses use) is the placeholder,
+ * since — unlike a real WP-CLI command — this route's fields aren't known
+ * ahead of time, so the type is the more useful thing to show.
  * @param endpoint     The endpoint whose args to render.
  * @param urlParamName The name of this route's own URL parameter (e.g.
  *                     "stylesheet"), if it has one — WordPress commonly
@@ -309,8 +326,9 @@ function resolveContent( raw: string | undefined ): unknown {
  *                     validated as caller input, but it's never actually
  *                     optional: without it there's no valid URL to
  *                     request at all. This forces its display to
- *                     "required" regardless of what the schema says.
- * @return One formatted line per argument.
+ *                     required (bare, no brackets) regardless of what the
+ *                     schema says.
+ * @return The formatted lines, one block per argument (blank-line separated).
  */
 function formatEndpointArgs(
 	endpoint: RouteEndpoint,
@@ -327,24 +345,40 @@ function formatEndpointArgs(
 		if ( ! arg ) {
 			continue;
 		}
-		const required =
-			arg.required || name === urlParamName
-				? pc.red( 'required' )
-				: 'optional';
+		const required = arg.required || name === urlParamName;
 		const type = Array.isArray( arg.type )
 			? arg.type.join( '|' )
 			: arg.type ?? 'any';
-		const enumSuffix = arg.enum ? ` enum(${ arg.enum.join( ',' ) })` : '';
-		const defaultSuffix =
-			arg.default !== undefined
-				? ` default(${ JSON.stringify( arg.default ) })`
-				: '';
+		const header = required
+			? `--${ name }=<${ type }>`
+			: `[--${ name }=<${ type }>]`;
 		const urlParamSuffix =
-			name === urlParamName ? ' (this route’s own URL parameter)' : '';
-		lines.push(
-			`    --${ name }=<${ type }>${ enumSuffix }${ defaultSuffix } [${ required }]${ urlParamSuffix }` +
-				( arg.description ? ` — ${ arg.description }` : '' )
-		);
+			name === urlParamName
+				? pc.dim( ' (this route’s own URL parameter)' )
+				: '';
+		lines.push( `    ${ header }${ urlParamSuffix }` );
+		if ( arg.description ) {
+			lines.push( `        ${ arg.description }` );
+		}
+		if ( arg.enum || arg.default !== undefined ) {
+			lines.push( '        ---' );
+			if ( arg.default !== undefined ) {
+				lines.push(
+					`        default: ${ JSON.stringify( arg.default ) }`
+				);
+			}
+			if ( arg.enum ) {
+				lines.push( '        options:' );
+				lines.push(
+					...arg.enum.map( ( value ) => `          - ${ value }` )
+				);
+			}
+			lines.push( '        ---' );
+		}
+		lines.push( '' );
+	}
+	if ( lines[ lines.length - 1 ] === '' ) {
+		lines.pop();
 	}
 	return lines;
 }
@@ -522,13 +556,42 @@ function printRouteUsage(
 }
 
 /**
- * Renders the child segments beneath a route prefix (or the namespace root)
- * as the same `{route, verbs}` table shape a leaf route listing already
- * uses, so drilling into a namespace feels the same at every level. A
- * container-only child (no verbs of its own — nothing is registered at
- * exactly this prefix, only deeper) gets a `(subcommand)` marker appended to
- * its verbs column; a "hybrid" child that's both directly addressable *and*
- * has further children shows both its real verbs and the marker.
+ * Builds the child segments beneath a route prefix (or the namespace root)
+ * into the same `{route, verbs}` shape a leaf route listing already uses, so
+ * drilling into a namespace feels the same at every level. A container-only
+ * child (no verbs of its own — nothing is registered at exactly this prefix,
+ * only deeper) gets a `(subcommand)` marker appended to its verbs column; a
+ * "hybrid" child that's both directly addressable *and* has further children
+ * shows both its real verbs and the marker.
+ * @param index     The site's root REST API index.
+ * @param namespace The namespace the children belong to.
+ * @param children  The child segments to render, from `routeChildren`.
+ * @return One `{route, verbs}` row per child.
+ */
+function buildChildRows(
+	index: IndexResponse,
+	namespace: string,
+	children: RouteChildSegment[]
+): { route: string; verbs: string }[] {
+	return children.map( ( child ) => {
+		if ( child.isMeta ) {
+			return { route: child.segment, verbs: '(subcommand)' };
+		}
+		const info = resolveRouteInfo( index, namespace, child.route );
+		const verbList = supportedVerbsForRoute( index, info.path );
+		const parts = child.hasChildren
+			? [ ...verbList, '(subcommand)' ]
+			: verbList;
+		return { route: child.segment, verbs: parts.join( ', ' ) };
+	} );
+}
+
+/**
+ * Renders a route's (or the namespace root's) child segments as a plain
+ * `{route, verbs}` listing in the requested `--format` — the table form used
+ * for a route's own nested-children note, and for any non-`table` format of
+ * the top-level bare listing (see `renderChildListWpCli` for the WP-CLI-style
+ * page `table` format uses there instead).
  * @param index     The site's root REST API index.
  * @param namespace The namespace the children belong to.
  * @param children  The child segments to render, from `routeChildren`.
@@ -541,23 +604,74 @@ async function renderRouteChildren(
 	children: RouteChildSegment[],
 	flags: GlobalFlags
 ): Promise< string > {
-	const rows = children.map( ( child ) => {
-		if ( child.isMeta ) {
-			return { route: child.segment, verbs: '(subcommand)' };
-		}
-		const info = resolveRouteInfo( index, namespace, child.route );
-		const verbList = supportedVerbsForRoute( index, info.path );
-		const parts = child.hasChildren
-			? [ ...verbList, '(subcommand)' ]
-			: verbList;
-		return { route: child.segment, verbs: parts.join( ', ' ) };
-	} );
+	const rows = buildChildRows( index, namespace, children );
 	return formatOutput( rows, {
 		format: flags.format,
 		fields: flags.fields,
 		field: flags.field,
 		color: flags.color,
 	} );
+}
+
+/**
+ * Renders a list of `{label, description}` items as WP-CLI's own SUBCOMMANDS
+ * rows: each label padded out to the widest one in the list plus a fixed
+ * gap, followed by its description — or the bare label alone when there's no
+ * description to show (avoids trailing whitespace).
+ * @param items The rows to render.
+ * @return One formatted line per item.
+ */
+function formatSubcommandRows(
+	items: { label: string; description: string }[]
+): string[] {
+	const width = Math.max( ...items.map( ( item ) => item.label.length ) ) + 4;
+	return items.map( ( item ) =>
+		item.description
+			? `  ${ item.label.padEnd( width ) }${ item.description }`
+			: `  ${ item.label }`
+	);
+}
+
+/**
+ * Renders a WP-CLI-native NAME/DESCRIPTION/SYNOPSIS/SUBCOMMANDS page for a
+ * list of child items — namespaces under the bare CLI, or routes under a
+ * namespace — mirroring the page real WP-CLI's own bare `wp` prints. Used
+ * only for the top-level bare `wp-rest-cli` / `wp-rest-cli <namespace>`
+ * listing in `--format=table`; other formats keep returning the raw
+ * `{route, verbs}`-shaped rows (see `buildChildRows`/`renderRouteChildren`)
+ * for scripting — this page is for the top-level listing alone (a route's
+ * own nested-children note, `renderChildrenNote`, reuses just the
+ * `formatSubcommandRows` row style above, without the NAME/DESCRIPTION/
+ * SYNOPSIS headers, since it's appended to output that already has those).
+ * @param name        The command name line, e.g. "wp-rest-cli" or "wp-rest-cli wp/v2".
+ * @param description One or more description lines (empty string for a blank line).
+ * @param synopsis    The one-line synopsis, e.g. "wp-rest-cli <namespace>".
+ * @param items       Each subcommand's name and one-line description (may be empty).
+ * @return The rendered page.
+ */
+function renderChildListWpCli(
+	name: string,
+	description: string[],
+	synopsis: string,
+	items: { label: string; description: string }[]
+): string {
+	return [
+		pc.bold( 'NAME' ),
+		'',
+		`  ${ name }`,
+		'',
+		pc.bold( 'DESCRIPTION' ),
+		'',
+		...description.map( ( line ) => ( line ? `  ${ line }` : '' ) ),
+		'',
+		pc.bold( 'SYNOPSIS' ),
+		'',
+		`  ${ synopsis }`,
+		'',
+		pc.bold( 'SUBCOMMANDS' ),
+		'',
+		...formatSubcommandRows( items ),
+	].join( '\n' );
 }
 
 /**
@@ -617,29 +731,31 @@ function withMetaChild(
  * A dim note appended after a real route's own introspection output when it
  * also has nested child segments (the "hybrid" case) — otherwise the
  * children would be silently unreachable, since typing the route in full
- * lands on its own schema, not a child listing.
+ * lands on its own schema, not a child listing. Only used for `--format=table`
+ * (see the call sites), so it always renders WP-CLI's own SUBCOMMANDS row
+ * style (`formatSubcommandRows`) rather than the plain `{route, verbs}` table
+ * `renderRouteChildren` still produces for other formats.
  * @param index     The site's root REST API index.
  * @param namespace The route's namespace.
  * @param children  The route's child segments, from `routeChildren`.
- * @param flags     Global CLI flags (format/fields/field/color).
  * @return The rendered note, or an empty string if there are no children.
  */
-async function renderChildrenNote(
+function renderChildrenNote(
 	index: IndexResponse,
 	namespace: string,
-	children: RouteChildSegment[],
-	flags: GlobalFlags
-): Promise< string > {
+	children: RouteChildSegment[]
+): string {
 	if ( ! children.length ) {
 		return '';
 	}
-	const childList = await renderRouteChildren(
-		index,
-		namespace,
-		children,
-		flags
+	const rows = buildChildRows( index, namespace, children );
+	const lines = formatSubcommandRows(
+		rows.map( ( row ) => ( { label: row.route, description: row.verbs } ) )
 	);
-	return pc.dim( '\nThis route also has nested sub-routes:\n' ) + childList;
+	return (
+		pc.dim( '\nThis route also has nested sub-routes:\n' ) +
+		lines.join( '\n' )
+	);
 }
 
 /**
@@ -820,7 +936,62 @@ async function resolveParamIndex(
 }
 
 /**
- * Combines the WP-CLI-style usage synopsis with the existing detailed per-method arg listing.
+ * Validates a verb's `field=value` arguments against the route's live schema
+ * for the matching HTTP method (see `COLLECTION_VERB_METHOD`), catching
+ * type mismatches (e.g. `--per_page=abc` for an `integer` arg), and — for
+ * every verb except `update` — any `required` arg missing from `fields`
+ * altogether, locally before the request is ever sent. A no-op for verbs
+ * with no entry in `COLLECTION_VERB_METHOD` (get/delete/exists), which have
+ * no reliable arg schema to check against.
+ * @param client      The REST client to issue the underlying schema request with.
+ * @param apiRoot     The resolved REST API root URL.
+ * @param namespace   The route's namespace.
+ * @param route       The route name.
+ * @param verb        The verb being run.
+ * @param fields      The parsed `field=value` arguments to validate.
+ * @param showSpinner Whether to show a progress spinner for the schema request.
+ */
+async function validateVerbFields(
+	client: WpRestClient,
+	apiRoot: string,
+	namespace: string,
+	route: string,
+	verb: Verb,
+	fields: Record< string, string >,
+	showSpinner: boolean
+): Promise< void > {
+	const method = COLLECTION_VERB_METHOD[ verb ];
+	if ( ! method ) {
+		return;
+	}
+	const { schema } = await getRouteSchema(
+		client,
+		apiRoot,
+		namespace,
+		route,
+		showSpinner
+	);
+	const endpoint = ( schema.endpoints ?? [] ).find( ( e ) =>
+		e.methods.includes( method )
+	);
+	// Every verb here maps onto that verb's *own* live schema except
+	// 'update', which borrows 'create'/POST's schema (WordPress exposes no
+	// separate schema for the item-level PUT endpoint) — a partial update
+	// legitimately omits create-time required fields, so only 'update' is
+	// exempt from the required check.
+	const checkRequired = verb !== 'update';
+	validateFieldTypes( fields, endpoint?.args, checkRequired );
+}
+
+/**
+ * Combines the WP-CLI-style usage synopsis with the existing detailed
+ * per-method arg listing. Doesn't say anything about `meta` itself even when
+ * the route supports it (no `usage: ... meta add ...` dump) — the caller
+ * already appends a nested-children note (`renderChildrenNote`, with `meta`
+ * folded in via `withMetaChild`) right after this, which is where `meta`
+ * shows up as a discoverable subcommand; repeating its full 8-line usage
+ * block here as well was pure noise on every single route that supports it.
+ * Run `wp <namespace> <route> meta` (or `wp help ... meta`) for that detail.
  * @param namespace     The route's namespace.
  * @param route         The route name.
  * @param schema        The route's introspected schema.
@@ -839,9 +1010,6 @@ function renderRouteHelp(
 ): string {
 	const endpoints = schema.endpoints ?? [];
 	const contexts = supportedContexts( schema );
-	const metaUsage = routeSupportsMeta( endpoints )
-		? '\n\n' + printMetaUsage( namespace, route )
-		: '';
 	const paramNote = requiresParam
 		? pc.dim(
 				`\nThis route only exists with a value in place of its URL parameter, e.g.:\n` +
@@ -863,13 +1031,328 @@ function renderRouteHelp(
 		: '';
 	return (
 		printRouteUsage( namespace, route, endpoints, verbs, paramName ) +
-		metaUsage +
 		paramNote +
 		noIdNote +
 		contextNote +
 		'\n\n' +
 		printIntrospection( namespace, route, endpoints, paramName )
 	);
+}
+
+/**
+ * A short, generic one-line description of what each verb does to a route,
+ * parameterised by the route name — the closest available approximation of
+ * WP-CLI's own hardcoded per-subcommand descriptions (e.g. `wp post create`'s
+ * "Creates a new post."), since this CLI's routes aren't known ahead of time.
+ */
+const VERB_DESCRIPTIONS: Record< Verb, ( route: string ) => string > = {
+	list: ( route ) => `Gets a list of ${ route }.`,
+	get: ( route ) => `Gets details about a ${ route } item.`,
+	create: ( route ) => `Creates a new ${ route } item.`,
+	update: ( route ) => `Updates one or more existing ${ route } items.`,
+	delete: ( route ) => `Deletes an existing ${ route } item.`,
+	exists: ( route ) => `Verifies whether a ${ route } item exists.`,
+	generate: ( route ) => `Generates some ${ route } items.`,
+};
+
+/** Verb-specific notes shown beneath OPTIONS/SUBCOMMANDS in the `--help` page. */
+const VERB_NOTES: Partial< Record< Verb, string > > = {
+	delete: 'Pass --force to bypass trash and permanently delete, where supported.',
+	exists: 'Exits 0 if a GET for <id> succeeds, 1 if it 404s; prints nothing else in table format.',
+	generate:
+		'Pass --count=<n> to create that many items (default 1); the same fields are reused for every one.',
+};
+
+/**
+ * Renders one endpoint's arguments WP-CLI `--help`-style: `[--name=<name>]`
+ * (or bare `--name=<name>` if required), its description indented beneath,
+ * and a `---` default/enum block when the schema declares them — matching
+ * the shape of WP-CLI's own OPTIONS listings.
+ * @param endpoint The endpoint whose args to render.
+ * @return One or more formatted lines per argument.
+ */
+function formatOptionsWpCli( endpoint: RouteEndpoint ): string[] {
+	const args = endpoint.args ?? {};
+	const names = Object.keys( args );
+	if ( names.length === 0 ) {
+		return [ '  (no arguments)' ];
+	}
+	const lines: string[] = [];
+	for ( const name of names ) {
+		const arg = args[ name ];
+		if ( ! arg ) {
+			continue;
+		}
+		lines.push(
+			`  ${
+				arg.required
+					? `--${ name }=<${ name }>`
+					: `[--${ name }=<${ name }>]`
+			}`
+		);
+		if ( arg.description ) {
+			lines.push( `      ${ arg.description }` );
+		}
+		if ( arg.enum || arg.default !== undefined ) {
+			lines.push( '      ---' );
+			if ( arg.default !== undefined ) {
+				lines.push(
+					`      default: ${ JSON.stringify( arg.default ) }`
+				);
+			}
+			if ( arg.enum ) {
+				lines.push( '      options:' );
+				lines.push(
+					...arg.enum.map( ( value ) => `        - ${ value }` )
+				);
+			}
+			lines.push( '      ---' );
+		}
+		lines.push( '' );
+	}
+	if ( lines[ lines.length - 1 ] === '' ) {
+		lines.pop();
+	}
+	return lines;
+}
+
+/**
+ * A single realistic-looking example invocation for a verb, e.g.
+ * `wp-rest-cli wp/v2 widgets create --title=<title> --url=https://example.com`
+ * — unlike {@link buildVerbSynopsis}, this only includes an endpoint's
+ * *required* args (no `[--optional=<optional>]` bracket noise), since it's
+ * meant to read as a command a user could actually type.
+ * @param namespace The route's namespace.
+ * @param route     The route name.
+ * @param verb      The verb to build an example for.
+ * @param endpoint  The matching HTTP method's endpoint schema, if any.
+ * @return The example command line, without its leading `$ `.
+ */
+function buildExampleInvocation(
+	namespace: string,
+	route: string,
+	verb: Verb,
+	endpoint: RouteEndpoint | undefined
+): string {
+	const base = `wp-rest-cli ${ namespace } ${ route } ${ verb }`;
+	const id =
+		verb === 'get' ||
+		verb === 'update' ||
+		verb === 'delete' ||
+		verb === 'exists'
+			? ' <id>'
+			: '';
+	const requiredArgs = Object.entries( endpoint?.args ?? {} )
+		.filter( ( [ , arg ] ) => arg?.required )
+		.map( ( [ name ] ) => `--${ name }=<${ name }>` )
+		.join( ' ' );
+	return [ base + id, requiredArgs, '--url=https://example.com' ]
+		.filter( Boolean )
+		.join( ' ' );
+}
+
+/**
+ * Renders `<namespace> <route> --help`'s WP-CLI-native help page — NAME,
+ * DESCRIPTION, SYNOPSIS, SUBCOMMANDS and EXAMPLES — mirroring the format real
+ * WP-CLI prints for a resource command like `wp post --help`. This is a
+ * separate, friendlier rendering from {@link renderRouteHelp}'s denser
+ * `usage:`/`or:` block, which `wp help ...` and bare introspection keep using.
+ * @param namespace      The route's namespace.
+ * @param route          The route name.
+ * @param schema         The route's introspected schema.
+ * @param requiresParam  Whether the route only exists in parameterised form.
+ * @param supportedVerbs The verbs this route actually supports.
+ * @return The rendered help page.
+ */
+function renderRouteHelpWpCli(
+	namespace: string,
+	route: string,
+	schema: RouteSchema,
+	requiresParam: boolean,
+	supportedVerbs: Verb[]
+): string {
+	const endpoints = schema.endpoints ?? [];
+	const hasMeta = routeSupportsMeta( endpoints );
+	const commands = VERBS.filter( ( verb ) =>
+		supportedVerbs.includes( verb )
+	);
+	const subcommandNames: string[] = [
+		...commands,
+		...( hasMeta ? [ META_KEYWORD ] : [] ),
+	];
+	const width =
+		Math.max( ...subcommandNames.map( ( name ) => name.length ) ) + 4;
+
+	const descriptionLines = [
+		`  Manage the "${ route }" resource under ${ namespace }.`,
+	];
+	if ( requiresParam ) {
+		descriptionLines.push(
+			'',
+			'  This route only exists with a value in place of its URL parameter, e.g.:',
+			`    wp-rest-cli ${ namespace } ${ route } get <value>`
+		);
+	}
+	if (
+		! requiresParam &&
+		! commands.some(
+			( verb ) => verb === 'get' || verb === 'update' || verb === 'delete'
+		)
+	) {
+		descriptionLines.push(
+			'',
+			"  This resource has no addressable <id> — read and write it directly via 'list'/'create'."
+		);
+	}
+	const contexts = supportedContexts( schema );
+	if ( contexts.length ) {
+		descriptionLines.push(
+			'',
+			`  Supported --context values: ${ contexts.join( ', ' ) }`
+		);
+	}
+
+	const subcommandLines = [
+		...commands.map(
+			( verb ) =>
+				`  ${ verb.padEnd( width ) }${ VERB_DESCRIPTIONS[ verb ](
+					route
+				) }`
+		),
+		...( hasMeta
+			? [
+					`  ${ META_KEYWORD.padEnd(
+						width
+					) }Adds, updates, deletes, and lists ${ route } custom fields.`,
+			  ]
+			: [] ),
+	];
+
+	const exampleVerbs: Verb[] = [
+		'list',
+		'get',
+		'create',
+		'update',
+		'delete',
+	];
+	const exampleLines = exampleVerbs
+		.filter( ( verb ) => commands.includes( verb ) )
+		.map( ( verb ) => {
+			const method = COLLECTION_VERB_METHOD[ verb ];
+			const endpoint = method
+				? endpoints.find( ( e ) => e.methods.includes( method ) )
+				: undefined;
+			return (
+				`    # ${ VERB_DESCRIPTIONS[ verb ]( route ) }\n` +
+				`    $ ${ buildExampleInvocation(
+					namespace,
+					route,
+					verb,
+					endpoint
+				) }`
+			);
+		} );
+
+	return [
+		pc.bold( 'NAME' ),
+		'',
+		`  wp-rest-cli ${ namespace } ${ route }`,
+		'',
+		pc.bold( 'DESCRIPTION' ),
+		'',
+		...descriptionLines,
+		'',
+		pc.bold( 'SYNOPSIS' ),
+		'',
+		`  wp-rest-cli ${ namespace } ${ route } <command>`,
+		'',
+		pc.bold( 'SUBCOMMANDS' ),
+		'',
+		...subcommandLines,
+		'',
+		pc.bold( 'EXAMPLES' ),
+		'',
+		exampleLines.join( '\n\n' ),
+	].join( '\n' );
+}
+
+/**
+ * Renders `<namespace> <route> <verb> --help`'s WP-CLI-native help page —
+ * NAME, DESCRIPTION, SYNOPSIS, OPTIONS (when the verb has a live arg schema)
+ * and EXAMPLES — mirroring the format real WP-CLI prints for a leaf command
+ * like `wp post create --help`. A separate, friendlier rendering from
+ * {@link printVerbHelp}, which `wp help ...` keeps using.
+ * @param namespace      The route's namespace.
+ * @param route          The route name.
+ * @param verb           The verb to describe.
+ * @param endpoints      The route's introspected endpoints.
+ * @param supportedVerbs The verbs this route actually supports.
+ * @return The rendered help page.
+ */
+function renderVerbHelpWpCli(
+	namespace: string,
+	route: string,
+	verb: Verb,
+	endpoints: RouteEndpoint[],
+	supportedVerbs: Verb[]
+): string {
+	const lines: string[] = [
+		pc.bold( 'NAME' ),
+		'',
+		`  wp-rest-cli ${ namespace } ${ route } ${ verb }`,
+		'',
+		pc.bold( 'DESCRIPTION' ),
+		'',
+		`  ${ VERB_DESCRIPTIONS[ verb ]( route ) }`,
+	];
+
+	if ( ! supportedVerbs.includes( verb ) ) {
+		lines.push(
+			'',
+			pc.red(
+				`  Warning: ${ namespace }/${ route } doesn't appear to support "${ verb }" — its registered ` +
+					`methods are: ${
+						supportedVerbs.length
+							? supportedVerbs.join( ', ' )
+							: '(none detected)'
+					}.`
+			)
+		);
+	}
+
+	lines.push(
+		'',
+		pc.bold( 'SYNOPSIS' ),
+		'',
+		`  ${ buildVerbSynopsis( namespace, route, verb, endpoints ) }`
+	);
+
+	const method = COLLECTION_VERB_METHOD[ verb ];
+	const endpoint = method
+		? endpoints.find( ( e ) => e.methods.includes( method ) )
+		: undefined;
+	if ( endpoint ) {
+		lines.push(
+			'',
+			pc.bold( 'OPTIONS' ),
+			'',
+			...formatOptionsWpCli( endpoint )
+		);
+	}
+
+	if ( VERB_NOTES[ verb ] ) {
+		lines.push( '', pc.dim( `  ${ VERB_NOTES[ verb ] }` ) );
+	}
+
+	lines.push(
+		'',
+		pc.bold( 'EXAMPLES' ),
+		'',
+		`    # ${ VERB_DESCRIPTIONS[ verb ]( route ) }`,
+		`    $ ${ buildExampleInvocation( namespace, route, verb, endpoint ) }`
+	);
+
+	return lines.join( '\n' );
 }
 
 /**
@@ -900,6 +1383,28 @@ export async function runRestCommand(
 			! flags.quiet,
 			() => fetchIndex( client, apiRoot )
 		);
+		const note = isApplicationPasswordsSupported( index )
+			? pc.dim( '\nApplication Passwords are supported on this site.' )
+			: pc.dim(
+					'\nApplication Passwords do not appear to be supported on this site.'
+			  );
+		if ( flags.format === 'table' ) {
+			const output =
+				renderChildListWpCli(
+					'wp-rest-cli',
+					[
+						"Talk to any WordPress site's REST API, WP-CLI style.",
+						'',
+						"Run 'wp-rest-cli help <namespace>' to get more information on a specific namespace.",
+					],
+					'wp-rest-cli <namespace>',
+					index.namespaces.map( ( namespace ) => ( {
+						label: namespace,
+						description: '',
+					} ) )
+				) + '\n';
+			return { output: output + note, exitCode: 0 };
+		}
 		const rows = index.namespaces.map( ( namespace ) => ( { namespace } ) );
 		const output = await formatOutput( rows, {
 			format: flags.format,
@@ -907,15 +1412,7 @@ export async function runRestCommand(
 			field: flags.field,
 			color: flags.color,
 		} );
-		const note = isApplicationPasswordsSupported( index )
-			? pc.dim( '\nApplication Passwords are supported on this site.' )
-			: pc.dim(
-					'\nApplication Passwords do not appear to be supported on this site.'
-			  );
-		return {
-			output: output + ( flags.format === 'table' ? note : '' ),
-			exitCode: 0,
-		};
+		return { output, exitCode: 0 };
 	}
 
 	if ( parsed.mode === 'routes' ) {
@@ -925,6 +1422,23 @@ export async function runRestCommand(
 			() => fetchIndex( client, apiRoot )
 		);
 		const children = routeChildren( index, parsed.namespace, '' );
+		if ( flags.format === 'table' ) {
+			const rows = buildChildRows( index, parsed.namespace, children );
+			const output = renderChildListWpCli(
+				`wp-rest-cli ${ parsed.namespace }`,
+				[
+					`Routes available under the "${ parsed.namespace }" namespace.`,
+					'',
+					`Run 'wp-rest-cli help ${ parsed.namespace } <route>' to get more information on a specific route.`,
+				],
+				`wp-rest-cli ${ parsed.namespace } <route>`,
+				rows.map( ( row ) => ( {
+					label: row.route,
+					description: row.verbs,
+				} ) )
+			);
+			return { output, exitCode: 0 };
+		}
 		const output = await renderRouteChildren(
 			index,
 			parsed.namespace,
@@ -945,6 +1459,29 @@ export async function runRestCommand(
 			children.length > 0 &&
 			! isRealRoute( index, parsed.namespace, parsed.route )
 		) {
+			if ( flags.format === 'table' ) {
+				const rows = buildChildRows(
+					index,
+					parsed.namespace,
+					children
+				);
+				const output = renderChildListWpCli(
+					`wp-rest-cli ${ parsed.namespace } ${ displayRoute(
+						parsed.route
+					) }`,
+					[
+						`This route has no schema of its own — it's a pure container for the routes nested beneath it.`,
+					],
+					`wp-rest-cli ${ parsed.namespace } ${ displayRoute(
+						parsed.route
+					) } <route>`,
+					rows.map( ( row ) => ( {
+						label: row.route,
+						description: row.verbs,
+					} ) )
+				);
+				return { output, exitCode: 0 };
+			}
 			const output = await renderRouteChildren(
 				index,
 				parsed.namespace,
@@ -1009,16 +1546,15 @@ export async function runRestCommand(
 					verbs,
 					paramName
 				) +
-				( await renderChildrenNote(
+				renderChildrenNote(
 					index,
 					parsed.namespace,
 					withMetaChild(
 						children,
 						parsed.route,
 						schema.endpoints ?? []
-					),
-					flags
-				) ),
+					)
+				),
 			exitCode: 0,
 		};
 	}
@@ -1105,6 +1641,15 @@ export async function runRestCommand(
 				`--count must be a positive integer, got "${ countRaw }".`
 			);
 		}
+		await validateVerbFields(
+			client,
+			apiRoot,
+			parsed.namespace,
+			parsed.route,
+			'generate',
+			createFields,
+			! flags.quiet
+		);
 
 		const created: unknown[] = [];
 		for ( let i = 0; i < count; i++ ) {
@@ -1151,6 +1696,15 @@ export async function runRestCommand(
 	}
 
 	// parsed.mode === 'verb', parsed.verb is now one of list/get/create/update/delete
+	await validateVerbFields(
+		client,
+		apiRoot,
+		parsed.namespace,
+		parsed.route,
+		parsed.verb,
+		parsed.fields,
+		! flags.quiet
+	);
 	const paramIndex = parsed.id
 		? await resolveParamIndex(
 				client,
@@ -1220,12 +1774,16 @@ export async function runRestCommand(
  * @param parsed  The parsed help request.
  * @param flags   Global CLI flags.
  * @param siteUrl The bare site URL or hostname to run the lookup against.
+ * @param style   Which help page to render for `'route'`/`'verb'` modes —
+ *                the existing dense `usage:` block, or the WP-CLI-native
+ *                NAME/DESCRIPTION/SYNOPSIS page used for a trailing `--help`.
  * @return The rendered help output and exit code.
  */
 export async function runHelpCommand(
 	parsed: ParsedHelp,
 	flags: GlobalFlags,
-	siteUrl: string
+	siteUrl: string,
+	style: HelpStyle = 'usage'
 ): Promise< { output: string; exitCode: number } > {
 	const client = new WpRestClient( buildAuth( flags ), flags.debug );
 	const apiRoot = await withSpinner(
@@ -1241,6 +1799,23 @@ export async function runHelpCommand(
 			() => fetchIndex( client, apiRoot )
 		);
 		const children = routeChildren( index, parsed.namespace, '' );
+		if ( flags.format === 'table' ) {
+			const rows = buildChildRows( index, parsed.namespace, children );
+			const output = renderChildListWpCli(
+				`wp-rest-cli ${ parsed.namespace }`,
+				[
+					`Routes available under the "${ parsed.namespace }" namespace.`,
+					'',
+					`Run 'wp-rest-cli help ${ parsed.namespace } <route>' to get more information on a specific route.`,
+				],
+				`wp-rest-cli ${ parsed.namespace } <route>`,
+				rows.map( ( row ) => ( {
+					label: row.route,
+					description: row.verbs,
+				} ) )
+			);
+			return { output, exitCode: 0 };
+		}
 		const output = await renderRouteChildren(
 			index,
 			parsed.namespace,
@@ -1279,6 +1854,29 @@ export async function runHelpCommand(
 			children.length > 0 &&
 			! isRealRoute( index, parsed.namespace, parsed.route )
 		) {
+			if ( flags.format === 'table' ) {
+				const rows = buildChildRows(
+					index,
+					parsed.namespace,
+					children
+				);
+				const output = renderChildListWpCli(
+					`wp-rest-cli ${ parsed.namespace } ${ displayRoute(
+						parsed.route
+					) }`,
+					[
+						`This route has no schema of its own — it's a pure container for the routes nested beneath it.`,
+					],
+					`wp-rest-cli ${ parsed.namespace } ${ displayRoute(
+						parsed.route
+					) } <route>`,
+					rows.map( ( row ) => ( {
+						label: row.route,
+						description: row.verbs,
+					} ) )
+				);
+				return { output, exitCode: 0 };
+			}
 			const output = await renderRouteChildren(
 				index,
 				parsed.namespace,
@@ -1298,24 +1896,31 @@ export async function runHelpCommand(
 			);
 		return {
 			output:
-				renderRouteHelp(
-					parsed.namespace,
-					parsed.route,
-					schema,
-					requiresParam,
-					verbs,
-					paramName
-				) +
-				( await renderChildrenNote(
+				( style === 'wpcli'
+					? renderRouteHelpWpCli(
+							parsed.namespace,
+							parsed.route,
+							schema,
+							requiresParam,
+							verbs
+					  )
+					: renderRouteHelp(
+							parsed.namespace,
+							parsed.route,
+							schema,
+							requiresParam,
+							verbs,
+							paramName
+					  ) ) +
+				renderChildrenNote(
 					index,
 					parsed.namespace,
 					withMetaChild(
 						children,
 						parsed.route,
 						schema.endpoints ?? []
-					),
-					flags
-				) ),
+					)
+				),
 			exitCode: 0,
 		};
 	}
@@ -1329,14 +1934,23 @@ export async function runHelpCommand(
 		! flags.quiet
 	);
 	return {
-		output: printVerbHelp(
-			parsed.namespace,
-			parsed.route,
-			parsed.verb,
-			schema.endpoints ?? [],
-			verbs,
-			paramName
-		),
+		output:
+			style === 'wpcli'
+				? renderVerbHelpWpCli(
+						parsed.namespace,
+						parsed.route,
+						parsed.verb,
+						schema.endpoints ?? [],
+						verbs
+				  )
+				: printVerbHelp(
+						parsed.namespace,
+						parsed.route,
+						parsed.verb,
+						schema.endpoints ?? [],
+						verbs,
+						paramName
+				  ),
 		exitCode: 0,
 	};
 }

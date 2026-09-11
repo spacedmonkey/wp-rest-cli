@@ -42,10 +42,25 @@ function run( args: string[] ) {
 }
 
 describe( 'wp-rest-cli (integration)', () => {
-	it( 'lists namespaces when run with no args', async () => {
+	it( 'lists namespaces when run with no args, WP-CLI-native NAME/DESCRIPTION/SYNOPSIS/SUBCOMMANDS style', async () => {
 		const result = await run( [] );
 		expect( result.exitCode ).toBe( 0 );
+		expect( result.stdout ).toContain( 'NAME' );
+		expect( result.stdout ).toContain( 'wp-rest-cli' );
+		expect( result.stdout ).toContain( 'DESCRIPTION' );
+		expect( result.stdout ).toContain( 'SYNOPSIS' );
+		expect( result.stdout ).toContain( 'wp-rest-cli <namespace>' );
+		expect( result.stdout ).toContain( 'SUBCOMMANDS' );
 		expect( result.stdout ).toContain( 'wp/v2' );
+		expect( result.stdout ).toContain( 'Application Passwords' );
+	} );
+
+	it( 'still lists namespaces as plain rows for a non-table --format', async () => {
+		const result = await run( [ '--format=json' ] );
+		expect( result.exitCode ).toBe( 0 );
+		expect( JSON.parse( result.stdout ) ).toEqual( [
+			{ namespace: 'wp/v2' },
+		] );
 	} );
 
 	it( 'lists routes for a namespace, with a verbs column instead of raw HTTP methods', async () => {
@@ -61,11 +76,28 @@ describe( 'wp-rest-cli (integration)', () => {
 		);
 	} );
 
+	it( 'lists routes for a namespace in table format as a WP-CLI-native SUBCOMMANDS page', async () => {
+		const result = await run( [ 'wp/v2' ] );
+		expect( result.exitCode ).toBe( 0 );
+		expect( result.stdout ).toContain( 'NAME' );
+		expect( result.stdout ).toContain( 'wp-rest-cli wp/v2' );
+		expect( result.stdout ).toContain( 'SYNOPSIS' );
+		expect( result.stdout ).toContain( 'wp-rest-cli wp/v2 <route>' );
+		expect( result.stdout ).toContain( 'SUBCOMMANDS' );
+		expect( result.stdout ).toMatch(
+			/widgets\s+list, get, create, update, delete, exists, generate/
+		);
+		// A pure container (no verbs of its own) shows only the marker.
+		expect( result.stdout ).toMatch( /global-styles\s+\(subcommand\)/ );
+	} );
+
 	it( 'introspects a route via OPTIONS', async () => {
 		const result = await run( [ 'wp/v2', 'widgets' ] );
 		expect( result.exitCode ).toBe( 0 );
 		expect( result.stdout ).toContain( 'per_page' );
-		expect( result.stdout ).toContain( 'required' );
+		// A required arg is shown bare (no brackets), unlike an optional one.
+		expect( result.stdout ).toContain( '--title=<string>' );
+		expect( result.stdout ).not.toContain( '[--title=<string>]' );
 	} );
 
 	it( 'shows a WP-CLI-style usage synopsis covering every verb', async () => {
@@ -158,6 +190,55 @@ describe( 'wp-rest-cli (integration)', () => {
 		expect( body.title.rendered ).toBe( 'Renamed' );
 	} );
 
+	it( 'rejects a non-integer value for an integer-typed field before sending the request', async () => {
+		const result = await run( [
+			'wp/v2',
+			'widgets',
+			'list',
+			'--per_page=abc',
+		] );
+		expect( result.exitCode ).toBe( 1 );
+		expect( result.stderr ).toContain(
+			'--per_page must be of type integer, got "abc".'
+		);
+	} );
+
+	it( 'rejects create when a required field is missing, before sending the request', async () => {
+		const result = await run( [ 'wp/v2', 'widgets', 'create' ] );
+		expect( result.exitCode ).toBe( 1 );
+		expect( result.stderr ).toContain( '--title is required.' );
+	} );
+
+	it( 'does not require create-time fields on a partial update', async () => {
+		const result = await run( [
+			'wp/v2',
+			'widgets',
+			'update',
+			'2',
+			'--format=json',
+		] );
+		expect( result.exitCode ).toBe( 0 );
+	} );
+
+	it( 'rejects list when a required query arg is missing, before sending the request', async () => {
+		const result = await run( [ 'wp/v2', 'file-size', 'list' ] );
+		expect( result.exitCode ).toBe( 1 );
+		expect( result.stderr ).toContain( '--url is required.' );
+	} );
+
+	it( 'accepts list once the required query arg is provided', async () => {
+		const result = await run( [
+			'wp/v2',
+			'file-size',
+			'list',
+			'url=https://example.com/image.jpg',
+			'--format=json',
+		] );
+		expect( result.exitCode ).toBe( 0 );
+		const body = JSON.parse( result.stdout );
+		expect( body.url ).toBe( 'https://example.com/image.jpg' );
+	} );
+
 	it( 'deletes an item by id', async () => {
 		const result = await run( [ 'wp/v2', 'widgets', 'delete', '1' ] );
 		expect( result.exitCode ).toBe( 0 );
@@ -181,7 +262,7 @@ describe( 'wp-rest-cli (integration)', () => {
 		const result = await run( [ 'help', 'wp/v2', 'widgets' ] );
 		expect( result.exitCode ).toBe( 0 );
 		expect( result.stdout ).toContain( 'per_page' );
-		expect( result.stdout ).toContain( 'required' );
+		expect( result.stdout ).toContain( '--title=<string>' );
 	} );
 
 	it( 'shows list-verb help with the matching collection GET args', async () => {
@@ -461,23 +542,50 @@ describe( 'wp-rest-cli (integration)', () => {
 		expect( result.stdout ).toContain( 'context' );
 	} );
 
-	it( "shows a trailing-parameter route's own URL parameter as required, even though WordPress declares it required: false in the schema", async () => {
+	it( "shows a hybrid route's nested-children note as WP-CLI-style rows, not an ASCII table", async () => {
 		const result = await run( [ 'wp/v2', 'global-styles', 'themes' ] );
 		expect( result.exitCode ).toBe( 0 );
 		expect( result.stdout ).toContain(
-			'--stylesheet=<string> [required] (this route’s own URL parameter)'
+			'This route also has nested sub-routes:'
 		);
-		// --context stays optional — only the route's own URL parameter is forced.
+		expect( result.stdout ).toMatch( /variations\s+list, get, exists/ );
+		expect( result.stdout ).not.toContain( '+-' );
+	} );
+
+	it( 'shows a pure-container route (no schema of its own) as a WP-CLI-native SUBCOMMANDS page', async () => {
+		const result = await run( [ 'wp/v2', 'posts' ] );
+		expect( result.exitCode ).toBe( 0 );
+		expect( result.stdout ).toContain( 'NAME' );
+		expect( result.stdout ).toContain( 'wp-rest-cli wp/v2 posts' );
+		expect( result.stdout ).toContain( 'SYNOPSIS' );
+		expect( result.stdout ).toContain( 'wp-rest-cli wp/v2 posts <route>' );
+		expect( result.stdout ).toContain( 'SUBCOMMANDS' );
+		expect( result.stdout ).toMatch( /revisions\s+list, get, exists/ );
+		expect( result.stdout ).not.toContain( '+-' );
+	} );
+
+	it( "shows a trailing-parameter route's own URL parameter as required, even though WordPress declares it required: false in the schema", async () => {
+		const result = await run( [ 'wp/v2', 'global-styles', 'themes' ] );
+		expect( result.exitCode ).toBe( 0 );
+		// A required arg (including the route's own forced-required URL
+		// parameter) is shown bare, no brackets — an optional one is bracketed.
 		expect( result.stdout ).toContain(
-			'--context=<string> enum(view,edit,embed) default("view") [optional]'
+			'--stylesheet=<string> (this route’s own URL parameter)'
 		);
+		expect( result.stdout ).not.toContain( '[--stylesheet=<string>]' );
+		expect( result.stdout ).toContain( '[--context=<string>]' );
+		expect( result.stdout ).toContain( 'default: "view"' );
+		expect( result.stdout ).toContain( 'options:' );
+		expect( result.stdout ).toContain( '- view' );
+		expect( result.stdout ).toContain( '- edit' );
+		expect( result.stdout ).toContain( '- embed' );
 	} );
 
 	it( "shows a mid-path route's own URL parameter as required, both in the detailed listing and the usage synopsis", async () => {
 		const result = await run( [ 'wp/v2', 'posts', 'revisions' ] );
 		expect( result.exitCode ).toBe( 0 );
 		expect( result.stdout ).toContain(
-			'--parent=<integer> [required] (this route’s own URL parameter)'
+			'--parent=<integer> (this route’s own URL parameter)'
 		);
 		// list's synopsis line pulls args in inline (unlike get/exists, which are
 		// hardcoded to just <id>) — the parameter shows bare, not bracketed.
@@ -704,24 +812,20 @@ describe( 'wp-rest-cli (integration)', () => {
 			return String( JSON.parse( result.stdout ).id );
 		}
 
-		it( 'shows the meta usage synopsis for a route that supports meta', async () => {
-			const result = await run( [ 'wp/v2', 'widgets' ] );
-			expect( result.exitCode ).toBe( 0 );
-			expect( result.stdout ).toContain(
-				'usage: wp-rest-cli wp/v2 widgets meta add <id> <key>'
-			);
-			expect( result.stdout ).toContain(
-				'wp-rest-cli wp/v2 widgets meta list <id>'
-			);
-		} );
-
-		it( 'also lists meta as a discoverable sub-route, alongside the detailed synopsis', async () => {
+		it( 'lists meta as a discoverable sub-route, without repeating its own full meta usage synopsis', async () => {
 			const result = await run( [ 'wp/v2', 'widgets' ] );
 			expect( result.exitCode ).toBe( 0 );
 			expect( result.stdout ).toContain(
 				'This route also has nested sub-routes:'
 			);
-			expect( result.stdout ).toMatch( /meta\s*\|\s*\(subcommand\)/ );
+			expect( result.stdout ).toMatch( /meta\s+\(subcommand\)/ );
+			// The full "usage: ... meta add/clean-duplicates/.../update"
+			// block is redundant once meta is already listed above as a
+			// discoverable subcommand — `wp <namespace> <route> meta` (or
+			// `wp help ... meta`) is where that detail belongs instead.
+			expect( result.stdout ).not.toContain(
+				'usage: wp-rest-cli wp/v2 widgets meta add <id> <key>'
+			);
 		} );
 
 		it( 'sets and reads back a meta value with update/get', async () => {
