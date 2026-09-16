@@ -28,8 +28,14 @@ import {
 	configFilePath,
 	rotateEncryptionKey,
 } from './config.js';
+import { APPLICATION_PASSWORDS_AUTH_TYPE } from './core/auth/types.js';
 import { formatErrorForDisplay, CliError, WpApiError } from './core/errors.js';
-import type { Context, GlobalFlags, OutputFormat } from './types.js';
+import type {
+	AuthSource,
+	Context,
+	GlobalFlags,
+	OutputFormat,
+} from './types.js';
 import { pc, setColorEnabled } from './ui.js';
 
 const CONTEXTS: Context[] = [ 'view', 'edit', 'embed' ];
@@ -42,6 +48,11 @@ const FORMATS: OutputFormat[] = [
 	'count',
 	'raw',
 ];
+const AUTH_SOURCES: AuthSource[] = [
+	'env',
+	'none',
+	APPLICATION_PASSWORDS_AUTH_TYPE,
+];
 
 // Long-option names commander owns directly. Everything else that looks like
 // --name=value or a bare --flag is a dynamic WP REST API field/query arg
@@ -53,6 +64,7 @@ const KNOWN_LONG_FLAGS = new Set( [
 	'url',
 	'username',
 	'password',
+	'use-auth',
 	'context',
 	'format',
 	'fields',
@@ -96,6 +108,7 @@ interface RawOptions {
 	url?: string;
 	username?: string;
 	password?: string;
+	useAuth?: string;
 	context: string;
 	format: string;
 	fields?: string;
@@ -128,10 +141,21 @@ function toGlobalFlags( options: RawOptions ): GlobalFlags {
 			}").`
 		);
 	}
+	if (
+		options.useAuth !== undefined &&
+		! AUTH_SOURCES.includes( options.useAuth as AuthSource )
+	) {
+		throw new CliError(
+			`--use-auth must be one of: ${ AUTH_SOURCES.join( ', ' ) } (got "${
+				options.useAuth
+			}").`
+		);
+	}
 	return {
 		url: options.url,
 		username: options.username,
 		password: options.password,
+		useAuth: options.useAuth as AuthSource | undefined,
 		context: options.context as Context,
 		format: options.format as OutputFormat,
 		fields: options.fields,
@@ -251,6 +275,10 @@ program
 	.option(
 		'--password <password>',
 		'Password or Application Password (also WP_PASSWORD env var)'
+	)
+	.option(
+		'--use-auth <source>',
+		'env|none|application-passwords — force which auth source to use, skipping the rest of the normal fallback chain (an explicit --username/--password still wins)'
 	)
 	.option( '--context <context>', 'view|edit|embed', 'view' )
 	.option( '--format <format>', 'table|json|csv|yaml|ids|count|raw', 'table' )

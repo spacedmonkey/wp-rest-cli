@@ -22,6 +22,14 @@ export WP_PASSWORD="xxxx xxxx xxxx xxxx xxxx xxxx"
 wp-rest-cli wp/v2 posts list --url=https://example.com
 ```
 
+`WP_USERNAME`/`WP_PASSWORD` take precedence over a stored `wp auth` credential for the same site (see below) — if both are set, the env vars win on every command, silently, with no per-invocation indication that's happening. If that's not what you want (e.g. the env vars are left over from something else, or set globally in your shell), pin resolution to the stored credential with `--use-auth=application-passwords`:
+
+```sh
+wp-rest-cli wp/v2 posts list --url=https://example.com --use-auth=application-passwords
+```
+
+`--use-auth` names a `wp auth` type rather than a generic "stored" — today there's only `application-passwords`, so this reads as "use whatever's stored for this site," but it's the same value `wp auth <type> ...` uses, and errors immediately if nothing's stored rather than silently falling through to anonymous. `--use-auth=env` is the mirror image (require the env vars, error if they're unset); `--use-auth=none` forces an anonymous request even if env vars or a stored credential exist. An explicit `--username`/`--password` flag still overrides everything, `--use-auth` included.
+
 ## Stored credentials (`wp auth`)
 
 You can also store a username/password (or Application Password) per site, so `--username`/`--password` don't need to be repeated on every invocation for sites you use often. Every `wp auth` command takes an explicit `<type>` naming which authentication mechanism to use — matching the literal key WordPress's own REST API index advertises it under in its `authentication` object. Today the only implemented type is `application-passwords`; the grammar leaves room for a future mechanism (e.g. `oauth2`) to be added as a sibling without changing anything about how `application-passwords` itself works:

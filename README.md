@@ -44,6 +44,7 @@ wp <namespace> <route> delete <id> [--force]
 | `--url=<site>` | WordPress site URL. Required unless a default is saved (`wp config set --url=`). |
 | `--username=<user>` | Also via the `WP_USERNAME` env var. |
 | `--password=<pass>` | Also via the `WP_PASSWORD` env var. A WordPress **Application Password** is strongly recommended over a real account password — see below. |
+| `--use-auth=env\|none\|application-passwords` | Pin credential resolution to exactly one source, skipping the rest of the normal fallback chain (an explicit `--username`/`--password` flag still wins). `env` requires `WP_USERNAME`/`WP_PASSWORD` to be set; `application-passwords` requires a `wp auth` credential to be stored for the site; `none` forces an anonymous request. |
 | `--context=view\|edit\|embed` | Default `view`. Run `wp <namespace> <route>` to see which values a given route actually supports. |
 | `--format=table\|json\|csv\|yaml\|ids\|count\|raw` | Default `table`. |
 | `--fields=<a,b,c>` | Limit output to specific top-level fields. |
