@@ -44,6 +44,7 @@ wp <namespace> <route> delete <id> [--force]
 | `--url=<site>` | WordPress site URL. Required unless a default is saved (`wp config set --url=`). |
 | `--username=<user>` | Also via the `WP_USERNAME` env var. |
 | `--password=<pass>` | Also via the `WP_PASSWORD` env var. A WordPress **Application Password** is strongly recommended over a real account password — see below. |
+| `--use-auth=env\|none\|application-passwords` | Pin credential resolution to exactly one source, skipping the rest of the normal fallback chain (an explicit `--username`/`--password` flag still wins). `env` requires `WP_USERNAME`/`WP_PASSWORD` to be set; `application-passwords` requires a `wp auth` credential to be stored for the site; `none` forces an anonymous request. |
 | `--context=view\|edit\|embed` | Default `view`. Run `wp <namespace> <route>` to see which values a given route actually supports. |
 | `--format=table\|json\|csv\|yaml\|ids\|count\|raw` | Default `table`. |
 | `--fields=<a,b,c>` | Limit output to specific top-level fields. |
@@ -64,6 +65,16 @@ wp-rest-cli wp/v2 posts list --url=https://example.com --username=admin --passwo
 ```
 
 Application Passwords are revocable and scoped per-application, and work over the same HTTP Basic Auth the CLI always sends — nothing else about how you invoke the CLI changes if you use one. Run `wp-rest-cli --url=<site>` to see whether a target site supports them (reported from the REST API index).
+
+You can also store credentials per site with `wp auth <type> ...` (`<type>` names the auth mechanism — today just `application-passwords`, matching WordPress's own key for it, leaving room for e.g. `oauth2` later), instead of passing `--username`/`--password` every time — including `wp auth application-passwords login <url>`, which obtains an Application Password for you via a browser flow (no copy-pasting a password), the same way `gh auth login`/`claude login` work:
+
+```sh
+wp-rest-cli auth application-passwords login https://example.com                                           # browser-based Application Password flow
+wp-rest-cli auth application-passwords add https://example.com --username=admin --password="xxxx xxxx xxxx xxxx xxxx xxxx"  # store one you already have
+wp-rest-cli auth application-passwords list
+```
+
+See [Authentication](https://spacedmonkey.github.io/wp-rest-cli/authentication/) for the full `wp auth` command reference.
 
 Auth is built behind a small `AuthProvider` interface so other methods (OAuth, cookie/nonce, etc.) can be added later without touching request code.
 
@@ -98,6 +109,12 @@ wp-rest-cli wp/v2 posts delete 42 --force --url=https://example.com
 wp-rest-cli config set --url=https://example.com --username=admin
 wp-rest-cli config get
 wp-rest-cli config clear
+
+# Store per-site credentials instead of passing --username/--password every time
+wp-rest-cli auth application-passwords login https://example.com
+wp-rest-cli auth application-passwords list
+wp-rest-cli auth application-passwords remove --all   # if a machine/config is ever compromised
+wp-rest-cli config rotate-key   # re-encrypt the local store under a fresh key
 ```
 
 ## Development
@@ -117,8 +134,8 @@ Code style follows the [WordPress/Gutenberg JavaScript coding standards](https:/
 
 - **Discovery**: `HEAD` the site → read the `Link: <...>; rel="https://api.w.org/"` header → fall back to the HTML `<link>` tag → fall back to probing `/wp-json/` then `/?rest_route=/`.
 - **Verbs, not raw HTTP methods**: `list`/`get`/`create`/`update`/`delete` mirror WP-CLI's own `wp post list`/`wp post create`/etc., but layered onto generic `<namespace> <route>` addressing so they work against any namespace — core or plugin — not just hardcoded resource names.
-- **Credentials**: v1 is flags/env vars only (`--username`/`--password`, `WP_USERNAME`/`WP_PASSWORD`). Optional OS-keychain "remember me" storage is a natural future addition (e.g. via `@napi-rs/keyring`, the maintained `keytar` replacement) but isn't built yet, to keep the CLI free of native-binding install requirements.
-- **Packages**: `commander` (parsing), native `fetch` (HTTP), `ora` (spinner), `table` + `flat` (table rendering with dot-flattened nested fields), `json-2-csv` (CSV), `yaml` (YAML), `picocolors` (colors), `conf` (saved defaults), `@wordpress/url` (query-string building).
+- **Credentials**: `--username`/`--password` (or `WP_USERNAME`/`WP_PASSWORD`) always take precedence; `wp auth <type> login`/`add` can additionally store a credential per site as a fallback for requests that omit them, encrypted at rest under a random key generated once per machine and kept in its own file — protects a leaked/copied config file alone, not against something with full account-level read access (an OS keychain would be needed for that, deliberately out of scope to avoid a native-binding dependency). `<type>` names the auth mechanism — `application-passwords` today, matching the key WordPress's own REST API index uses for it, with the grammar (and an exhaustively-checked `AuthType` union internally) already shaped for a second type — e.g. `oauth2` — to be added later without changing the command shape again. `wp config rotate-key` regenerates the encryption key, and `wp auth application-passwords remove --all` revokes-where-possible and forgets every stored credential, as an incident-response pair if a machine or its config is ever suspected compromised. `add` verifies a credential against the site before saving (unless `--skip-verify`); `login`/`remove` revoke the Application Password on the site itself, not just locally, whenever the credential being replaced/removed was confirmed to be one.
+- **Packages**: `commander` (parsing), native `fetch` (HTTP), `ora` (spinner), `table` + `flat` (table rendering with dot-flattened nested fields), `json-2-csv` (CSV), `yaml` (YAML), `picocolors` (colors), `conf` + `env-paths` (saved defaults + per-site credentials, and locating the per-machine encryption key file), `@wordpress/url` (query-string building).
 
 ## Known limitation
 

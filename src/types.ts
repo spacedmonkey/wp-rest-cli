@@ -1,6 +1,25 @@
 /** The REST API's `context` query param, controlling which fields a response includes. */
 export type Context = 'view' | 'edit' | 'embed';
 
+/**
+ * A `--use-auth` value: pins credential resolution to exactly one source in
+ * `buildAuth`'s normal `WP_USERNAME`/`WP_PASSWORD` env vars → stored `wp auth`
+ * credential fallback chain, erroring if that source has nothing available
+ * rather than silently falling through to the next one. `none` skips both,
+ * forcing an anonymous request even if env vars or a stored credential exist.
+ * An explicit `--username`/`--password` flag pair always wins regardless.
+ *
+ * A non-`env`/`none` value names a `wp auth` type (`application-passwords`
+ * today) rather than the generic word "stored" — deliberately, since once a
+ * second type (e.g. `oauth2`) can store its own credential per site, "the
+ * stored credential" is ambiguous and this needs to say *which* type's. This
+ * mirrors `AuthType` (`core/auth/types.ts`) by hand rather than importing it,
+ * the same way `OutputFormat`/`FORMATS` and `Context`/`CONTEXTS` are each kept
+ * in sync by hand elsewhere in this file/`cli.ts` — `types.ts` sits below
+ * `core/`, so it can't import from it without inverting that layering.
+ */
+export type AuthSource = 'env' | 'none' | 'application-passwords';
+
 /** A `--format` value accepted by `formatOutput`. */
 export type OutputFormat =
 	| 'table'
@@ -79,6 +98,7 @@ export interface GlobalFlags {
 	url?: string;
 	username?: string;
 	password?: string;
+	useAuth?: AuthSource;
 	context: Context;
 	format: OutputFormat;
 	fields?: string;

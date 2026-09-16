@@ -1,7 +1,9 @@
 /**
  * Internal dependencies
  */
+import { getSiteCredential, normalizeSiteUrl } from '../config.js';
 import { BasicAuthProvider } from '../core/auth/basic.js';
+import { APPLICATION_PASSWORDS_AUTH_TYPE } from '../core/auth/types.js';
 import { WpRestClient } from '../core/client.js';
 import { resolveApiRoot } from '../core/discovery.js';
 import { CliError, WpApiError } from '../core/errors.js';
@@ -273,18 +275,115 @@ export function parseHelpArgs( args: string[] ): ParsedHelp {
 }
 
 /**
- * Builds a Basic Auth provider from `--username`/`--password` flags, falling
- * back to `WP_USERNAME`/`WP_PASSWORD` env vars.
- * @param flags Global CLI flags.
- * @return An auth provider, or undefined if no credentials were given.
+ * Builds a `BasicAuthProvider` from a username/password pair that was
+ * *explicitly* given together (both present, from the same source) — used
+ * for `--username`/`--password` flags and for `WP_USERNAME`/`WP_PASSWORD` env
+ * vars alike, so both sources reject the same "only one given" and "given but
+ * empty" mistakes the same way. Checks presence (`!== undefined`) rather than
+ * truthiness, so an explicitly-empty value is caught too — it's "given," just
+ * given nothing — rather than being indistinguishable from not having been
+ * passed at all.
+ * @param  username    The username, if given.
+ * @param  password    The password, if given.
+ * @param  sourceLabel What to call this source in an error message (e.g.
+ *                     `'--username and --password'` or `'WP_USERNAME and WP_PASSWORD'`).
+ * @return The provider if both were given (and non-empty), or undefined if
+ *         neither was given at all.
+ * @throws {CliError} If exactly one of the pair was given, or both were given empty.
  */
-function buildAuth( flags: GlobalFlags ): BasicAuthProvider | undefined {
-	const username = flags.username ?? process.env.WP_USERNAME;
-	const password = flags.password ?? process.env.WP_PASSWORD;
-	if ( ! username || ! password ) {
+function providerFromPair(
+	username: string | undefined,
+	password: string | undefined,
+	sourceLabel: string
+): BasicAuthProvider | undefined {
+	const usernameGiven = username !== undefined;
+	const passwordGiven = password !== undefined;
+	if ( ! usernameGiven && ! passwordGiven ) {
 		return undefined;
 	}
+	if ( usernameGiven !== passwordGiven ) {
+		throw new CliError(
+			`Both ${ sourceLabel } must be given together — only one was provided.`
+		);
+	}
+	if ( ! username || ! password ) {
+		throw new CliError( `${ sourceLabel } must not be empty.` );
+	}
 	return new BasicAuthProvider( username, password );
+}
+
+/**
+ * Builds a Basic Auth provider, in this precedence order: `--username`/
+ * `--password` flags, then `WP_USERNAME`/`WP_PASSWORD` env vars, then a
+ * credential previously saved for `siteUrl` via `wp auth application-passwords
+ * login`/`wp auth application-passwords add`. Application Passwords work here
+ * unchanged: they're wire-compatible with Basic Auth (see `BasicAuthProvider`).
+ *
+ * `--use-auth=env`/`--use-auth=application-passwords` pins resolution to
+ * exactly that one source (skipping the rest of the chain below it),
+ * erroring if that source has nothing available rather than silently
+ * falling through to the next one — an escape hatch for when, say,
+ * `WP_USERNAME`/`WP_PASSWORD` are set in the shell for some unrelated purpose
+ * and would otherwise silently shadow a stored `wp auth` credential on every
+ * invocation, with no per-command indication that's happening. The
+ * non-`env`/`none` values name a `wp auth` type (see `AuthSource`) rather
+ * than a generic "stored" — today there's only one, so
+ * `--use-auth=application-passwords` is equivalent to "use whatever's stored
+ * for this site"; once a second type can store its own credential per site,
+ * this is what disambiguates which one. `--use-auth=none` skips both env
+ * vars and any stored credential, forcing an anonymous request even if
+ * either is available. An explicit `--username`/`--password` flag pair
+ * always wins regardless of `--use-auth` — it's the most deliberate override
+ * available.
+ * @param flags   Global CLI flags.
+ * @param siteUrl The site the request is being made against.
+ * @return An auth provider, or undefined if no credentials are available.
+ */
+function buildAuth(
+	flags: GlobalFlags,
+	siteUrl: string
+): BasicAuthProvider | undefined {
+	const fromFlags = providerFromPair(
+		flags.username,
+		flags.password,
+		'--username and --password'
+	);
+	if ( fromFlags ) {
+		return fromFlags;
+	}
+
+	if ( flags.useAuth === 'none' ) {
+		return undefined;
+	}
+
+	if ( flags.useAuth !== APPLICATION_PASSWORDS_AUTH_TYPE ) {
+		const fromEnv = providerFromPair(
+			process.env.WP_USERNAME,
+			process.env.WP_PASSWORD,
+			'WP_USERNAME and WP_PASSWORD'
+		);
+		if ( fromEnv ) {
+			return fromEnv;
+		}
+		if ( flags.useAuth === 'env' ) {
+			throw new CliError(
+				'--use-auth=env was given, but WP_USERNAME/WP_PASSWORD are not set.'
+			);
+		}
+	}
+
+	const stored = getSiteCredential( siteUrl );
+	if ( stored ) {
+		return new BasicAuthProvider( stored.username, stored.password );
+	}
+	if ( flags.useAuth === APPLICATION_PASSWORDS_AUTH_TYPE ) {
+		throw new CliError(
+			`--use-auth=${ APPLICATION_PASSWORDS_AUTH_TYPE } was given, but no credential is stored for ${ normalizeSiteUrl(
+				siteUrl
+			) }. Store one first with "wp auth application-passwords login" or "wp auth application-passwords add".`
+		);
+	}
+	return undefined;
 }
 
 /**
@@ -1369,7 +1468,7 @@ export async function runRestCommand(
 	flags: GlobalFlags,
 	siteUrl: string
 ): Promise< { output: string; exitCode: number } > {
-	const client = new WpRestClient( buildAuth( flags ), flags.debug );
+	const client = new WpRestClient( buildAuth( flags, siteUrl ), flags.debug );
 
 	const apiRoot = await withSpinner(
 		'Discovering REST API',
@@ -1785,7 +1884,7 @@ export async function runHelpCommand(
 	siteUrl: string,
 	style: HelpStyle = 'usage'
 ): Promise< { output: string; exitCode: number } > {
-	const client = new WpRestClient( buildAuth( flags ), flags.debug );
+	const client = new WpRestClient( buildAuth( flags, siteUrl ), flags.debug );
 	const apiRoot = await withSpinner(
 		'Discovering REST API',
 		! flags.quiet,
