@@ -1,6 +1,7 @@
 /**
  * Internal dependencies
  */
+import { getSiteCredential } from '../config.js';
 import { BasicAuthProvider } from '../core/auth/basic.js';
 import { WpRestClient } from '../core/client.js';
 import { resolveApiRoot } from '../core/discovery.js';
@@ -274,17 +275,54 @@ export function parseHelpArgs( args: string[] ): ParsedHelp {
 
 /**
  * Builds a Basic Auth provider from `--username`/`--password` flags, falling
- * back to `WP_USERNAME`/`WP_PASSWORD` env vars.
- * @param flags Global CLI flags.
- * @return An auth provider, or undefined if no credentials were given.
+ * back to `WP_USERNAME`/`WP_PASSWORD` env vars, and finally to a credential
+ * previously saved for `siteUrl` via `wp auth application-passwords login`/
+ * `wp auth application-passwords add` — flags and env vars always take
+ * precedence, so this never changes behavior for anyone not using
+ * `wp auth`. Application Passwords work here unchanged: they're
+ * wire-compatible with Basic Auth (see `BasicAuthProvider`).
+ *
+ * Explicitly supplying just one of username/password (from either flags or
+ * env vars) is treated as a mistake, not silently filled in from a stored
+ * credential: someone who typed `--username=alice` clearly intends to
+ * authenticate as alice, and falling through to whatever site-wide credential
+ * happens to be stored (quite possibly a different account entirely) would be
+ * a surprising, security-relevant switch with no indication it happened. This
+ * checks presence (`!== undefined`) rather than truthiness first, so an
+ * explicitly-empty `--username=`/`WP_USERNAME=""` is caught too — it's
+ * "given," just given nothing — rather than being indistinguishable from not
+ * having been passed at all and silently falling through the same way.
+ * @param flags   Global CLI flags.
+ * @param siteUrl The site the request is being made against.
+ * @return An auth provider, or undefined if no credentials are available.
  */
-function buildAuth( flags: GlobalFlags ): BasicAuthProvider | undefined {
+function buildAuth(
+	flags: GlobalFlags,
+	siteUrl: string
+): BasicAuthProvider | undefined {
 	const username = flags.username ?? process.env.WP_USERNAME;
 	const password = flags.password ?? process.env.WP_PASSWORD;
-	if ( ! username || ! password ) {
-		return undefined;
+	const usernameGiven = username !== undefined;
+	const passwordGiven = password !== undefined;
+
+	if ( usernameGiven && passwordGiven ) {
+		if ( ! username || ! password ) {
+			throw new CliError(
+				'--username and --password (or WP_USERNAME/WP_PASSWORD) must not be empty.'
+			);
+		}
+		return new BasicAuthProvider( username, password );
 	}
-	return new BasicAuthProvider( username, password );
+	if ( usernameGiven || passwordGiven ) {
+		throw new CliError(
+			'Both --username and --password (or both WP_USERNAME and WP_PASSWORD) must be given together — only one was provided.'
+		);
+	}
+	const stored = getSiteCredential( siteUrl );
+	if ( stored ) {
+		return new BasicAuthProvider( stored.username, stored.password );
+	}
+	return undefined;
 }
 
 /**
@@ -1369,7 +1407,7 @@ export async function runRestCommand(
 	flags: GlobalFlags,
 	siteUrl: string
 ): Promise< { output: string; exitCode: number } > {
-	const client = new WpRestClient( buildAuth( flags ), flags.debug );
+	const client = new WpRestClient( buildAuth( flags, siteUrl ), flags.debug );
 
 	const apiRoot = await withSpinner(
 		'Discovering REST API',
@@ -1785,7 +1823,7 @@ export async function runHelpCommand(
 	siteUrl: string,
 	style: HelpStyle = 'usage'
 ): Promise< { output: string; exitCode: number } > {
-	const client = new WpRestClient( buildAuth( flags ), flags.debug );
+	const client = new WpRestClient( buildAuth( flags, siteUrl ), flags.debug );
 	const apiRoot = await withSpinner(
 		'Discovering REST API',
 		! flags.quiet,

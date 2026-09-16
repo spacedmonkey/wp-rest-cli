@@ -7,6 +7,7 @@ import { describe, expect, it } from '@jest/globals';
  * Internal dependencies
  */
 import {
+	getApplicationPasswordAuthorizationUrl,
 	resolveMultiParamRoute,
 	resolveRouteInfo,
 	routeChildren,
@@ -392,5 +393,61 @@ describe( 'resolveMultiParamRoute / spliceParams', () => {
 				[ '5', '12' ]
 			)
 		).toEqual( [ 'posts', '5', 'revisions', '12' ] );
+	} );
+} );
+
+describe( 'getApplicationPasswordAuthorizationUrl', () => {
+	it( 'reads the authorization endpoint when the site advertises Application Passwords support', () => {
+		const withSupport: IndexResponse = {
+			namespaces: [ 'wp/v2' ],
+			routes: {},
+			authentication: {
+				'application-passwords': {
+					endpoints: {
+						authorization:
+							'https://example.com/wp-admin/authorize-application.php',
+					},
+				},
+			},
+		};
+		expect( getApplicationPasswordAuthorizationUrl( withSupport ) ).toBe(
+			'https://example.com/wp-admin/authorize-application.php'
+		);
+	} );
+
+	it( "reads a site-relative authorization endpoint as-is (resolving it is the caller's job)", () => {
+		const withRelative: IndexResponse = {
+			namespaces: [ 'wp/v2' ],
+			routes: {},
+			authentication: {
+				'application-passwords': {
+					endpoints: {
+						authorization: '/wp-admin/authorize-application.php',
+					},
+				},
+			},
+		};
+		expect( getApplicationPasswordAuthorizationUrl( withRelative ) ).toBe(
+			'/wp-admin/authorize-application.php'
+		);
+	} );
+
+	it( 'returns undefined when the site has no authentication field at all', () => {
+		expect(
+			getApplicationPasswordAuthorizationUrl( {
+				namespaces: [ 'wp/v2' ],
+				routes: {},
+			} )
+		).toBeUndefined();
+	} );
+
+	it( 'returns undefined when authentication is present but application-passwords is not', () => {
+		expect(
+			getApplicationPasswordAuthorizationUrl( {
+				namespaces: [ 'wp/v2' ],
+				routes: {},
+				authentication: { 'some-other-method': {} },
+			} )
+		).toBeUndefined();
 	} );
 } );

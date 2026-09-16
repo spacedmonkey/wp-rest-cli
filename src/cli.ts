@@ -8,6 +8,12 @@ import process from 'node:process';
  * Internal dependencies
  */
 import {
+	assertKnownAuthType,
+	AVAILABLE_AUTH_TYPES_LINE,
+	parseAuthArgs,
+	runAuthCommand,
+} from './commands/auth.js';
+import {
 	parseCommandArgs,
 	runRestCommand,
 	parseHelpArgs,
@@ -20,6 +26,7 @@ import {
 	setDefaults,
 	clearDefaults,
 	configFilePath,
+	rotateEncryptionKey,
 } from './config.js';
 import { formatErrorForDisplay, CliError, WpApiError } from './core/errors.js';
 import type { Context, GlobalFlags, OutputFormat } from './types.js';
@@ -175,11 +182,18 @@ async function handleConfigCommand(
 			console.log( pc.green( 'Success: cleared saved defaults.' ) );
 			return 0;
 		}
+		case 'rotate-key': {
+			rotateEncryptionKey();
+			console.log(
+				pc.green( 'Success: rotated the local encryption key.' )
+			);
+			return 0;
+		}
 		default: {
 			console.error(
 				formatErrorForDisplay(
 					new CliError(
-						'Usage: wp config <get|set|clear> [--url=] [--username=]'
+						'Usage: wp config <get|set|clear|rotate-key> [--url=] [--username=]'
 					)
 				)
 			);
@@ -269,6 +283,11 @@ Examples:
   $ wp-rest-cli wp/v2 posts create --title="Hello" --status=publish --url=https://example.com
   $ wp-rest-cli wp/v2 posts delete 42 --force --url=https://example.com
   $ wp-rest-cli config set --url=https://example.com --username=admin
+  $ wp-rest-cli auth application-passwords login https://example.com
+  $ wp-rest-cli auth application-passwords add https://example.com --username=admin --password=xxxx-xxxx-xxxx-xxxx
+  $ wp-rest-cli auth application-passwords list
+  $ wp-rest-cli auth application-passwords remove --all
+  $ wp-rest-cli config rotate-key
   $ wp-rest-cli help wp/v2 posts list --url=https://example.com
   $ wp-rest-cli wp/v2 posts --help --url=https://example.com
   $ wp-rest-cli wp/v2 posts create --help --url=https://example.com
@@ -284,12 +303,40 @@ run "wp-rest-cli <namespace> <route>" to see which ones a given route supports.
 			if ( args[ 0 ] === 'config' ) {
 				if ( options.help ) {
 					console.log(
-						'Usage: wp config <get|set|clear> [--url=] [--username=]'
+						'Usage: wp config <get|set|clear|rotate-key> [--url=] [--username=]'
 					);
 					process.exitCode = 0;
 					return;
 				}
 				process.exitCode = await handleConfigCommand( args, options );
+				return;
+			}
+
+			if ( args[ 0 ] === 'auth' ) {
+				if ( options.help ) {
+					// Validate a given type the same way a real invocation
+					// would (bare `wp auth --help`, with no type at all, is
+					// exempt — that's just asking for the general usage
+					// below) — otherwise `--help` would silently accept a
+					// bogus type and exit 0 where every other invocation
+					// shape correctly rejects it.
+					if ( args[ 1 ] !== undefined ) {
+						assertKnownAuthType( args[ 1 ] );
+					}
+					console.log(
+						`Usage: wp auth <type> <login|add|list|remove|use|status> [<url>] [--username=] [--password=] [--skip-verify] [--all]\n${ AVAILABLE_AUTH_TYPES_LINE }\nlogin also accepts an optional app-name=<name> field (default: wp-rest-cli).`
+					);
+					process.exitCode = 0;
+					return;
+				}
+				const flags = toGlobalFlags( options );
+				const parsed = parseAuthArgs( args.slice( 1 ) );
+				const { output, exitCode } = await runAuthCommand(
+					parsed,
+					flags
+				);
+				console.log( output );
+				process.exitCode = exitCode;
 				return;
 			}
 

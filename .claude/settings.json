@@ -1,0 +1,18 @@
+{
+	"permissions": {
+		"allow": [
+			"Bash(npm run typecheck)",
+			"Bash(npm run lint)",
+			"Bash(npx tsc --noEmit)",
+			"Bash(npm view *)",
+			"Bash(npx vitest run)",
+			"Bash(npx vitest run test/integration/cli.test.ts --testTimeout=20000)",
+			"Bash(npx eslint src test)",
+			"Bash(npx prettier --check \"src/**/*.ts\" \"test/**/*.ts\")",
+			"Bash(npm run test:unit)",
+			"Bash(npm run lint:pkg-json)",
+			"Bash(npx eslint .)",
+			"Bash(npm run lint:md:docs)"
+		]
+	}
+}

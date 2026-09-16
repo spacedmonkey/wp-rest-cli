@@ -30,6 +30,35 @@ async function readBody(
 	return text ? JSON.parse( text ) : {};
 }
 
+/**
+ * Parses an `Authorization: Basic <base64>` request header into its
+ * decoded username/password, shared by the three `users/me` routes below.
+ *
+ * @param req The incoming request.
+ * @return The decoded credential, or `null` if no valid Basic Auth header
+ *         was sent.
+ */
+function parseBasicAuth(
+	req: IncomingMessage
+): { username: string; password: string } | null {
+	const header = req.headers.authorization;
+	if ( ! header || ! header.startsWith( 'Basic ' ) ) {
+		return null;
+	}
+	const decoded = Buffer.from(
+		header.slice( 'Basic '.length ),
+		'base64'
+	).toString( 'utf8' );
+	const separatorIndex = decoded.indexOf( ':' );
+	if ( separatorIndex === -1 ) {
+		return null;
+	}
+	return {
+		username: decoded.slice( 0, separatorIndex ),
+		password: decoded.slice( separatorIndex + 1 ),
+	};
+}
+
 const widgets = new Map< number, Record< string, unknown > >( [
 	[
 		1,
@@ -45,6 +74,22 @@ let nextId = 2;
 
 const settings: Record< string, unknown > = { title: 'Fixture Site' };
 
+// Uuids "revoked" via DELETE /wp-json/wp/v2/users/me/application-passwords/:uuid
+// below, so tests can assert a specific uuid was revoked without the fixture
+// exposing any broader state.
+const revokedUuids = new Set< string >();
+
+/**
+ * Exposes the set of application-password uuids revoked so far via the
+ * fixture's DELETE /wp-json/wp/v2/users/me/application-passwords/:uuid route,
+ * for integration tests to assert against.
+ *
+ * @return The live (mutable) set of revoked uuids.
+ */
+export function getRevokedApplicationPasswordUuids(): Set< string > {
+	return revokedUuids;
+}
+
 export async function startFixture(): Promise< Fixture > {
 	const server = createServer( async ( req, res ) => {
 		const url = new URL( req.url ?? '/', 'http://localhost' );
@@ -55,6 +100,34 @@ export async function startFixture(): Promise< Fixture > {
 				link: `<${ baseUrlHolder.value }/wp-json/>; rel="https://api.w.org/"`,
 			} );
 			res.end();
+			return;
+		}
+
+		// Same HEAD-discovery Link header, but pointed at the "no Application
+		// Passwords" index below instead — `new URL('/wp-json/', base)` (the
+		// conventional-path discovery fallback) always resolves against the
+		// origin root regardless of `base`'s own path, so a sub-path variant
+		// can only be discovered via this HEAD Link header, not the fallback.
+		if ( req.method === 'HEAD' && path === '/no-app-passwords' ) {
+			res.writeHead( 200, {
+				link: `<${ baseUrlHolder.value }/no-app-passwords/wp-json/>; rel="https://api.w.org/"`,
+			} );
+			res.end();
+			return;
+		}
+
+		// A second, otherwise-identical site index, addressed as
+		// `${baseUrl}/no-app-passwords`, that omits the `authentication` field
+		// entirely — for exercising `wp auth application-passwords login`
+		// against a site that doesn't support Application Passwords at all
+		// (as opposed to the
+		// main fixture above, which always advertises support).
+		if ( path === '/no-app-passwords/wp-json/' ) {
+			send( res, 200, {
+				name: 'Fixture Site (no Application Passwords)',
+				namespaces: [ 'wp/v2' ],
+				routes: {},
+			} );
 			return;
 		}
 
@@ -488,6 +561,117 @@ export async function startFixture(): Promise< Fixture > {
 				return;
 			}
 			send( res, 200, [ { title: 'Default', settings: {} } ] );
+			return;
+		}
+
+		// The three routes below (introspect, /users/me, DELETE .../{uuid})
+		// share a small set of reserved sentinel values that select specific
+		// fixture behavior — collected here so a future test author doesn't
+		// reuse one of these for an unrelated purpose and get a confusing,
+		// silent behavior change:
+		//   - username 'admin'         → introspect 404s, i.e. "this is a real
+		//                                 account password, not an app password."
+		//   - password 'wrong-password' → /users/me 401s, i.e. "credentials
+		//                                 rejected" (any other password succeeds).
+		//   - uuid 'uuid-unrevokable'    → DELETE always 404s, i.e. "could not
+		//                                 revoke remotely" (any other uuid is
+		//                                 accepted and tracked as revoked).
+		//
+		// Models WordPress's real endpoint, which returns details of whichever
+		// Application Password is authenticating the current request — used by
+		// `wp auth application-passwords login`/`wp auth application-passwords
+		// remove` to capture a credential's uuid.
+		if (
+			path ===
+				'/wp-json/wp/v2/users/me/application-passwords/introspect' &&
+			req.method === 'GET'
+		) {
+			const auth = parseBasicAuth( req );
+			if ( ! auth ) {
+				send( res, 401, {
+					code: 'rest_not_logged_in',
+					message: 'You are not currently logged in.',
+					data: { status: 401 },
+				} );
+				return;
+			}
+			// 'admin' is reserved to model "authenticated fine via a real
+			// account password, not an application password."
+			if ( auth.username === 'admin' ) {
+				send( res, 404, {
+					code: 'rest_no_application_password',
+					message:
+						'Could not find an application password for the given user.',
+					data: { status: 404 },
+				} );
+				return;
+			}
+			send( res, 200, {
+				uuid: `uuid-${ auth.username }`,
+				app_id: null,
+				name: 'wp-rest-cli',
+				created: 1700000000,
+				last_used: null,
+				last_ip: null,
+			} );
+			return;
+		}
+
+		// Models the generic "am I authenticated at all" check
+		// `wp auth application-passwords add`'s validation falls back to when
+		// introspection above doesn't apply.
+		if ( path === '/wp-json/wp/v2/users/me' && req.method === 'GET' ) {
+			const auth = parseBasicAuth( req );
+			if ( ! auth ) {
+				send( res, 401, {
+					code: 'rest_not_logged_in',
+					message: 'You are not currently logged in.',
+					data: { status: 401 },
+				} );
+				return;
+			}
+			// 'wrong-password' is a reserved sentinel for deliberately
+			// exercising the "credentials rejected" path.
+			if ( auth.password === 'wrong-password' ) {
+				send( res, 401, {
+					code: 'rest_forbidden',
+					message: 'Invalid username or password.',
+					data: { status: 401 },
+				} );
+				return;
+			}
+			send( res, 200, { id: 1, name: auth.username } );
+			return;
+		}
+
+		const applicationPasswordMatch = path.match(
+			/^\/wp-json\/wp\/v2\/users\/me\/application-passwords\/([^/]+)$/
+		);
+		if ( applicationPasswordMatch && req.method === 'DELETE' ) {
+			const uuid = decodeURIComponent(
+				applicationPasswordMatch[ 1 ] as string
+			);
+			// Reserved to always 404, modelling "could not revoke remotely,
+			// fell back to local-only removal" — never actually revoked.
+			if ( uuid === 'uuid-unrevokable' ) {
+				send( res, 404, {
+					code: 'rest_application_password_not_found',
+					message: 'Application password not found.',
+					data: { status: 404 },
+				} );
+				return;
+			}
+			const auth = parseBasicAuth( req );
+			if ( ! auth ) {
+				send( res, 401, {
+					code: 'rest_not_logged_in',
+					message: 'You are not currently logged in.',
+					data: { status: 401 },
+				} );
+				return;
+			}
+			revokedUuids.add( uuid );
+			send( res, 200, { deleted: true, previous: { uuid } } );
 			return;
 		}
 

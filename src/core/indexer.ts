@@ -530,3 +530,18 @@ export function isApplicationPasswordsSupported(
 			?.authorization
 	);
 }
+
+/**
+ * Reads the site's Application Password authorization endpoint URL, if it
+ * advertises one — this is where `wp auth application-passwords login`
+ * sends the user's browser to approve a new Application Password.
+ * @param index The site's root REST API index.
+ * @return The authorization endpoint URL (absolute or site-relative, as the
+ *         site reports it), or undefined if unsupported.
+ */
+export function getApplicationPasswordAuthorizationUrl(
+	index: IndexResponse
+): string | undefined {
+	return index.authentication?.[ 'application-passwords' ]?.endpoints
+		?.authorization;
+}
