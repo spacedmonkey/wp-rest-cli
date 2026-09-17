@@ -129,7 +129,8 @@ async function handleAdd(
 		apiRoot,
 		parsed.clientId,
 		parsed.clientSecret,
-		parsed.diagnosticCode
+		parsed.diagnosticCode,
+		parsed.diagnosticGrantType
 	);
 
 	let warning: string | undefined;

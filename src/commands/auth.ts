@@ -68,6 +68,13 @@ export type ParsedAuth =
 			// Not a real part of the client_credentials grant (it has no
 			// code to exchange) — revert this once diagnosis is done.
 			diagnosticCode?: string;
+			// TEMPORARY, diagnostic-only: overrides the `grant_type` value
+			// this request sends (normally hardcoded to `client_credentials`)
+			// — lets a live-site test isolate whether the value itself, as
+			// received server-side, is really what's causing the mismatch
+			// (e.g. re-sending the exact same literal value to rule out any
+			// transport-level corruption). Revert this once diagnosis is done.
+			diagnosticGrantType?: string;
 	  }
 	| { authType: typeof APPLICATION_PASSWORDS_AUTH_TYPE; mode: 'list' }
 	| { authType: typeof OAUTH2_AUTH_TYPE; mode: 'list' }
@@ -279,7 +286,12 @@ function parseLoginArgs( authType: AuthType, rest: string[] ): ParsedAuth {
  */
 function parseAddArgs( authType: AuthType, rest: string[] ): ParsedAuth {
 	if ( authType === OAUTH2_AUTH_TYPE ) {
-		const knownFields = [ 'client-id', 'client-secret', 'code' ];
+		const knownFields = [
+			'client-id',
+			'client-secret',
+			'code',
+			'grant-type',
+		];
 		const [ url, ...fieldTokens ] = rest;
 		if ( ! url || isKnownFieldToken( url, knownFields ) ) {
 			throw new CliError(
@@ -299,6 +311,7 @@ function parseAddArgs( authType: AuthType, rest: string[] ): ParsedAuth {
 			clientId: fields[ 'client-id' ],
 			clientSecret: fields[ 'client-secret' ],
 			diagnosticCode: fields.code,
+			diagnosticGrantType: fields[ 'grant-type' ],
 		};
 	}
 
