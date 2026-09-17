@@ -358,8 +358,16 @@ export async function fetchOAuth2ClientCredentialsToken(
 	const endpoints = await assertOAuth2Supported( client, apiRoot );
 
 	const tokenUrl = new URL( endpoints.token, apiRoot ).toString();
+	// Sent both ways — as body params AND via HTTP Basic auth below — rather
+	// than relying on Basic auth alone. The WP-API/OAuth2 plugin's own token
+	// endpoint checks body params first specifically to sidestep proxies/CDNs
+	// that strip or mangle the Authorization header before it reaches PHP (a
+	// real, common hosting-config gotcha); sending only the fallback transport
+	// leaves that failure mode unnecessarily reachable.
 	const body = new URLSearchParams( {
 		grant_type: 'client_credentials',
+		client_id: clientId,
+		client_secret: clientSecret,
 	} ).toString();
 	const basicAuth = Buffer.from(
 		`${ clientId }:${ clientSecret }`,
