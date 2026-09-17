@@ -9,7 +9,7 @@ import process from 'node:process';
  */
 import {
 	assertKnownAuthType,
-	AVAILABLE_AUTH_TYPES_LINE,
+	authUsageText,
 	parseAuthArgs,
 	runAuthCommand,
 } from './commands/auth.js';
@@ -28,7 +28,11 @@ import {
 	configFilePath,
 	rotateEncryptionKey,
 } from './config.js';
-import { APPLICATION_PASSWORDS_AUTH_TYPE } from './core/auth/types.js';
+import {
+	APPLICATION_PASSWORDS_AUTH_TYPE,
+	OAUTH2_AUTH_TYPE,
+	type AuthType,
+} from './core/auth/types.js';
 import { formatErrorForDisplay, CliError, WpApiError } from './core/errors.js';
 import type {
 	AuthSource,
@@ -52,6 +56,7 @@ const AUTH_SOURCES: AuthSource[] = [
 	'env',
 	'none',
 	APPLICATION_PASSWORDS_AUTH_TYPE,
+	OAUTH2_AUTH_TYPE,
 ];
 
 // Long-option names commander owns directly. Everything else that looks like
@@ -278,7 +283,7 @@ program
 	)
 	.option(
 		'--use-auth <source>',
-		'env|none|application-passwords — force which auth source to use, skipping the rest of the normal fallback chain (an explicit --username/--password still wins)'
+		'env|none|application-passwords|oauth2 — force which auth source to use, skipping the rest of the normal fallback chain (an explicit --username/--password still wins)'
 	)
 	.option( '--context <context>', 'view|edit|embed', 'view' )
 	.option( '--format <format>', 'table|json|csv|yaml|ids|count|raw', 'table' )
@@ -315,6 +320,8 @@ Examples:
   $ wp-rest-cli auth application-passwords add https://example.com --username=admin --password=xxxx-xxxx-xxxx-xxxx
   $ wp-rest-cli auth application-passwords list
   $ wp-rest-cli auth application-passwords remove --all
+  $ wp-rest-cli auth oauth2 login https://example.com client-id=abc123
+  $ wp-rest-cli auth oauth2 add https://example.com client-id=abc123 client-secret=xxxx
   $ wp-rest-cli config rotate-key
   $ wp-rest-cli help wp/v2 posts list --url=https://example.com
   $ wp-rest-cli wp/v2 posts --help --url=https://example.com
@@ -352,7 +359,7 @@ run "wp-rest-cli <namespace> <route>" to see which ones a given route supports.
 						assertKnownAuthType( args[ 1 ] );
 					}
 					console.log(
-						`Usage: wp auth <type> <login|add|list|remove|use|status> [<url>] [--username=] [--password=] [--skip-verify] [--all]\n${ AVAILABLE_AUTH_TYPES_LINE }\nlogin also accepts an optional app-name=<name> field (default: wp-rest-cli).`
+						authUsageText( args[ 1 ] as AuthType | undefined )
 					);
 					process.exitCode = 0;
 					return;

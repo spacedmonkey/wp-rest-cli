@@ -3,7 +3,12 @@
  */
 import { getSiteCredential, normalizeSiteUrl } from '../config.js';
 import { BasicAuthProvider } from '../core/auth/basic.js';
-import { APPLICATION_PASSWORDS_AUTH_TYPE } from '../core/auth/types.js';
+import { OAuth2AuthProvider } from '../core/auth/oauth2.js';
+import type { AuthProvider } from '../core/auth/types.js';
+import {
+	APPLICATION_PASSWORDS_AUTH_TYPE,
+	OAUTH2_AUTH_TYPE,
+} from '../core/auth/types.js';
 import { WpRestClient } from '../core/client.js';
 import { resolveApiRoot } from '../core/discovery.js';
 import { CliError, WpApiError } from '../core/errors.js';
@@ -313,24 +318,32 @@ function providerFromPair(
 }
 
 /**
- * Builds a Basic Auth provider, in this precedence order: `--username`/
+ * Builds an auth provider, in this precedence order: `--username`/
  * `--password` flags, then `WP_USERNAME`/`WP_PASSWORD` env vars, then a
- * credential previously saved for `siteUrl` via `wp auth application-passwords
- * login`/`wp auth application-passwords add`. Application Passwords work here
- * unchanged: they're wire-compatible with Basic Auth (see `BasicAuthProvider`).
+ * credential previously saved for `siteUrl` via `wp auth <type> login`/`wp
+ * auth <type> add`. Application Passwords work over plain Basic Auth (see
+ * `BasicAuthProvider`); OAuth2 credentials use a bearer token (see
+ * `OAuth2AuthProvider`).
  *
- * `--use-auth=env`/`--use-auth=application-passwords` pins resolution to
- * exactly that one source (skipping the rest of the chain below it),
- * erroring if that source has nothing available rather than silently
- * falling through to the next one — an escape hatch for when, say,
+ * Written as an explicit switch on `flags.useAuth` first — rather than a
+ * single env-var gate with auth-type branches folded in around it — so that
+ * adding a further `AuthSource` value later can't silently fall through into
+ * the env-var/stored fallback below by mistake (a real bug this function
+ * used to be one edit away from: widening only the auth-type branch without
+ * also widening the env-var gate's own condition).
+ *
+ * `--use-auth=env`/`--use-auth=application-passwords`/`--use-auth=oauth2`
+ * each pin resolution to exactly that one source (skipping the rest of the
+ * chain below it), erroring if that source has nothing available rather than
+ * silently falling through to the next one — an escape hatch for when, say,
  * `WP_USERNAME`/`WP_PASSWORD` are set in the shell for some unrelated purpose
  * and would otherwise silently shadow a stored `wp auth` credential on every
  * invocation, with no per-command indication that's happening. The
  * non-`env`/`none` values name a `wp auth` type (see `AuthSource`) rather
- * than a generic "stored" — today there's only one, so
- * `--use-auth=application-passwords` is equivalent to "use whatever's stored
- * for this site"; once a second type can store its own credential per site,
- * this is what disambiguates which one. `--use-auth=none` skips both env
+ * than a generic "stored", since a site can now store a credential of each
+ * type at once — with neither `--use-auth` nor `--username`/`--password`/env
+ * vars given, both types stored for the same site is an error (ambiguous)
+ * rather than a silent preference for one. `--use-auth=none` skips both env
  * vars and any stored credential, forcing an anonymous request even if
  * either is available. An explicit `--username`/`--password` flag pair
  * always wins regardless of `--use-auth` — it's the most deliberate override
@@ -342,7 +355,7 @@ function providerFromPair(
 function buildAuth(
 	flags: GlobalFlags,
 	siteUrl: string
-): BasicAuthProvider | undefined {
+): AuthProvider | undefined {
 	const fromFlags = providerFromPair(
 		flags.username,
 		flags.password,
@@ -356,32 +369,69 @@ function buildAuth(
 		return undefined;
 	}
 
-	if ( flags.useAuth !== APPLICATION_PASSWORDS_AUTH_TYPE ) {
-		const fromEnv = providerFromPair(
-			process.env.WP_USERNAME,
-			process.env.WP_PASSWORD,
-			'WP_USERNAME and WP_PASSWORD'
-		);
-		if ( fromEnv ) {
-			return fromEnv;
-		}
-		if ( flags.useAuth === 'env' ) {
+	if ( flags.useAuth === OAUTH2_AUTH_TYPE ) {
+		const stored = getSiteCredential( siteUrl, OAUTH2_AUTH_TYPE );
+		if ( ! stored ) {
 			throw new CliError(
-				'--use-auth=env was given, but WP_USERNAME/WP_PASSWORD are not set.'
+				`--use-auth=${ OAUTH2_AUTH_TYPE } was given, but no OAuth2 credential is stored for ${ normalizeSiteUrl(
+					siteUrl
+				) }. Store one first with "wp auth oauth2 login" or "wp auth oauth2 add".`
 			);
 		}
+		return new OAuth2AuthProvider( stored.accessToken );
 	}
 
-	const stored = getSiteCredential( siteUrl );
-	if ( stored ) {
+	if ( flags.useAuth === APPLICATION_PASSWORDS_AUTH_TYPE ) {
+		const stored = getSiteCredential(
+			siteUrl,
+			APPLICATION_PASSWORDS_AUTH_TYPE
+		);
+		if ( ! stored ) {
+			throw new CliError(
+				`--use-auth=${ APPLICATION_PASSWORDS_AUTH_TYPE } was given, but no credential is stored for ${ normalizeSiteUrl(
+					siteUrl
+				) }. Store one first with "wp auth application-passwords login" or "wp auth application-passwords add".`
+			);
+		}
 		return new BasicAuthProvider( stored.username, stored.password );
 	}
-	if ( flags.useAuth === APPLICATION_PASSWORDS_AUTH_TYPE ) {
+
+	// `flags.useAuth` is 'env' or undefined here — every other value returned
+	// or threw above.
+	const fromEnv = providerFromPair(
+		process.env.WP_USERNAME,
+		process.env.WP_PASSWORD,
+		'WP_USERNAME and WP_PASSWORD'
+	);
+	if ( fromEnv ) {
+		return fromEnv;
+	}
+	if ( flags.useAuth === 'env' ) {
 		throw new CliError(
-			`--use-auth=${ APPLICATION_PASSWORDS_AUTH_TYPE } was given, but no credential is stored for ${ normalizeSiteUrl(
-				siteUrl
-			) }. Store one first with "wp auth application-passwords login" or "wp auth application-passwords add".`
+			'--use-auth=env was given, but WP_USERNAME/WP_PASSWORD are not set.'
 		);
+	}
+
+	const storedAppPasswords = getSiteCredential(
+		siteUrl,
+		APPLICATION_PASSWORDS_AUTH_TYPE
+	);
+	const storedOAuth2 = getSiteCredential( siteUrl, OAUTH2_AUTH_TYPE );
+	if ( storedAppPasswords && storedOAuth2 ) {
+		throw new CliError(
+			`Both an application-passwords and an oauth2 credential are stored for ${ normalizeSiteUrl(
+				siteUrl
+			) } — pass --use-auth=application-passwords or --use-auth=oauth2 to disambiguate.`
+		);
+	}
+	if ( storedAppPasswords ) {
+		return new BasicAuthProvider(
+			storedAppPasswords.username,
+			storedAppPasswords.password
+		);
+	}
+	if ( storedOAuth2 ) {
+		return new OAuth2AuthProvider( storedOAuth2.accessToken );
 	}
 	return undefined;
 }

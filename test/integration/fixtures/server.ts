@@ -90,6 +90,83 @@ export function getRevokedApplicationPasswordUuids(): Set< string > {
 	return revokedUuids;
 }
 
+// Reserved OAuth2 client ids, collected here for the same reason the
+// users/me/introspect/DELETE sentinels above are:
+//   - 'test-client-id'        → succeeds for both authorization_code and
+//                                client_credentials.
+//   - 'test-client-id-deny'   → GET /oauth2-authorize simulates the user
+//                                cancelling the consent screen (the only case
+//                                that redirects on error, per the real
+//                                plugin's behavior).
+//   - 'test-client-id-no-cc'  → succeeds for authorization_code, but the
+//                                token endpoint 400s it for
+//                                client_credentials specifically — models an
+//                                Application that doesn't have the
+//                                "Client Credentials Grant" setting enabled.
+// Any other client_id is "unknown" — GET /oauth2-authorize refuses it with a
+// plain (non-redirect) error, matching the real plugin's wp_die() (it can't
+// safely redirect to an unvalidated redirect_uri in the first place).
+const KNOWN_OAUTH2_CLIENT_IDS = [
+	'test-client-id',
+	'test-client-id-deny',
+	'test-client-id-no-cc',
+];
+
+// One-time authorization codes issued by GET /oauth2-authorize, consumed by
+// POST /wp-json/oauth2/access_token's authorization_code grant.
+const oauth2Codes = new Map<
+	string,
+	{ clientId: string; redirectUri: string }
+>();
+let oauth2CodeCounter = 0;
+
+// Access tokens issued by the token endpoint (either grant) — used by
+// GET /wp-json/wp/v2/users/me to recognize a Bearer token as authenticated,
+// modelling a client_credentials token's lack of real user context (id 0).
+const oauth2AccessTokens = new Set< string >();
+let oauth2TokenCounter = 0;
+
+// Hit counters for the two OAuth2 routes below, so a test can assert neither
+// was ever reached — e.g. when discovery-gating should have blocked the CLI
+// before any network call to them at all.
+const oauth2RouteHits = { authorize: 0, token: 0 };
+
+/**
+ * Exposes how many times GET /oauth2-authorize and POST
+ * /wp-json/oauth2/access_token have been hit so far, for integration tests
+ * to assert against (typically that a count did NOT increase across some
+ * action, e.g. discovery-gating refusing to proceed at all).
+ *
+ * @return A snapshot of the current hit counts.
+ */
+export function getOAuth2RouteHitCounts(): {
+	authorize: number;
+	token: number;
+} {
+	return { ...oauth2RouteHits };
+}
+
+/**
+ * Parses a `application/x-www-form-urlencoded` request body — distinct from
+ * `readBody()` above, which unconditionally `JSON.parse`s and would throw on
+ * this shape. The OAuth2 token endpoint below is the only fixture route that
+ * receives a form-encoded body (mirroring the real WP-API/OAuth2 plugin's
+ * token endpoint), so this parser is scoped to just that route rather than
+ * generalizing `readBody()` to sniff `Content-Type`.
+ *
+ * @param req The incoming request.
+ * @return The parsed form fields.
+ */
+async function readFormBody(
+	req: IncomingMessage
+): Promise< URLSearchParams > {
+	const chunks: Buffer[] = [];
+	for await ( const chunk of req ) {
+		chunks.push( chunk as Buffer );
+	}
+	return new URLSearchParams( Buffer.concat( chunks ).toString( 'utf8' ) );
+}
+
 export async function startFixture(): Promise< Fixture > {
 	const server = createServer( async ( req, res ) => {
 		const url = new URL( req.url ?? '/', 'http://localhost' );
@@ -141,6 +218,22 @@ export async function startFixture(): Promise< Fixture > {
 							authorization:
 								'/wp-admin/authorize-application.php',
 						},
+					},
+					// Deliberately omits 'client_credentials' from
+					// grant_types, matching the real WP-API/OAuth2 plugin's
+					// behavior — it only ever lists the grants registered
+					// against its browser-authorize Types\Type interface
+					// (authorization_code/implicit), never the
+					// client_credentials special case in its token endpoint,
+					// even when that grant is fully enabled for a client.
+					// Exercises that the CLI's discovery gating keys off
+					// endpoints.token presence, not grant_types.
+					oauth2: {
+						endpoints: {
+							authorization: '/oauth2-authorize',
+							token: '/wp-json/oauth2/access_token',
+						},
+						grant_types: [ 'authorization_code', 'implicit' ],
 					},
 				},
 				routes: {
@@ -276,6 +369,111 @@ export async function startFixture(): Promise< Fixture > {
 						},
 				},
 			} );
+			return;
+		}
+
+		// Simulates the WP-API/OAuth2 plugin's non-REST wp-login.php authorize
+		// step. A real invocation of this requires a logged-in wp-admin session
+		// and a nonce-protected consent form — this fixture necessarily
+		// simplifies that away to just the two outcomes the CLI's own flow
+		// needs to exercise: approve (redirect with a code) or cancel (redirect
+		// with error=access_denied). An unknown client_id/missing redirect_uri
+		// never redirects at all, matching the real plugin's wp_die() — it
+		// can't safely redirect to an unvalidated URI in the first place.
+		if ( path === '/oauth2-authorize' && req.method === 'GET' ) {
+			oauth2RouteHits.authorize++;
+			const clientId = url.searchParams.get( 'client_id' );
+			const redirectUri = url.searchParams.get( 'redirect_uri' );
+			const state = url.searchParams.get( 'state' ) ?? '';
+			if (
+				! clientId ||
+				! redirectUri ||
+				! KNOWN_OAUTH2_CLIENT_IDS.includes( clientId )
+			) {
+				res.writeHead( 400, { 'content-type': 'text/plain' } );
+				res.end( 'invalid client_id or redirect_uri' );
+				return;
+			}
+			if ( clientId === 'test-client-id-deny' ) {
+				const denyUrl = new URL( redirectUri );
+				denyUrl.searchParams.set( 'error', 'access_denied' );
+				denyUrl.searchParams.set( 'state', state );
+				res.writeHead( 302, { location: denyUrl.toString() } );
+				res.end();
+				return;
+			}
+			const code = `code-${ ++oauth2CodeCounter }`;
+			oauth2Codes.set( code, { clientId, redirectUri } );
+			const successUrl = new URL( redirectUri );
+			successUrl.searchParams.set( 'code', code );
+			successUrl.searchParams.set( 'state', state );
+			res.writeHead( 302, { location: successUrl.toString() } );
+			res.end();
+			return;
+		}
+
+		// Simulates the plugin's token endpoint. Real requests here are
+		// form-encoded (application/x-www-form-urlencoded), not JSON — see
+		// `readFormBody()`.
+		if (
+			path === '/wp-json/oauth2/access_token' &&
+			req.method === 'POST'
+		) {
+			oauth2RouteHits.token++;
+			const body = await readFormBody( req );
+			const grantType = body.get( 'grant_type' );
+
+			if ( grantType === 'authorization_code' ) {
+				const code = body.get( 'code' );
+				const clientId = body.get( 'client_id' );
+				const redirectUri = body.get( 'redirect_uri' );
+				const issued = code ? oauth2Codes.get( code ) : undefined;
+				if (
+					! issued ||
+					issued.clientId !== clientId ||
+					issued.redirectUri !== redirectUri
+				) {
+					send( res, 400, { error: 'invalid_grant' } );
+					return;
+				}
+				oauth2Codes.delete( code as string ); // one-time use
+				const token = `oauth2-token-${ ++oauth2TokenCounter }`;
+				oauth2AccessTokens.add( token );
+				send( res, 200, {
+					access_token: token,
+					token_type: 'bearer',
+				} );
+				return;
+			}
+
+			if ( grantType === 'client_credentials' ) {
+				const basicAuth = parseBasicAuth( req );
+				const clientId =
+					basicAuth?.username ?? body.get( 'client_id' ) ?? undefined;
+				const clientSecret =
+					basicAuth?.password ??
+					body.get( 'client_secret' ) ??
+					undefined;
+				if ( ! clientId || ! clientSecret ) {
+					send( res, 400, { error: 'invalid_client' } );
+					return;
+				}
+				// Models an Application without the "Client Credentials
+				// Grant" setting enabled in wp-admin.
+				if ( clientId === 'test-client-id-no-cc' ) {
+					send( res, 400, { error: 'unsupported_grant_type' } );
+					return;
+				}
+				const token = `oauth2-token-${ ++oauth2TokenCounter }`;
+				oauth2AccessTokens.add( token );
+				send( res, 200, {
+					access_token: token,
+					token_type: 'bearer',
+				} );
+				return;
+			}
+
+			send( res, 400, { error: 'unsupported_grant_type' } );
 			return;
 		}
 
@@ -619,8 +817,26 @@ export async function startFixture(): Promise< Fixture > {
 
 		// Models the generic "am I authenticated at all" check
 		// `wp auth application-passwords add`'s validation falls back to when
-		// introspection above doesn't apply.
+		// introspection above doesn't apply. Also accepts a Bearer token
+		// issued by the OAuth2 token endpoint above, for `wp auth oauth2
+		// add`'s own best-effort verification step — authenticating as user
+		// id 0, modelling a client_credentials token's lack of real user
+		// context.
 		if ( path === '/wp-json/wp/v2/users/me' && req.method === 'GET' ) {
+			const authHeader = req.headers.authorization;
+			if ( authHeader?.startsWith( 'Bearer ' ) ) {
+				const token = authHeader.slice( 'Bearer '.length );
+				if ( oauth2AccessTokens.has( token ) ) {
+					send( res, 200, { id: 0, name: 'oauth2-client' } );
+					return;
+				}
+				send( res, 401, {
+					code: 'rest_not_logged_in',
+					message: 'You are not currently logged in.',
+					data: { status: 401 },
+				} );
+				return;
+			}
 			const auth = parseBasicAuth( req );
 			if ( ! auth ) {
 				send( res, 401, {

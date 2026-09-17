@@ -9,16 +9,16 @@ export type Context = 'view' | 'edit' | 'embed';
  * forcing an anonymous request even if env vars or a stored credential exist.
  * An explicit `--username`/`--password` flag pair always wins regardless.
  *
- * A non-`env`/`none` value names a `wp auth` type (`application-passwords`
- * today) rather than the generic word "stored" — deliberately, since once a
- * second type (e.g. `oauth2`) can store its own credential per site, "the
- * stored credential" is ambiguous and this needs to say *which* type's. This
- * mirrors `AuthType` (`core/auth/types.ts`) by hand rather than importing it,
- * the same way `OutputFormat`/`FORMATS` and `Context`/`CONTEXTS` are each kept
- * in sync by hand elsewhere in this file/`cli.ts` — `types.ts` sits below
- * `core/`, so it can't import from it without inverting that layering.
+ * A non-`env`/`none` value names a `wp auth` type (`application-passwords` or
+ * `oauth2`) rather than the generic word "stored" — deliberately, since a site
+ * can now store a credential of each type at once, so "the stored credential"
+ * is ambiguous and this needs to say *which* type's. This mirrors `AuthType`
+ * (`core/auth/types.ts`) by hand rather than importing it, the same way
+ * `OutputFormat`/`FORMATS` and `Context`/`CONTEXTS` are each kept in sync by
+ * hand elsewhere in this file/`cli.ts` — `types.ts` sits below `core/`, so it
+ * can't import from it without inverting that layering.
  */
-export type AuthSource = 'env' | 'none' | 'application-passwords';
+export type AuthSource = 'env' | 'none' | 'application-passwords' | 'oauth2';
 
 /** A `--format` value accepted by `formatOutput`. */
 export type OutputFormat =
@@ -70,6 +70,10 @@ export interface IndexResponse {
 	authentication?: {
 		'application-passwords'?: {
 			endpoints?: { authorization?: string };
+		};
+		oauth2?: {
+			endpoints?: { authorization?: string; token?: string };
+			grant_types?: string[];
 		};
 		[ key: string ]: unknown;
 	};

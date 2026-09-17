@@ -545,3 +545,45 @@ export function getApplicationPasswordAuthorizationUrl(
 	return index.authentication?.[ 'application-passwords' ]?.endpoints
 		?.authorization;
 }
+
+/** A site's advertised OAuth2 endpoints (WP-API/OAuth2 plugin). */
+export interface OAuth2Endpoints {
+	authorization?: string;
+	token: string;
+}
+
+/**
+ * Whether the site advertises OAuth2 support (the WP-API/OAuth2 plugin) with
+ * at least a token endpoint — the minimum needed for `client_credentials`.
+ * Deliberately does not consult `grant_types`: the plugin's index never lists
+ * `client_credentials` there even when the token endpoint fully supports it
+ * (it's a hardcoded special case inside the token endpoint that bypasses the
+ * `Types\Type` interface `grant_types` is built from) — gating on it would
+ * falsely report the feature unsupported on every real site.
+ * @param index The site's root REST API index.
+ * @return Whether the `oauth2` authentication entry advertises a token endpoint.
+ */
+export function isOAuth2Supported( index: IndexResponse ): boolean {
+	return Boolean( index.authentication?.oauth2?.endpoints?.token );
+}
+
+/**
+ * Reads the site's advertised OAuth2 endpoints, if it advertises a token
+ * endpoint at minimum (see {@link isOAuth2Supported}) — the authorization
+ * endpoint is included when present but not required, since only the
+ * `authorization_code` flow (not `client_credentials`) needs it.
+ * @param index The site's root REST API index.
+ * @return The advertised endpoints, or undefined if no token endpoint is advertised.
+ */
+export function getOAuth2Endpoints(
+	index: IndexResponse
+): OAuth2Endpoints | undefined {
+	const oauth2 = index.authentication?.oauth2;
+	if ( ! oauth2?.endpoints?.token ) {
+		return undefined;
+	}
+	return {
+		authorization: oauth2.endpoints.authorization,
+		token: oauth2.endpoints.token,
+	};
+}

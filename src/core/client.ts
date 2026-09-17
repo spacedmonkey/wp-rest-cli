@@ -2,7 +2,7 @@
  * Internal dependencies
  */
 import type { AuthProvider } from './auth/types.js';
-import { debugLog, redactHeaders } from './debug.js';
+import { debugLog, redactBody, redactHeaders } from './debug.js';
 import { parseErrorResponse } from './errors.js';
 
 export interface RequestOptions {
@@ -76,7 +76,9 @@ export class WpRestClient {
 				debugLog( `  ${ key }: ${ value }` );
 			}
 			if ( body ) {
-				debugLog( `  body: ${ body }` );
+				debugLog(
+					`  body: ${ redactBody( body, headers[ 'Content-Type' ] ) }`
+				);
 			}
 		}
 

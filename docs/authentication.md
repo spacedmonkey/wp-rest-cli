@@ -28,11 +28,11 @@ wp-rest-cli wp/v2 posts list --url=https://example.com
 wp-rest-cli wp/v2 posts list --url=https://example.com --use-auth=application-passwords
 ```
 
-`--use-auth` names a `wp auth` type rather than a generic "stored" — today there's only `application-passwords`, so this reads as "use whatever's stored for this site," but it's the same value `wp auth <type> ...` uses, and errors immediately if nothing's stored rather than silently falling through to anonymous. `--use-auth=env` is the mirror image (require the env vars, error if they're unset); `--use-auth=none` forces an anonymous request even if env vars or a stored credential exist. An explicit `--username`/`--password` flag still overrides everything, `--use-auth` included.
+`--use-auth` names a `wp auth` type (`application-passwords` or `oauth2` — see [OAuth2](#oauth2) below) rather than a generic "stored", since a site can have a credential of each type stored at once — it's the same value `wp auth <type> ...` uses, and errors immediately if nothing of that type is stored rather than silently falling through to anonymous. `--use-auth=env` is the mirror image (require the env vars, error if they're unset); `--use-auth=none` forces an anonymous request even if env vars or a stored credential exist. An explicit `--username`/`--password` flag still overrides everything, `--use-auth` included.
 
 ## Stored credentials (`wp auth`)
 
-You can also store a username/password (or Application Password) per site, so `--username`/`--password` don't need to be repeated on every invocation for sites you use often. Every `wp auth` command takes an explicit `<type>` naming which authentication mechanism to use — matching the literal key WordPress's own REST API index advertises it under in its `authentication` object. Today the only implemented type is `application-passwords`; the grammar leaves room for a future mechanism (e.g. `oauth2`) to be added as a sibling without changing anything about how `application-passwords` itself works:
+You can also store a username/password (or Application Password) per site, so `--username`/`--password` don't need to be repeated on every invocation for sites you use often. Every `wp auth` command takes an explicit `<type>` naming which authentication mechanism to use — matching the literal key the site's REST API index advertises it under in its `authentication` object. `application-passwords` is documented here; `oauth2` (a second, independent credential a site can hold at the same time) is documented separately below.
 
 ```sh
 # Store a manually-issued Application Password (or a real account password):
@@ -49,7 +49,7 @@ wp-rest-cli auth application-passwords remove https://example.com
 wp-rest-cli auth application-passwords remove --all   # remove (and revoke where possible) every stored credential
 ```
 
-Once stored, a site's credential is used automatically whenever you run a command against it without `--username`/`--password`. Precedence is: `--username`/`--password` flags, then `WP_USERNAME`/`WP_PASSWORD` env vars, then a stored `wp auth` credential for that site, then anonymous.
+Once stored, a site's credential is used automatically whenever you run a command against it without `--username`/`--password`. Precedence is: `--username`/`--password` flags; then, if `--use-auth` names a specific type (`application-passwords` or `oauth2`), that type's stored credential exactly (erroring if none is stored, rather than falling through); then `WP_USERNAME`/`WP_PASSWORD` env vars; then a stored `wp auth` credential for that site — if **both** an application-passwords and an oauth2 credential are stored and `--use-auth` wasn't given, this step is a fail-fast error naming both `--use-auth` values, rather than a silent guess (see [OAuth2 → Using a specific stored credential](#using-a-specific-stored-credential---use-auth)); then anonymous.
 
 `list`'s table columns are the credential's raw stored fields: `authMethod` is `application-password` or `password` (see [verification](#verification-on-wp-auth-application-passwords-add) below), and `default` shows `*` next to whichever site is currently the default `--url` (set via `use`, or `wp config set --url=`).
 
@@ -95,12 +95,72 @@ Passwords over plain HTTP (except on localhost) — use an https:// URL, or stor
 password instead with: wp auth application-passwords add <url> --username=<u> --password=<p>
 ```
 
-### Auth types and future mechanisms
+### Auth types
 
-`<type>` isn't optional flourish — it's how this tool tells one authentication mechanism apart from another, both in the command grammar and, not coincidentally, in the same vocabulary WordPress itself uses: `application-passwords` is the exact key WordPress's REST API root index reports this feature under in its `authentication` object. A future mechanism like OAuth2 would be added the same way — as a new `<type>` value with its own `login`/`add`/`list`/`remove`/`use`/`status` behavior — rather than requiring another change to the command shape. Passing an unimplemented but recognized type today (`wp auth oauth2 login <url>`) reports that it's planned but not yet available, rather than an opaque "unknown command" error.
+`<type>` isn't optional flourish — it's how this tool tells one authentication mechanism apart from another, both in the command grammar and, not coincidentally, in the same vocabulary WordPress (and the WP-API/OAuth2 plugin) itself uses: `application-passwords`/`oauth2` are the exact keys the site's REST API root index reports each feature under in its `authentication` object. A site can have **both** an application-passwords and an oauth2 credential stored at once — see [OAuth2](#oauth2) below for how that's disambiguated.
+
+## OAuth2
+
+The second supported `<type>` is `oauth2`, using the [WP-API/OAuth2](https://github.com/WP-API/OAuth2) WordPress plugin. It follows the same shape as `application-passwords` — `login`/`add`/`list`/`remove`/`use`/`status` — with different fields, since OAuth2's credential shape (a client id/secret) is different from a username/password pair.
+
+### Prerequisite: creating an Application in wp-admin
+
+Unlike Application Passwords' self-service `authorize-application.php` page, an OAuth2 "Application" (a `client_id`/`client_secret`/redirect URI, plus which grants it's allowed to use) has **no self-service equivalent** — it must be created by hand in wp-admin (**Users → Applications**, requires the `edit_users` capability) before `oauth2 login`/`oauth2 add` can be used at all. This tool cannot automate that step.
+
+When creating the Application:
+
+- Set its redirect URI to `http://127.0.0.1:8787/callback` (the default `wp auth oauth2 login` uses), unless you plan to override it with `redirect-uri=`/`port=` (see below) — the plugin matches this exactly, so it must match whatever the CLI is told to use.
+- To use `wp auth oauth2 add` (see below), also enable **"Client Credentials Grant"** ("Allow this application to obtain tokens using the client_credentials grant.") on the Application.
+
+### `wp auth oauth2 login` — browser flow (`authorization_code`)
+
+```sh
+wp-rest-cli auth oauth2 login https://example.com client-id=<your-client-id>
+```
+
+Runs the same kind of browser-based flow as `auth application-passwords login`: prints a URL, you open it and approve, and the CLI picks up the resulting access token via a local callback server. Unlike Application Passwords' OS-assigned ephemeral port, this binds to a **fixed** local address (`http://127.0.0.1:8787/callback` by default) — the plugin requires an exact redirect-URI match, so it has to be known ahead of time, not chosen at random each run. Override it with optional `redirect-uri=<uri>`/`port=<port>` fields if 8787 is taken or you registered a different one. `client-secret=<secret>` is also accepted but optional for this grant.
+
+### `wp auth oauth2 add` — no browser (`client_credentials`)
+
+```sh
+wp-rest-cli auth oauth2 add https://example.com client-id=<your-client-id> client-secret=<your-client-secret>
+```
+
+Exchanges a client id/secret directly for a token, no browser involved — requires the Application to have the "Client Credentials Grant" setting enabled (see above); the CLI reports a clear error naming that setting if the exchange fails. Both `client-id=`/`client-secret=` are required here (unlike `login`, where the plugin doesn't enforce a secret for `authorization_code`).
+
+### Managing stored OAuth2 credentials
+
+```sh
+wp-rest-cli auth oauth2 list      # every stored site's client id and grant type, never the access token
+wp-rest-cli auth oauth2 use https://example.com
+wp-rest-cli auth oauth2 status
+wp-rest-cli auth oauth2 remove https://example.com
+wp-rest-cli auth oauth2 remove --all
+```
+
+### Limitations
+
+- **No expiry, no refresh.** The plugin issues tokens that never expire and has no `refresh_token` grant — this is spec-legal (RFC 6749 doesn't require either), not a bug in this tool.
+- **No REST-based revocation.** Unlike Application Passwords, the plugin exposes no HTTP endpoint to revoke a token. `oauth2 remove` only forgets the credential locally — revoke it manually in wp-admin if needed.
+- **No self-service client registration** — see the prerequisite above.
+- **A `client_credentials` token has no real user context** (it authenticates as user id 0). Some routes' permission callbacks may reject it regardless of validity — `oauth2 add`'s own best-effort verification treats this as inconclusive, not a failure, and still saves the credential.
+- **TLS is required**, even though the plugin itself doesn't enforce it (RFC 6749 requires TLS for both the authorization and token endpoints, and specifically for password-based client authentication — i.e. `add`'s client secret). `oauth2 login`/`add` both refuse a plain-HTTP, non-loopback site with a clear error, the same way `application-passwords login` already does.
+- Both `oauth2 login` and `oauth2 add` check the site's discovery data first and refuse to proceed — no browser tab, no local server, no network request at all — with a clear message if the site doesn't advertise OAuth2 support (the plugin likely isn't installed or active), mirroring how `application-passwords login` behaves when Application Passwords support is absent.
+
+### Using a specific stored credential (`--use-auth`)
+
+Since a site can have both an application-passwords and an oauth2 credential stored, running an ordinary command with **neither** flags/env vars nor `--use-auth` given, and **both** types stored for that site, is an error rather than a silent guess:
+
+```sh
+$ wp-rest-cli wp/v2 posts list --url=https://example.com
+Error: Both an application-passwords and an oauth2 credential are stored for https://example.com —
+pass --use-auth=application-passwords or --use-auth=oauth2 to disambiguate.
+
+$ wp-rest-cli wp/v2 posts list --url=https://example.com --use-auth=oauth2
+```
 
 ## How it's built
 
-Auth is implemented behind a small `AuthProvider` interface (`BasicAuthProvider` today), so other methods — OAuth, cookie/nonce auth, etc. — can be added later without touching request-building code. Application Passwords need no separate provider: they're wire-compatible with HTTP Basic Auth, so `BasicAuthProvider` handles both.
+Auth is implemented behind a small `AuthProvider` interface — `BasicAuthProvider` (Application Passwords/plain passwords) and `OAuth2AuthProvider` (OAuth2 bearer tokens) today — so each mechanism stays independent of request-building code.
 
-One level up, `wp auth <type> ...`'s own dispatch is built the same way: `AuthType` is a real TypeScript union (currently one member), and `commands/auth.ts`'s top-level switch on it is exhaustively checked — adding a second type without a matching dispatch case is a compile error, not just a missed spot.
+One level up, `wp auth <type> ...`'s own dispatch is built the same way: `AuthType` is a real TypeScript union, and `commands/auth.ts`'s top-level switch on it is exhaustively checked — adding a further type without a matching dispatch case is a compile error, not just a missed spot.

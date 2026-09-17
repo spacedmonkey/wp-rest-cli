@@ -27,12 +27,6 @@ describe( 'parseAuthArgs', () => {
 			);
 		} );
 
-		it( 'throws a specific "planned but not implemented" error for a reserved type', () => {
-			expect( () =>
-				parseAuthArgs( [ 'oauth2', 'login', 'https://example.com' ] )
-			).toThrow( 'planned but not yet implemented' );
-		} );
-
 		it( 'throws a specific migration hint when a bare verb is given where the type belongs (the old grammar)', () => {
 			expect( () =>
 				parseAuthArgs( [ 'login', 'https://example.com' ] )
@@ -261,5 +255,229 @@ describe( 'parseAuthArgs', () => {
 
 	it( 'throws when a type is given but no subcommand at all', () => {
 		expect( () => parseAuthArgs( [ TYPE ] ) ).toThrow( CliError );
+	} );
+} );
+
+describe( 'parseAuthArgs: oauth2', () => {
+	const OAUTH2_TYPE = 'oauth2';
+
+	describe( 'login', () => {
+		it( 'parses a url with a required client-id=', () => {
+			expect(
+				parseAuthArgs( [
+					OAUTH2_TYPE,
+					'login',
+					'https://example.com',
+					'client-id=abc123',
+				] )
+			).toEqual( {
+				authType: OAUTH2_TYPE,
+				mode: 'login',
+				url: 'https://example.com',
+				clientId: 'abc123',
+				clientSecret: undefined,
+				redirectUri: undefined,
+				port: undefined,
+			} );
+		} );
+
+		it( 'parses an optional client-secret= field', () => {
+			expect(
+				parseAuthArgs( [
+					OAUTH2_TYPE,
+					'login',
+					'https://example.com',
+					'client-id=abc123',
+					'client-secret=shh',
+				] )
+			).toEqual( {
+				authType: OAUTH2_TYPE,
+				mode: 'login',
+				url: 'https://example.com',
+				clientId: 'abc123',
+				clientSecret: 'shh',
+				redirectUri: undefined,
+				port: undefined,
+			} );
+		} );
+
+		it( 'parses an optional redirect-uri= field on its own (already carries its own port)', () => {
+			expect(
+				parseAuthArgs( [
+					OAUTH2_TYPE,
+					'login',
+					'https://example.com',
+					'client-id=abc123',
+					'redirect-uri=http://127.0.0.1:9999/callback',
+				] )
+			).toEqual( {
+				authType: OAUTH2_TYPE,
+				mode: 'login',
+				url: 'https://example.com',
+				clientId: 'abc123',
+				clientSecret: undefined,
+				redirectUri: 'http://127.0.0.1:9999/callback',
+				port: undefined,
+			} );
+		} );
+
+		it( 'parses an optional port= field on its own', () => {
+			expect(
+				parseAuthArgs( [
+					OAUTH2_TYPE,
+					'login',
+					'https://example.com',
+					'client-id=abc123',
+					'port=9999',
+				] )
+			).toEqual( {
+				authType: OAUTH2_TYPE,
+				mode: 'login',
+				url: 'https://example.com',
+				clientId: 'abc123',
+				clientSecret: undefined,
+				redirectUri: undefined,
+				port: 9999,
+			} );
+		} );
+
+		it( 'throws when no url is given', () => {
+			expect( () =>
+				parseAuthArgs( [ OAUTH2_TYPE, 'login', 'client-id=abc123' ] )
+			).toThrow( CliError );
+		} );
+
+		it( 'throws when client-id= is missing', () => {
+			expect( () =>
+				parseAuthArgs( [ OAUTH2_TYPE, 'login', 'https://example.com' ] )
+			).toThrow( 'client-id=' );
+		} );
+
+		it( 'throws when port= is not a valid port number', () => {
+			expect( () =>
+				parseAuthArgs( [
+					OAUTH2_TYPE,
+					'login',
+					'https://example.com',
+					'client-id=abc123',
+					'port=not-a-number',
+				] )
+			).toThrow( CliError );
+		} );
+
+		it( 'throws when both redirect-uri= and port= are given, rather than silently preferring one', () => {
+			expect( () =>
+				parseAuthArgs( [
+					OAUTH2_TYPE,
+					'login',
+					'https://example.com',
+					'client-id=abc123',
+					'redirect-uri=http://127.0.0.1:9999/callback',
+					'port=9999',
+				] )
+			).toThrow( 'pass either redirect-uri= ' );
+		} );
+	} );
+
+	describe( 'add', () => {
+		it( 'parses a url with client-id= and client-secret=', () => {
+			expect(
+				parseAuthArgs( [
+					OAUTH2_TYPE,
+					'add',
+					'https://example.com',
+					'client-id=abc123',
+					'client-secret=shh',
+				] )
+			).toEqual( {
+				authType: OAUTH2_TYPE,
+				mode: 'add',
+				url: 'https://example.com',
+				clientId: 'abc123',
+				clientSecret: 'shh',
+			} );
+		} );
+
+		it( 'throws when no url is given', () => {
+			expect( () =>
+				parseAuthArgs( [
+					OAUTH2_TYPE,
+					'add',
+					'client-id=abc123',
+					'client-secret=shh',
+				] )
+			).toThrow( CliError );
+		} );
+
+		it( 'throws when client-secret= is missing', () => {
+			expect( () =>
+				parseAuthArgs( [
+					OAUTH2_TYPE,
+					'add',
+					'https://example.com',
+					'client-id=abc123',
+				] )
+			).toThrow( 'client-secret=' );
+		} );
+
+		it( 'throws when client-id= is missing', () => {
+			expect( () =>
+				parseAuthArgs( [
+					OAUTH2_TYPE,
+					'add',
+					'https://example.com',
+					'client-secret=shh',
+				] )
+			).toThrow( 'client-id=' );
+		} );
+	} );
+
+	describe( 'list/remove/remove-all/use/status', () => {
+		it( 'parses list with no arguments', () => {
+			expect( parseAuthArgs( [ OAUTH2_TYPE, 'list' ] ) ).toEqual( {
+				authType: OAUTH2_TYPE,
+				mode: 'list',
+			} );
+		} );
+
+		it( 'parses a remove url', () => {
+			expect(
+				parseAuthArgs( [
+					OAUTH2_TYPE,
+					'remove',
+					'https://example.com',
+				] )
+			).toEqual( {
+				authType: OAUTH2_TYPE,
+				mode: 'remove',
+				url: 'https://example.com',
+			} );
+		} );
+
+		it( 'parses --all as remove-all', () => {
+			expect(
+				parseAuthArgs( [ OAUTH2_TYPE, 'remove', 'all=true' ] )
+			).toEqual( {
+				authType: OAUTH2_TYPE,
+				mode: 'remove-all',
+			} );
+		} );
+
+		it( 'parses a use url', () => {
+			expect(
+				parseAuthArgs( [ OAUTH2_TYPE, 'use', 'https://example.com' ] )
+			).toEqual( {
+				authType: OAUTH2_TYPE,
+				mode: 'use',
+				url: 'https://example.com',
+			} );
+		} );
+
+		it( 'parses status with no arguments', () => {
+			expect( parseAuthArgs( [ OAUTH2_TYPE, 'status' ] ) ).toEqual( {
+				authType: OAUTH2_TYPE,
+				mode: 'status',
+			} );
+		} );
 	} );
 } );
