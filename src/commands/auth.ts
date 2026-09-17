@@ -60,6 +60,14 @@ export type ParsedAuth =
 			url: string;
 			clientId: string;
 			clientSecret: string;
+			// TEMPORARY, diagnostic-only: lets `wp auth oauth2 add` send an
+			// arbitrary `code=` body param alongside `grant_type=client_credentials`,
+			// to help confirm server-side whether a live site's deployed
+			// WP-API/OAuth2 code actually special-cases client_credentials
+			// before its generic "missing client_id/code" validation runs.
+			// Not a real part of the client_credentials grant (it has no
+			// code to exchange) — revert this once diagnosis is done.
+			diagnosticCode?: string;
 	  }
 	| { authType: typeof APPLICATION_PASSWORDS_AUTH_TYPE; mode: 'list' }
 	| { authType: typeof OAUTH2_AUTH_TYPE; mode: 'list' }
@@ -271,7 +279,7 @@ function parseLoginArgs( authType: AuthType, rest: string[] ): ParsedAuth {
  */
 function parseAddArgs( authType: AuthType, rest: string[] ): ParsedAuth {
 	if ( authType === OAUTH2_AUTH_TYPE ) {
-		const knownFields = [ 'client-id', 'client-secret' ];
+		const knownFields = [ 'client-id', 'client-secret', 'code' ];
 		const [ url, ...fieldTokens ] = rest;
 		if ( ! url || isKnownFieldToken( url, knownFields ) ) {
 			throw new CliError(
@@ -290,6 +298,7 @@ function parseAddArgs( authType: AuthType, rest: string[] ): ParsedAuth {
 			url,
 			clientId: fields[ 'client-id' ],
 			clientSecret: fields[ 'client-secret' ],
+			diagnosticCode: fields.code,
 		};
 	}
 
