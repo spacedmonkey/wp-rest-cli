@@ -42,12 +42,14 @@ export interface StoredApplicationPasswordCredential {
  * is never needed again (the plugin has no refresh-token grant), so
  * persisting it anyway would only widen the blast radius of a compromised
  * local store — it could mint further tokens, not just use the one already
- * issued. `clientId` is kept only for display in `list`/`status`.
+ * issued. `clientId` is kept only for display in `list`/`status`, and is
+ * absent for a `personal_token` credential — a personal token is generated
+ * by hand in wp-admin with no client/application involved at all.
  */
 export interface StoredOAuth2Credential {
 	accessToken: string;
-	clientId: string;
-	grantType: 'authorization_code' | 'client_credentials';
+	clientId?: string;
+	grantType: 'authorization_code' | 'client_credentials' | 'personal_token';
 	tokenType: 'bearer';
 }
 
@@ -468,7 +470,7 @@ export type SiteCredentialRow = { url: string } & (
 	  }
 	| {
 			authType: typeof OAUTH2_AUTH_TYPE;
-			clientId: string;
+			clientId?: string;
 			grantType: StoredOAuth2Credential[ 'grantType' ];
 	  }
 );

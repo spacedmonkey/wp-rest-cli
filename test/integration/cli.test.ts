@@ -1716,6 +1716,112 @@ describe( 'wp-rest-cli (integration)', () => {
 			await removeIfPresent( fixture.baseUrl );
 		} );
 
+		it( 'adds and lists a personal token credential, with no client id shown', async () => {
+			await removeIfPresent( fixture.baseUrl );
+
+			const add = await runOAuth2( [
+				'auth',
+				'add',
+				fixture.baseUrl,
+				'--token=test-personal-token-valid',
+			] );
+			expect( add.exitCode ).toBe( 0 );
+			expect( add.stdout ).toContain( 'Success' );
+
+			const list = await runOAuth2( [ 'auth', 'list', '--format=json' ] );
+			expect( list.exitCode ).toBe( 0 );
+			expect( JSON.parse( list.stdout ) ).toContainEqual( {
+				url: fixture.baseUrl,
+				clientId: '',
+				grantType: 'personal_token',
+				default: '',
+			} );
+
+			await runOAuth2( [ 'auth', 'use', fixture.baseUrl ] );
+			const status = await runOAuth2( [ 'auth', 'status' ] );
+			expect( status.exitCode ).toBe( 0 );
+			expect( status.stdout ).toContain(
+				'authenticated via OAuth2 (personal token)'
+			);
+
+			const request = await runRestWithConfig( [
+				'wp/v2',
+				'widgets',
+				'list',
+				'--use-auth=oauth2',
+				'--debug',
+			] );
+			expect( request.exitCode ).toBe( 0 );
+			expect( request.stderr ).toContain(
+				'Authorization: Bearer <redacted>'
+			);
+
+			await removeIfPresent( fixture.baseUrl );
+		} );
+
+		it( 'blocks adding an unrecognized personal token unless skip-verify=true is passed', async () => {
+			await removeIfPresent( fixture.baseUrl );
+
+			const rejected = await runOAuth2( [
+				'auth',
+				'add',
+				fixture.baseUrl,
+				'--token=not-a-real-token',
+			] );
+			expect( rejected.exitCode ).toBe( 1 );
+			expect( rejected.stderr ).toContain(
+				'This personal token was rejected by the site'
+			);
+
+			const list = await runOAuth2( [ 'auth', 'list', '--format=json' ] );
+			expect( list.stdout ).toContain( 'No stored credentials' );
+
+			const skipped = await runOAuth2( [
+				'auth',
+				'add',
+				fixture.baseUrl,
+				'--token=not-a-real-token',
+				'skip-verify=true',
+			] );
+			expect( skipped.exitCode ).toBe( 0 );
+			expect( skipped.stdout ).toContain( 'Success' );
+
+			const listAfter = await runOAuth2( [
+				'auth',
+				'list',
+				'--format=json',
+			] );
+			expect( JSON.parse( listAfter.stdout ) ).toContainEqual(
+				expect.objectContaining( {
+					url: fixture.baseUrl,
+					clientId: '',
+					grantType: 'personal_token',
+				} )
+			);
+
+			await removeIfPresent( fixture.baseUrl );
+		} );
+
+		it( 'rejects passing both --token and --client-id/--client-secret to add', async () => {
+			await removeIfPresent( fixture.baseUrl );
+
+			const result = await runOAuth2( [
+				'auth',
+				'add',
+				fixture.baseUrl,
+				'--token=test-personal-token-valid',
+				'--client-id=test-client-id',
+				'--client-secret=shh',
+			] );
+			expect( result.exitCode ).toBe( 1 );
+			expect( result.stderr ).toContain(
+				'pass either --token (a personal access token) or --client-id/--client-secret'
+			);
+
+			const list = await runOAuth2( [ 'auth', 'list', '--format=json' ] );
+			expect( list.stdout ).toContain( 'No stored credentials' );
+		} );
+
 		it( 'falls back to the global --url flag when the positional <url> is omitted', async () => {
 			await removeIfPresent( fixture.baseUrl );
 
