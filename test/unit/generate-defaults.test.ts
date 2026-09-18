@@ -130,9 +130,27 @@ describe( 'generateDefaultValue', () => {
 		expect( generateDefaultValue( 'tags', arg, 1 ) ).toBe( '[]' );
 	} );
 
-	it( 'synthesizes an empty JSON object for an object field', () => {
+	it( 'synthesizes an empty JSON object for a genuine object field', () => {
 		const arg: EndpointArgSchema = { type: 'object' };
 		expect( generateDefaultValue( 'meta', arg, 1 ) ).toBe( '{}' );
+	} );
+
+	it( "synthesizes a plain, non-JSON string for WordPress's {raw, rendered} object shape (title/content/excerpt), not an empty object", () => {
+		// WordPress declares title/content/excerpt as `type: 'object'`, but
+		// its own controllers accept a plain string in place of the full
+		// object — and, critically, still treat a synthesized '{}' as an
+		// EMPTY title/content, tripping the same `empty_content` rejection
+		// this value exists to avoid. See `isRawRenderedShape`.
+		const arg: EndpointArgSchema = {
+			type: 'object',
+			properties: {
+				raw: { type: 'string' },
+				rendered: { type: 'string', readonly: true },
+			},
+		};
+		expect( generateDefaultValue( 'title', arg, 1 ) ).toBe(
+			'Generated title 1'
+		);
 	} );
 
 	it( 'picks the first non-null type when type is an array', () => {

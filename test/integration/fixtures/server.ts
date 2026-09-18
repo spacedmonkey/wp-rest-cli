@@ -31,6 +31,28 @@ async function readBody(
 }
 
 /**
+ * Extracts plain text from a `title`/`content`/`excerpt`-shaped POST body
+ * value, the way real WordPress's post-type controllers do: a plain string
+ * is accepted directly, and the full `{raw, rendered}` object shape (which
+ * `title`/`content`/`excerpt` are declared as in the OPTIONS schema) is
+ * accepted too, reading its `raw` sub-value. Anything else is treated as
+ * empty, matching WordPress's own `empty_content` rejection.
+ *
+ * @param value The raw `title`/`content`/`excerpt` value from a POST body.
+ * @return The plain text, or `''` if `value` carries none.
+ */
+function extractRawText( value: unknown ): string {
+	if ( typeof value === 'string' ) {
+		return value;
+	}
+	if ( value && typeof value === 'object' && 'raw' in value ) {
+		const { raw } = value as { raw: unknown };
+		return typeof raw === 'string' ? raw : '';
+	}
+	return '';
+}
+
+/**
  * Parses an `Authorization: Basic <base64>` request header into its
  * decoded username/password, shared by the three `users/me` routes below.
  *
@@ -782,20 +804,50 @@ export async function startFixture(): Promise< Fixture > {
 					{
 						methods: [ 'POST' ],
 						args: {
+							// Modelled on the real title/content/excerpt
+							// schema WP_REST_Posts_Controller registers: an
+							// `object` (not `string`) type, for the
+							// `{raw, rendered}` shape — the controller
+							// itself still accepts a plain string in place
+							// of the full object (see `extractRawText`
+							// below), which `generate`'s smart-default
+							// synthesis must account for rather than
+							// synthesizing an empty `{}` object.
 							title: {
-								type: 'string',
+								type: 'object',
 								required: false,
 								description: 'The title for the article.',
+								properties: {
+									raw: { type: 'string' },
+									rendered: {
+										type: 'string',
+										readonly: true,
+									},
+								},
 							},
 							content: {
-								type: 'string',
+								type: 'object',
 								required: false,
 								description: 'The content for the article.',
+								properties: {
+									raw: { type: 'string' },
+									rendered: {
+										type: 'string',
+										readonly: true,
+									},
+								},
 							},
 							excerpt: {
-								type: 'string',
+								type: 'object',
 								required: false,
 								description: 'The excerpt for the article.',
+								properties: {
+									raw: { type: 'string' },
+									rendered: {
+										type: 'string',
+										readonly: true,
+									},
+								},
 							},
 						},
 					},
@@ -811,9 +863,9 @@ export async function startFixture(): Promise< Fixture > {
 
 		if ( path === '/wp-json/wp/v2/articles' && req.method === 'POST' ) {
 			const body = await readBody( req );
-			const title = String( body.title ?? '' );
-			const content = String( body.content ?? '' );
-			const excerpt = String( body.excerpt ?? '' );
+			const title = extractRawText( body.title );
+			const content = extractRawText( body.content );
+			const excerpt = extractRawText( body.excerpt );
 			if ( ! title && ! content && ! excerpt ) {
 				send( res, 400, {
 					code: 'empty_content',

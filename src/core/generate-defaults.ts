@@ -29,6 +29,29 @@ function resolvePrimaryType( arg: EndpointArgSchema ): string {
 }
 
 /**
+ * Whether an `object`-typed arg is WordPress core's `{raw, rendered}` shape
+ * for a rich-text field (`title`/`content`/`excerpt`) rather than a genuine
+ * structured object (like `meta`) — recognized by a `raw` property declared
+ * `string`. WordPress's own controllers for these fields accept a plain
+ * string directly in place of the full object (see `coerceJsonFields` in
+ * `core/validate.ts`, which leaves a non-JSON string value as-is for this
+ * exact reason), so synthesizing `'{}'` for one — while valid JSON — is
+ * still an *empty* title/content as far as WordPress is concerned.
+ * @param arg The field's live JSON Schema.
+ * @return Whether a plain string, not `'{}'`, is the right synthesized value.
+ */
+function isRawRenderedShape( arg: EndpointArgSchema ): boolean {
+	const rawProperty = arg.properties?.raw;
+	if ( ! rawProperty ) {
+		return false;
+	}
+	const rawTypes = Array.isArray( rawProperty.type )
+		? rawProperty.type
+		: [ rawProperty.type ];
+	return rawTypes.includes( 'string' );
+}
+
+/**
  * Reads a numeric schema constraint (`minimum`/`maximum`) off an arg. These
  * aren't named fields on `EndpointArgSchema` — only reachable through its
  * index signature — so this narrows the `unknown` value safely.
@@ -112,7 +135,9 @@ export function generateDefaultValue(
 		case 'array':
 			return '[]';
 		case 'object':
-			return '{}';
+			return isRawRenderedShape( arg )
+				? `Generated ${ name } ${ index }`
+				: '{}';
 		case 'string':
 		default:
 			switch ( arg.format ) {
