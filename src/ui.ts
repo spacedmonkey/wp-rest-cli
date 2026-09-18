@@ -58,6 +58,24 @@ export async function withSpinner< T >(
 }
 
 /**
+ * Prints a one-off informational line, unless progress output is disabled.
+ * Uses `ora`'s persisted-line output (like `withSpinner`'s final state line)
+ * rather than `console.*`, so it prints immediately — e.g. before a
+ * following sequence of `withSpinner` calls — instead of being batched into
+ * a command's final returned output string.
+ * @param message The note to print.
+ * @param enabled Whether progress output is enabled for this invocation —
+ *                pass the same value `spinner`'s `enabled` param gets
+ *                (typically `! flags.quiet`).
+ */
+export function notice( message: string, enabled: boolean ): void {
+	if ( ! enabled ) {
+		return;
+	}
+	ora().info( message );
+}
+
+/**
  * Formats a green "Success: ..." line for CLI output.
  * @param message The success message.
  */

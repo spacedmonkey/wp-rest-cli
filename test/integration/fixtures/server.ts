@@ -72,6 +72,13 @@ const widgets = new Map< number, Record< string, unknown > >( [
 ] );
 let nextId = 2;
 
+// Synthetic fixture, not modelled on any real WordPress controller — exists
+// purely so `generate` integration tests have required fields with a
+// `format` (email) and an `integer` type to exercise smart-default
+// synthesis against, without touching `widgets`' own schema/tests.
+const subscribers = new Map< number, Record< string, unknown > >();
+let nextSubscriberId = 1;
+
 const settings: Record< string, unknown > = { title: 'Fixture Site' };
 
 // Uuids "revoked" via DELETE /wp-json/wp/v2/users/me/application-passwords/:uuid
@@ -270,6 +277,14 @@ export async function startFixture(): Promise< Fixture > {
 							{ methods: [ 'GET' ] },
 							{ methods: [ 'PUT' ] },
 							{ methods: [ 'DELETE' ] },
+						],
+					},
+					'/wp/v2/subscribers': {
+						namespace: 'wp/v2',
+						methods: [ 'GET', 'POST' ],
+						endpoints: [
+							{ methods: [ 'GET' ] },
+							{ methods: [ 'POST' ] },
 						],
 					},
 					// Modelled on WP_REST_Global_Styles_Controller: no bare collection
@@ -666,6 +681,70 @@ export async function startFixture(): Promise< Fixture > {
 				send( res, 200, { deleted: true, previous: existing } );
 				return;
 			}
+		}
+
+		if (
+			path === '/wp-json/wp/v2/subscribers' &&
+			req.method === 'OPTIONS'
+		) {
+			send( res, 200, {
+				namespace: 'wp/v2',
+				methods: [ 'GET', 'POST' ],
+				endpoints: [
+					{
+						methods: [ 'GET' ],
+						args: {
+							context: {
+								type: 'string',
+								enum: [ 'view', 'edit', 'embed' ],
+								default: 'view',
+								required: false,
+							},
+						},
+					},
+					{
+						methods: [ 'POST' ],
+						args: {
+							email: {
+								type: 'string',
+								format: 'email',
+								required: true,
+								description: "The subscriber's email address.",
+							},
+							age: {
+								type: 'integer',
+								required: true,
+								description: "The subscriber's age.",
+							},
+							name: {
+								type: 'string',
+								required: false,
+								description: "The subscriber's display name.",
+							},
+						},
+					},
+				],
+			} );
+			return;
+		}
+
+		if ( path === '/wp-json/wp/v2/subscribers' && req.method === 'GET' ) {
+			send( res, 200, [ ...subscribers.values() ] );
+			return;
+		}
+
+		if ( path === '/wp-json/wp/v2/subscribers' && req.method === 'POST' ) {
+			const body = await readBody( req );
+			const id = nextSubscriberId++;
+			const record = {
+				id,
+				email: String( body.email ?? '' ),
+				age: Number( body.age ),
+				name: String( body.name ?? '' ),
+			};
+			subscribers.set( id, record );
+			send( res, 201, record );
+			return;
 		}
 
 		if ( path === '/wp-json/wp/v2/file-size' && req.method === 'OPTIONS' ) {

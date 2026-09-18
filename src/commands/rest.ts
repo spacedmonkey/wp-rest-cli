@@ -13,6 +13,7 @@ import { WpRestClient } from '../core/client.js';
 import { resolveApiRoot } from '../core/discovery.js';
 import { CliError, WpApiError } from '../core/errors.js';
 import { formatOutput } from '../core/formatter.js';
+import { generateDefaultValue } from '../core/generate-defaults.js';
 import {
 	fetchIndex,
 	routeChildren,
@@ -34,7 +35,7 @@ import type {
 	RouteSchema,
 	Verb,
 } from '../types.js';
-import { withSpinner, pc } from '../ui.js';
+import { withSpinner, pc, notice } from '../ui.js';
 import {
 	META_VERBS,
 	parseMetaArgs,
@@ -1089,17 +1090,24 @@ async function resolveParamIndex(
  * Validates a verb's `field=value` arguments against the route's live schema
  * for the matching HTTP method (see `COLLECTION_VERB_METHOD`), catching
  * type mismatches (e.g. `--per_page=abc` for an `integer` arg), and — for
- * every verb except `update` — any `required` arg missing from `fields`
- * altogether, locally before the request is ever sent. A no-op for verbs
- * with no entry in `COLLECTION_VERB_METHOD` (get/delete/exists), which have
- * no reliable arg schema to check against.
- * @param client      The REST client to issue the underlying schema request with.
- * @param apiRoot     The resolved REST API root URL.
- * @param namespace   The route's namespace.
- * @param route       The route name.
- * @param verb        The verb being run.
- * @param fields      The parsed `field=value` arguments to validate.
- * @param showSpinner Whether to show a progress spinner for the schema request.
+ * every verb except `update`, and unless a caller opts out via
+ * `enforceRequired` — any `required` arg missing from `fields` altogether,
+ * locally before the request is ever sent. A no-op for verbs with no entry
+ * in `COLLECTION_VERB_METHOD` (get/delete/exists), which have no reliable
+ * arg schema to check against.
+ * @param client          The REST client to issue the underlying schema request with.
+ * @param apiRoot         The resolved REST API root URL.
+ * @param namespace       The route's namespace.
+ * @param route           The route name.
+ * @param verb            The verb being run.
+ * @param fields          The parsed `field=value` arguments to validate.
+ * @param showSpinner     Whether to show a progress spinner for the schema request.
+ * @param enforceRequired Whether missing `required` args should still be
+ *                        treated as a hard failure. Defaults to `true`;
+ *                        `generate` alone passes `false`, since it
+ *                        synthesizes a placeholder for a missing required
+ *                        field instead of erroring — see `runRestCommand`'s
+ *                        `generate` branch.
  * @return The matching endpoint's arg schema, if any — callers reuse it to
  *         JSON-coerce object/array-typed field values (`coerceJsonFields`)
  *         without a second schema request.
@@ -1111,7 +1119,8 @@ async function validateVerbFields(
 	route: string,
 	verb: Verb,
 	fields: Record< string, string >,
-	showSpinner: boolean
+	showSpinner: boolean,
+	enforceRequired = true
 ): Promise< Record< string, EndpointArgSchema > | undefined > {
 	const method = COLLECTION_VERB_METHOD[ verb ];
 	if ( ! method ) {
@@ -1131,8 +1140,11 @@ async function validateVerbFields(
 	// 'update', which borrows 'create'/POST's schema (WordPress exposes no
 	// separate schema for the item-level PUT endpoint) — a partial update
 	// legitimately omits create-time required fields, so only 'update' is
-	// exempt from the required check.
-	const checkRequired = verb !== 'update';
+	// exempt from the required check. 'generate' opts out via
+	// `enforceRequired` instead of this per-verb list, since it still wants
+	// the required check for every OTHER purpose (e.g. informing which
+	// fields need a synthesized value) — see the generate branch below.
+	const checkRequired = verb !== 'update' && enforceRequired;
 	validateFieldTypes( fields, endpoint?.args, checkRequired );
 	return endpoint?.args;
 }
@@ -1795,6 +1807,9 @@ export async function runRestCommand(
 				`--count must be a positive integer, got "${ countRaw }".`
 			);
 		}
+		// Type-checks user-supplied fields but does NOT hard-fail on a missing
+		// required field (`enforceRequired: false`) — generate synthesizes a
+		// placeholder for each one instead, per item, below.
 		const generateArgs = await validateVerbFields(
 			client,
 			apiRoot,
@@ -1802,15 +1817,33 @@ export async function runRestCommand(
 			parsed.route,
 			'generate',
 			createFields,
-			! flags.quiet
+			! flags.quiet,
+			false
 		);
-		const generateRequestFields = coerceJsonFields(
-			createFields,
-			generateArgs
+
+		const missingRequiredArgs = Object.entries( generateArgs ?? {} ).filter(
+			( [ name, arg ] ) => arg?.required && ! ( name in createFields )
 		);
+		if ( missingRequiredArgs.length ) {
+			notice(
+				`Note: ${ missingRequiredArgs
+					.map( ( [ name ] ) => `--${ name }` )
+					.join( ', ' ) } not supplied; using generated values.`,
+				! flags.quiet
+			);
+		}
 
 		const created: unknown[] = [];
 		for ( let i = 0; i < count; i++ ) {
+			const index = i + 1;
+			const rawFields: Record< string, string > = { ...createFields };
+			for ( const [ name, arg ] of missingRequiredArgs ) {
+				rawFields[ name ] = generateDefaultValue( name, arg, index );
+			}
+			const generateRequestFields = coerceJsonFields(
+				rawFields,
+				generateArgs
+			);
 			const request = buildVerbRequest( {
 				verb: 'create',
 				apiRoot,
@@ -1821,9 +1854,7 @@ export async function runRestCommand(
 				bodyOverride: resolveBodyOverride( flags.body ),
 			} );
 			const { body } = await withSpinner(
-				`POST ${ parsed.namespace }/${ parsed.route } (${
-					i + 1
-				}/${ count })`,
+				`POST ${ parsed.namespace }/${ parsed.route } (${ index }/${ count })`,
 				! flags.quiet,
 				() =>
 					client.request( request.url, {

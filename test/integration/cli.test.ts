@@ -814,6 +814,109 @@ describe( 'wp-rest-cli (integration)', () => {
 				'--count must be a positive integer'
 			);
 		} );
+
+		// Same as `run()`, but without `--quiet`, so the auto-fill notice
+		// (suppressed by `--quiet`, like every other progress line) is
+		// observable — `wp/v2 subscribers` (unlike `widgets`) has required
+		// fields with an email `format` and an `integer` type, to exercise
+		// smart-default synthesis.
+		function runVerbose( args: string[] ) {
+			return execa(
+				'tsx',
+				[
+					cliEntry,
+					...args,
+					`--url=${ fixture.baseUrl }`,
+					'--no-color',
+				],
+				{ reject: false, preferLocal: true }
+			);
+		}
+
+		it( 'auto-fills missing required fields with synthesized, unique-per-item values', async () => {
+			const before = await run( [
+				'wp/v2',
+				'subscribers',
+				'list',
+				'--format=count',
+			] );
+			const beforeCount = Number( before.stdout.trim() );
+
+			const result = await run( [
+				'wp/v2',
+				'subscribers',
+				'generate',
+				'--count=3',
+			] );
+			expect( result.exitCode ).toBe( 0 );
+
+			const after = await run( [
+				'wp/v2',
+				'subscribers',
+				'list',
+				'--format=json',
+			] );
+			const items = JSON.parse( after.stdout ) as Array< {
+				email: string;
+				age: number;
+			} >;
+			const created = items.slice( beforeCount );
+			expect( created.map( ( s ) => s.email ) ).toEqual( [
+				'generated-1@example.com',
+				'generated-2@example.com',
+				'generated-3@example.com',
+			] );
+			expect( created.map( ( s ) => s.age ) ).toEqual( [ 1, 2, 3 ] );
+		} );
+
+		it( 'prints a notice naming auto-filled fields, unless --quiet is passed', async () => {
+			const verbose = await runVerbose( [
+				'wp/v2',
+				'subscribers',
+				'generate',
+				'--count=1',
+			] );
+			expect( verbose.exitCode ).toBe( 0 );
+			expect( verbose.stderr ).toContain(
+				'Note: --email, --age not supplied; using generated values.'
+			);
+
+			const quiet = await run( [
+				'wp/v2',
+				'subscribers',
+				'generate',
+				'--count=1',
+			] );
+			expect( quiet.exitCode ).toBe( 0 );
+			expect( quiet.stderr ).not.toContain( 'Note:' );
+		} );
+
+		it( 'keeps a user-supplied value for a required field instead of generating one', async () => {
+			const result = await run( [
+				'wp/v2',
+				'subscribers',
+				'generate',
+				'--count=2',
+				'--email=fixed@example.com',
+			] );
+			expect( result.exitCode ).toBe( 0 );
+
+			const after = await run( [
+				'wp/v2',
+				'subscribers',
+				'list',
+				'--format=json',
+			] );
+			const items = JSON.parse( after.stdout ) as Array< {
+				email: string;
+				age: number;
+			} >;
+			const created = items.slice( -2 );
+			expect(
+				created.every( ( s ) => s.email === 'fixed@example.com' )
+			).toBe( true );
+			expect( created.map( ( s ) => s.age ) ).toEqual( [ 1, 2 ] );
+		} );
 	} );
 
 	describe( '--debug', () => {
