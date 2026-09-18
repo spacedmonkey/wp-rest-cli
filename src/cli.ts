@@ -379,7 +379,10 @@ run "wp-rest-cli <namespace> <route>" to see which ones a given route supports.
 					return;
 				}
 				const flags = toGlobalFlags( options );
-				const parsed = parseAuthArgs( args.slice( 1 ) );
+				const parsed = parseAuthArgs(
+					args.slice( 1 ),
+					flags.url ?? getDefaultUrl()
+				);
 				const { output, exitCode } = await runAuthCommand(
 					parsed,
 					flags

@@ -1253,6 +1253,46 @@ describe( 'wp-rest-cli (integration)', () => {
 			} );
 		} );
 
+		it( 'falls back to the global --url flag when the positional <url> is omitted', async () => {
+			await removeIfPresent( fixture.baseUrl );
+
+			// No positional <url> after `add` here — only the global --url
+			// flag, which every other command already accepts. This is what a
+			// user reasonably expects to work rather than needing to repeat
+			// the site twice.
+			const add = await execa(
+				'tsx',
+				[
+					cliEntry,
+					'auth',
+					AUTH_TYPE,
+					'add',
+					`--url=${ fixture.baseUrl }`,
+					'--username=admin',
+					'--password=secret-app-pw',
+					'--quiet',
+					'--no-color',
+				],
+				{
+					reject: false,
+					preferLocal: true,
+					env: { XDG_CONFIG_HOME: authConfigDir },
+				}
+			);
+			expect( add.exitCode ).toBe( 0 );
+			expect( add.stdout ).toContain( 'Success' );
+
+			const list = await runAuth( [ 'auth', 'list', '--format=json' ] );
+			expect( JSON.parse( list.stdout ) ).toContainEqual(
+				expect.objectContaining( {
+					url: fixture.baseUrl,
+					username: 'admin',
+				} )
+			);
+
+			await removeIfPresent( fixture.baseUrl );
+		} );
+
 		it( 'requires both --username and --password for add', async () => {
 			const result = await runAuth( [
 				'auth',
@@ -1672,6 +1712,44 @@ describe( 'wp-rest-cli (integration)', () => {
 				grantType: 'client_credentials',
 				default: '',
 			} );
+
+			await removeIfPresent( fixture.baseUrl );
+		} );
+
+		it( 'falls back to the global --url flag when the positional <url> is omitted', async () => {
+			await removeIfPresent( fixture.baseUrl );
+
+			// No positional <url> after `add` here — only the global --url
+			// flag, which every other command already accepts.
+			const add = await execa(
+				'tsx',
+				[
+					cliEntry,
+					'auth',
+					'oauth2',
+					'add',
+					`--url=${ fixture.baseUrl }`,
+					'--client-id=test-client-id',
+					'--client-secret=shh',
+					'--quiet',
+					'--no-color',
+				],
+				{
+					reject: false,
+					preferLocal: true,
+					env: { XDG_CONFIG_HOME: authConfigDir },
+				}
+			);
+			expect( add.exitCode ).toBe( 0 );
+			expect( add.stdout ).toContain( 'Success' );
+
+			const list = await runOAuth2( [ 'auth', 'list', '--format=json' ] );
+			expect( JSON.parse( list.stdout ) ).toContainEqual(
+				expect.objectContaining( {
+					url: fixture.baseUrl,
+					clientId: 'test-client-id',
+				} )
+			);
 
 			await removeIfPresent( fixture.baseUrl );
 		} );

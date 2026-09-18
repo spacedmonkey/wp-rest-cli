@@ -153,6 +153,48 @@ function isKnownFieldToken( token: string, knownFields: string[] ): boolean {
 }
 
 /**
+ * Resolves a `login`/`add`/`remove`/`use` command's `<url>` argument: an
+ * explicit positional URL wins if the next token isn't shaped like one of
+ * `knownFields`' `field=value` pairs; otherwise falls back to `defaultUrl`
+ * (the global `--url` flag, or a saved default — the exact same fallback the
+ * generic REST command pipeline already uses for every other command), so
+ * `wp auth <type> login`/`add`/etc. don't force repeating a URL the CLI was
+ * already invoked with. Never throws itself — callers decide what "no URL
+ * from either source" means for their own usage message and error priority
+ * (e.g. checking for the deprecated `client-id=` syntax first).
+ * @param rest        The tokens following the verb (`login`/`add`/etc.).
+ * @param knownFields The field names this subcommand recognizes, for
+ *                    distinguishing an omitted URL from an explicit one.
+ * @param defaultUrl  The resolved `--url`/saved-default fallback, if any.
+ * @return The resolved URL (if any), the remaining field tokens, and whether
+ *         the URL came from an explicit positional argument (as opposed to
+ *         `defaultUrl`) — needed to detect e.g. `remove <url> all=true`,
+ *         which is a real conflict only when the URL was actually typed.
+ */
+function resolveAuthUrlArgument(
+	rest: string[],
+	knownFields: string[],
+	defaultUrl: string | undefined
+): {
+	url: string | undefined;
+	fieldTokens: string[];
+	explicitUrlGiven: boolean;
+} {
+	const [ first, ...restTokens ] = rest;
+	const explicitUrlGiven =
+		first !== undefined && ! isKnownFieldToken( first, knownFields );
+	return {
+		url: explicitUrlGiven ? first : defaultUrl,
+		fieldTokens: explicitUrlGiven ? restTokens : rest,
+		explicitUrlGiven,
+	};
+}
+
+/** Appended to a usage error when `<url>` was omitted and no `--url`/saved default was available either. */
+const NO_URL_HINT =
+	'Pass <url> explicitly, or run with --url=<site> (or save a default via "wp config set --url=<site>").';
+
+/**
  * Parses trailing `field=value` tokens.
  * @param tokens The tokens to parse.
  * @return The parsed field map.
@@ -194,43 +236,47 @@ function parsePortField( raw: string | undefined ): number | undefined {
  * `redirect-uri=`/`port=` fields (the actual `--client-id`/`--client-secret`
  * credential comes from global flags — see `handleLogin` in
  * `commands/auth/oauth2.ts`, and the {@link ParsedAuth} doc comment for why).
- * @param authType The already-validated auth type.
- * @param rest     The tokens following `login`.
+ * `<url>` is optional in both — see `resolveAuthUrlArgument`.
+ * @param authType   The already-validated auth type.
+ * @param rest       The tokens following `login`.
+ * @param defaultUrl The resolved `--url`/saved-default fallback, if `<url>` is omitted.
  * @return The parsed `login` command.
  */
-function parseLoginArgs( authType: AuthType, rest: string[] ): ParsedAuth {
+function parseLoginArgs(
+	authType: AuthType,
+	rest: string[],
+	defaultUrl: string | undefined
+): ParsedAuth {
 	if ( authType === OAUTH2_AUTH_TYPE ) {
-		const knownFields = [ 'redirect-uri', 'port' ];
-		const [ url, ...fieldTokens ] = rest;
-		// Also checked against the old, now-removed `client-id=`/`client-secret=`
-		// field names here — not just after a valid `url` below — so
-		// `wp auth oauth2 login client-id=xxx` (no URL at all, old syntax)
-		// gets the same clear rejection rather than "client-id=xxx" being
-		// misread as the site URL.
-		if (
-			! url ||
-			isKnownFieldToken( url, [
-				...knownFields,
-				'client-id',
-				'client-secret',
-			] )
-		) {
-			throw new CliError(
-				`Usage: wp auth ${ authType } login <url> --client-id=<id> [--client-secret=<secret>] [redirect-uri=<uri>] [port=<port>]`
-			);
-		}
+		// 'client-id'/'client-secret' included here too (not just checked
+		// after resolving fieldTokens below) so `wp auth oauth2 login
+		// client-id=xxx` (old syntax, no URL at all) is recognized as a field
+		// token rather than misread as the site URL, and falls through to the
+		// specific migration-hint rejection below instead of a confusing
+		// "invalid URL" failure.
+		const { url, fieldTokens } = resolveAuthUrlArgument(
+			rest,
+			[ 'redirect-uri', 'port', 'client-id', 'client-secret' ],
+			defaultUrl
+		);
 		const fields = parseFields( fieldTokens );
 		// `client-id=`/`client-secret=` were this type's field-token syntax
 		// before it switched to real `--client-id`/`--client-secret` flags —
 		// flagged explicitly rather than silently captured into `fields` and
 		// never read, which would otherwise look like a successful login
-		// using credentials that were actually ignored.
+		// using credentials that were actually ignored. Checked before the
+		// "no URL" error below, since it's the more specific, actionable one.
 		if (
 			fields[ 'client-id' ] !== undefined ||
 			fields[ 'client-secret' ] !== undefined
 		) {
 			throw new CliError(
 				`wp auth ${ authType } login: client-id=/client-secret= are no longer accepted here — use --client-id=<id>/--client-secret=<secret> instead.`
+			);
+		}
+		if ( ! url ) {
+			throw new CliError(
+				`Usage: wp auth ${ authType } login [<url>] --client-id=<id> [--client-secret=<secret>] [redirect-uri=<uri>] [port=<port>]\n${ NO_URL_HINT }`
 			);
 		}
 		// `redirect-uri=` already carries a port; combining it with `port=`
@@ -254,10 +300,14 @@ function parseLoginArgs( authType: AuthType, rest: string[] ): ParsedAuth {
 		};
 	}
 
-	const [ url, ...fieldTokens ] = rest;
-	if ( ! url || isKnownFieldToken( url, [ 'app-name' ] ) ) {
+	const { url, fieldTokens } = resolveAuthUrlArgument(
+		rest,
+		[ 'app-name' ],
+		defaultUrl
+	);
+	if ( ! url ) {
 		throw new CliError(
-			`Usage: wp auth ${ authType } login <url> [app-name=<name>]`
+			`Usage: wp auth ${ authType } login [<url>] [app-name=<name>]\n${ NO_URL_HINT }`
 		);
 	}
 	const fields = parseFields( fieldTokens );
@@ -283,25 +333,27 @@ function parseLoginArgs( authType: AuthType, rest: string[] ): ParsedAuth {
  * `handleAdd` in `commands/auth/oauth2.ts`) — `client_credentials` has no
  * browser step to obtain them from, so both are required there, checked at
  * handler-execution time once `flags` is available.
- * @param authType The already-validated auth type.
- * @param rest     The tokens following `add`.
+ * `<url>` is optional in both — see `resolveAuthUrlArgument`.
+ * @param authType   The already-validated auth type.
+ * @param rest       The tokens following `add`.
+ * @param defaultUrl The resolved `--url`/saved-default fallback, if `<url>` is omitted.
  * @return The parsed `add` command.
  */
-function parseAddArgs( authType: AuthType, rest: string[] ): ParsedAuth {
+function parseAddArgs(
+	authType: AuthType,
+	rest: string[],
+	defaultUrl: string | undefined
+): ParsedAuth {
 	if ( authType === OAUTH2_AUTH_TYPE ) {
-		const [ url, ...fieldTokens ] = rest;
 		// Checked here (not just via a generic "unknown field" fallthrough)
 		// so the old `client-id=`/`client-secret=` field-token syntax gets a
 		// clear migration message instead of being silently parsed and
 		// ignored — see the equivalent check in `parseLoginArgs`.
-		if (
-			! url ||
-			isKnownFieldToken( url, [ 'client-id', 'client-secret' ] )
-		) {
-			throw new CliError(
-				`Usage: wp auth ${ authType } add <url> --client-id=<id> --client-secret=<secret>`
-			);
-		}
+		const { url, fieldTokens } = resolveAuthUrlArgument(
+			rest,
+			[ 'client-id', 'client-secret' ],
+			defaultUrl
+		);
 		const fields = parseFields( fieldTokens );
 		if (
 			fields[ 'client-id' ] !== undefined ||
@@ -311,6 +363,11 @@ function parseAddArgs( authType: AuthType, rest: string[] ): ParsedAuth {
 				`wp auth ${ authType } add: client-id=/client-secret= are no longer accepted here — use --client-id=<id>/--client-secret=<secret> instead.`
 			);
 		}
+		if ( ! url ) {
+			throw new CliError(
+				`Usage: wp auth ${ authType } add [<url>] --client-id=<id> --client-secret=<secret>\n${ NO_URL_HINT }`
+			);
+		}
 		return {
 			authType: OAUTH2_AUTH_TYPE,
 			mode: 'add',
@@ -318,10 +375,14 @@ function parseAddArgs( authType: AuthType, rest: string[] ): ParsedAuth {
 		};
 	}
 
-	const [ url, ...fieldTokens ] = rest;
-	if ( ! url || isKnownFieldToken( url, [ 'skip-verify' ] ) ) {
+	const { url, fieldTokens } = resolveAuthUrlArgument(
+		rest,
+		[ 'skip-verify' ],
+		defaultUrl
+	);
+	if ( ! url ) {
 		throw new CliError(
-			`Usage: wp auth ${ authType } add <url> --username=<u> --password=<p> [--skip-verify]`
+			`Usage: wp auth ${ authType } add [<url>] --username=<u> --password=<p> [--skip-verify]\n${ NO_URL_HINT }`
 		);
 	}
 	const fields = parseFields( fieldTokens );
@@ -336,49 +397,53 @@ function parseAddArgs( authType: AuthType, rest: string[] ): ParsedAuth {
 /**
  * Parses `wp auth <type> <login|add|list|remove|use|status> ...`'s arguments
  * into a typed {@link ParsedAuth}. `<type>` is validated first (see
- * {@link assertKnownAuthType}).
- * @param args The CLI's positional arguments following `auth`.
+ * {@link assertKnownAuthType}). `<url>` is optional everywhere it appears
+ * (`login`/`add`/`remove`/`use`) — see `resolveAuthUrlArgument` — falling
+ * back to `defaultUrl` (the global `--url` flag, or a saved default) so a
+ * command doesn't force repeating a URL the CLI was already invoked with.
+ * @param args       The CLI's positional arguments following `auth`.
+ * @param defaultUrl The resolved `--url`/saved-default fallback, if `<url>` is omitted.
  * @return The parsed auth command.
  */
-export function parseAuthArgs( args: string[] ): ParsedAuth {
+export function parseAuthArgs(
+	args: string[],
+	defaultUrl?: string
+): ParsedAuth {
 	const [ rawType, sub, ...rest ] = args;
 	assertKnownAuthType( rawType );
 	const authType = rawType;
 	switch ( sub ) {
 		case 'login':
-			return parseLoginArgs( authType, rest );
+			return parseLoginArgs( authType, rest, defaultUrl );
 		case 'add':
-			return parseAddArgs( authType, rest );
+			return parseAddArgs( authType, rest, defaultUrl );
 		case 'list':
 			return { authType, mode: 'list' };
 		case 'remove': {
-			const [ first, ...restTokens ] = rest;
-			if ( first && isKnownFieldToken( first, [ 'all' ] ) ) {
-				const fields = parseFields( [ first, ...restTokens ] );
-				if ( fields.all === 'true' ) {
-					return { authType, mode: 'remove-all' };
-				}
-				throw new CliError(
-					`Usage: wp auth ${ authType } remove <url> | wp auth ${ authType } remove --all`
-				);
-			}
-			if ( ! first ) {
-				throw new CliError(
-					`Usage: wp auth ${ authType } remove <url> | wp auth ${ authType } remove --all`
-				);
-			}
-			const fields = parseFields( restTokens );
+			const { url, fieldTokens, explicitUrlGiven } =
+				resolveAuthUrlArgument( rest, [ 'all' ], defaultUrl );
+			const fields = parseFields( fieldTokens );
 			if ( fields.all === 'true' ) {
+				if ( explicitUrlGiven ) {
+					throw new CliError(
+						`wp auth ${ authType } remove: pass either <url> or --all, not both.`
+					);
+				}
+				return { authType, mode: 'remove-all' };
+			}
+			if ( ! url ) {
 				throw new CliError(
-					`wp auth ${ authType } remove: pass either <url> or --all, not both.`
+					`Usage: wp auth ${ authType } remove [<url>] | wp auth ${ authType } remove --all\n${ NO_URL_HINT }`
 				);
 			}
-			return { authType, mode: 'remove', url: first };
+			return { authType, mode: 'remove', url };
 		}
 		case 'use': {
-			const [ url ] = rest;
+			const { url } = resolveAuthUrlArgument( rest, [], defaultUrl );
 			if ( ! url ) {
-				throw new CliError( `Usage: wp auth ${ authType } use <url>` );
+				throw new CliError(
+					`Usage: wp auth ${ authType } use [<url>]\n${ NO_URL_HINT }`
+				);
 			}
 			return { authType, mode: 'use', url };
 		}

@@ -457,3 +457,109 @@ describe( 'parseAuthArgs: oauth2', () => {
 		} );
 	} );
 } );
+
+describe( 'parseAuthArgs: <url> falls back to defaultUrl (the --url flag/saved default)', () => {
+	const APP_PASSWORDS_TYPE = 'application-passwords';
+	const OAUTH2_TYPE = 'oauth2';
+	const DEFAULT_URL = 'https://default.example.com';
+
+	it( 'login uses defaultUrl when no positional url is given (application-passwords)', () => {
+		expect(
+			parseAuthArgs( [ APP_PASSWORDS_TYPE, 'login' ], DEFAULT_URL )
+		).toEqual( {
+			authType: APP_PASSWORDS_TYPE,
+			mode: 'login',
+			url: DEFAULT_URL,
+			appName: 'wp-rest-cli',
+		} );
+	} );
+
+	it( 'login uses defaultUrl when the first token is a field, not a url (oauth2)', () => {
+		expect(
+			parseAuthArgs( [ OAUTH2_TYPE, 'login', 'port=9999' ], DEFAULT_URL )
+		).toEqual( {
+			authType: OAUTH2_TYPE,
+			mode: 'login',
+			url: DEFAULT_URL,
+			redirectUri: undefined,
+			port: 9999,
+		} );
+	} );
+
+	it( 'an explicit positional url still wins over defaultUrl', () => {
+		expect(
+			parseAuthArgs(
+				[ APP_PASSWORDS_TYPE, 'login', 'https://explicit.example.com' ],
+				DEFAULT_URL
+			)
+		).toEqual( {
+			authType: APP_PASSWORDS_TYPE,
+			mode: 'login',
+			url: 'https://explicit.example.com',
+			appName: 'wp-rest-cli',
+		} );
+	} );
+
+	it( 'add uses defaultUrl when no positional url is given (oauth2)', () => {
+		expect( parseAuthArgs( [ OAUTH2_TYPE, 'add' ], DEFAULT_URL ) ).toEqual(
+			{ authType: OAUTH2_TYPE, mode: 'add', url: DEFAULT_URL }
+		);
+	} );
+
+	it( 'remove uses defaultUrl when no positional url is given', () => {
+		expect(
+			parseAuthArgs( [ APP_PASSWORDS_TYPE, 'remove' ], DEFAULT_URL )
+		).toEqual( {
+			authType: APP_PASSWORDS_TYPE,
+			mode: 'remove',
+			url: DEFAULT_URL,
+		} );
+	} );
+
+	it( 'remove --all still works with a defaultUrl available (remove-all takes no url at all)', () => {
+		expect(
+			parseAuthArgs(
+				[ APP_PASSWORDS_TYPE, 'remove', 'all=true' ],
+				DEFAULT_URL
+			)
+		).toEqual( { authType: APP_PASSWORDS_TYPE, mode: 'remove-all' } );
+	} );
+
+	it( 'remove still rejects an explicit url combined with --all, even with a defaultUrl available', () => {
+		expect( () =>
+			parseAuthArgs(
+				[
+					APP_PASSWORDS_TYPE,
+					'remove',
+					'https://explicit.example.com',
+					'all=true',
+				],
+				DEFAULT_URL
+			)
+		).toThrow( 'pass either <url> or --all, not both' );
+	} );
+
+	it( 'use uses defaultUrl when no positional url is given', () => {
+		expect( parseAuthArgs( [ OAUTH2_TYPE, 'use' ], DEFAULT_URL ) ).toEqual(
+			{
+				authType: OAUTH2_TYPE,
+				mode: 'use',
+				url: DEFAULT_URL,
+			}
+		);
+	} );
+
+	it( 'throws with a "pass <url> or set --url" hint when neither is available', () => {
+		expect( () => parseAuthArgs( [ OAUTH2_TYPE, 'login' ] ) ).toThrow(
+			'--url='
+		);
+	} );
+
+	it( 'still prioritizes the client-id=/client-secret= migration-hint error over the missing-url error', () => {
+		// Even with no defaultUrl at all, the more specific/actionable error
+		// wins — see the note in parseLoginArgs about checking this first.
+		expect( () =>
+			parseAuthArgs( [ OAUTH2_TYPE, 'login', 'client-id=abc123' ] )
+		).toThrow( '--client-id=' );
+	} );
+} );

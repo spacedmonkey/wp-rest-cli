@@ -3,10 +3,11 @@
 The second supported `<type>` is `oauth2`, using the [WP-API/OAuth2](https://github.com/WP-API/OAuth2) WordPress plugin. It follows the same shape as [Application Passwords](authentication-application-passwords.md) — `login`/`add`/`list`/`remove`/`use`/`status` — with `--client-id`/`--client-secret` playing the same role `--username`/`--password` do there. See [Authentication](authentication.md) for the general `--username`/`--password`/env-var/`--use-auth` precedence shared by both auth types.
 
 !!! note "No need to repeat --url"
-    `<url>` here is the site the credential is *for* — it's a separate, positional argument, not the same thing as the global `--url` flag (which most other commands use to pick which site to talk to). `wp auth oauth2 add`/`login`/`remove`/`use` don't read the global `--url` flag at all, so there's no need to pass both:
+    `<url>` — the site the credential is *for* — is optional as a positional argument on `login`/`add`/`remove`/`use`: if you omit it, it falls back to the global `--url` flag (or a saved default from `wp config set --url=`), the same way every other command already resolves which site to talk to. So there's no need to pass both:
     ```sh
-    wp-rest-cli auth oauth2 add https://example.com --client-id=<id> --client-secret=<secret>
+    wp-rest-cli auth oauth2 add --url=https://example.com --client-id=<id> --client-secret=<secret>
     ```
+    An explicit positional `<url>` still wins if you do pass one — useful for managing a credential for a *different* site than the one `--url` points at.
 
 ## Prerequisite: creating an Application in wp-admin
 
