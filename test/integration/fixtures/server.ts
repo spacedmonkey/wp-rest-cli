@@ -79,6 +79,14 @@ let nextId = 2;
 const subscribers = new Map< number, Record< string, unknown > >();
 let nextSubscriberId = 1;
 
+// Modelled on WP_REST_Posts_Controller: title/content/excerpt are all
+// declared `required: false` in the schema (matching real WordPress core),
+// yet POST still rejects a body where all three are empty — a plain-PHP
+// check in create_item(), not expressed in the schema at all. Exists so
+// `generate` integration tests can exercise the 'empty_content' retry path.
+const articles = new Map< number, Record< string, unknown > >();
+let nextArticleId = 1;
+
 const settings: Record< string, unknown > = { title: 'Fixture Site' };
 
 // Uuids "revoked" via DELETE /wp-json/wp/v2/users/me/application-passwords/:uuid
@@ -280,6 +288,14 @@ export async function startFixture(): Promise< Fixture > {
 						],
 					},
 					'/wp/v2/subscribers': {
+						namespace: 'wp/v2',
+						methods: [ 'GET', 'POST' ],
+						endpoints: [
+							{ methods: [ 'GET' ] },
+							{ methods: [ 'POST' ] },
+						],
+					},
+					'/wp/v2/articles': {
 						namespace: 'wp/v2',
 						methods: [ 'GET', 'POST' ],
 						endpoints: [
@@ -743,6 +759,77 @@ export async function startFixture(): Promise< Fixture > {
 				name: String( body.name ?? '' ),
 			};
 			subscribers.set( id, record );
+			send( res, 201, record );
+			return;
+		}
+
+		if ( path === '/wp-json/wp/v2/articles' && req.method === 'OPTIONS' ) {
+			send( res, 200, {
+				namespace: 'wp/v2',
+				methods: [ 'GET', 'POST' ],
+				endpoints: [
+					{
+						methods: [ 'GET' ],
+						args: {
+							context: {
+								type: 'string',
+								enum: [ 'view', 'edit', 'embed' ],
+								default: 'view',
+								required: false,
+							},
+						},
+					},
+					{
+						methods: [ 'POST' ],
+						args: {
+							title: {
+								type: 'string',
+								required: false,
+								description: 'The title for the article.',
+							},
+							content: {
+								type: 'string',
+								required: false,
+								description: 'The content for the article.',
+							},
+							excerpt: {
+								type: 'string',
+								required: false,
+								description: 'The excerpt for the article.',
+							},
+						},
+					},
+				],
+			} );
+			return;
+		}
+
+		if ( path === '/wp-json/wp/v2/articles' && req.method === 'GET' ) {
+			send( res, 200, [ ...articles.values() ] );
+			return;
+		}
+
+		if ( path === '/wp-json/wp/v2/articles' && req.method === 'POST' ) {
+			const body = await readBody( req );
+			const title = String( body.title ?? '' );
+			const content = String( body.content ?? '' );
+			const excerpt = String( body.excerpt ?? '' );
+			if ( ! title && ! content && ! excerpt ) {
+				send( res, 400, {
+					code: 'empty_content',
+					message: 'Content, title, and excerpt are empty.',
+					data: { status: 400 },
+				} );
+				return;
+			}
+			const id = nextArticleId++;
+			const record = {
+				id,
+				title: { rendered: title },
+				content: { rendered: content },
+				excerpt: { rendered: excerpt },
+			};
+			articles.set( id, record );
 			send( res, 201, record );
 			return;
 		}

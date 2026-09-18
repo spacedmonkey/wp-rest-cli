@@ -917,6 +917,85 @@ describe( 'wp-rest-cli (integration)', () => {
 			).toBe( true );
 			expect( created.map( ( s ) => s.age ) ).toEqual( [ 1, 2 ] );
 		} );
+
+		it( 'retries once on a live "empty_content" rejection (WP core posts/pages), reusing the synthesized field for the rest of the batch and printing the fallback notice exactly once', async () => {
+			const before = await run( [
+				'wp/v2',
+				'articles',
+				'list',
+				'--format=count',
+			] );
+			const beforeCount = Number( before.stdout.trim() );
+
+			const verbose = await runVerbose( [
+				'wp/v2',
+				'articles',
+				'generate',
+				'--count=3',
+			] );
+			expect( verbose.exitCode ).toBe( 0 );
+			const noticeOccurrences = (
+				verbose.stderr.match(
+					/Note: the API rejected an empty item; also generating --title\./g
+				) ?? []
+			).length;
+			expect( noticeOccurrences ).toBe( 1 );
+
+			const after = await run( [
+				'wp/v2',
+				'articles',
+				'list',
+				'--format=json',
+			] );
+			const items = JSON.parse( after.stdout ) as Array< {
+				title: { rendered: string };
+			} >;
+			const created = items.slice( beforeCount );
+			expect( created.map( ( a ) => a.title.rendered ) ).toEqual( [
+				'Generated title 1',
+				'Generated title 2',
+				'Generated title 3',
+			] );
+		} );
+
+		it( 'never retries when a user-supplied field already satisfies the API', async () => {
+			const before = await run( [
+				'wp/v2',
+				'articles',
+				'list',
+				'--format=count',
+			] );
+			const beforeCount = Number( before.stdout.trim() );
+
+			const result = await run( [
+				'wp/v2',
+				'articles',
+				'generate',
+				'--count=2',
+				'--content=Hand-written content',
+			] );
+			expect( result.exitCode ).toBe( 0 );
+
+			const after = await run( [
+				'wp/v2',
+				'articles',
+				'list',
+				'--format=json',
+			] );
+			const items = JSON.parse( after.stdout ) as Array< {
+				title: { rendered: string };
+				content: { rendered: string };
+			} >;
+			const created = items.slice( beforeCount );
+			expect(
+				created.every(
+					( a ) => a.content.rendered === 'Hand-written content'
+				)
+			).toBe( true );
+			expect( created.every( ( a ) => a.title.rendered === '' ) ).toBe(
+				true
+			);
+		} );
 	} );
 
 	describe( '--debug', () => {

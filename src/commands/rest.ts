@@ -1833,28 +1833,67 @@ export async function runRestCommand(
 			);
 		}
 
-		const created: unknown[] = [];
-		for ( let i = 0; i < count; i++ ) {
-			const index = i + 1;
+		// Some WP core controllers (posts/pages/CPTs) reject an item whose
+		// title/content/excerpt are ALL empty via a plain-PHP check in
+		// create_item() — not expressed as a schema `required` flag at all,
+		// so `missingRequiredArgs` above never catches it. Detected instead
+		// from a live 'empty_content' error response; the first field this
+		// finds (in priority order) is added here and reused for every
+		// subsequent item, so only the one item that triggers it needs a
+		// retry — the rest are pre-filled from the start.
+		const emptyContentFallbackArgs: Array< [ string, EndpointArgSchema ] > =
+			[];
+
+		/**
+		 * Builds this item's request fields: user-supplied fields plus a
+		 * freshly synthesized value (unique to `index`) for every field
+		 * `generate` has decided needs one so far.
+		 * @param index The 1-based position of the item being generated.
+		 * @return The merged `field=value` map for this item.
+		 */
+		function buildGenerateFields(
+			index: number
+		): Record< string, string > {
 			const rawFields: Record< string, string > = { ...createFields };
-			for ( const [ name, arg ] of missingRequiredArgs ) {
+			for ( const [ name, arg ] of [
+				...missingRequiredArgs,
+				...emptyContentFallbackArgs,
+			] ) {
 				rawFields[ name ] = generateDefaultValue( name, arg, index );
 			}
-			const generateRequestFields = coerceJsonFields(
-				rawFields,
-				generateArgs
-			);
+			return rawFields;
+		}
+
+		const generateNamespace = parsed.namespace;
+		const generateRoute = parsed.route;
+
+		/**
+		 * Sends this item's create request, built from `fields`.
+		 * @param index   The 1-based position of the item being generated.
+		 * @param fields  This item's `field=value` map.
+		 * @param isRetry Whether this is a retry after an 'empty_content'
+		 *                rejection, shown in the spinner label so it isn't
+		 *                mistaken for a duplicate of the failed attempt.
+		 * @return The created item's response body.
+		 */
+		async function sendGenerateRequest(
+			index: number,
+			fields: Record< string, string >,
+			isRetry = false
+		): Promise< unknown > {
 			const request = buildVerbRequest( {
 				verb: 'create',
 				apiRoot,
-				namespace: parsed.namespace,
-				route: parsed.route,
+				namespace: generateNamespace,
+				route: generateRoute,
 				context: flags.context,
-				fields: generateRequestFields,
+				fields: coerceJsonFields( fields, generateArgs ),
 				bodyOverride: resolveBodyOverride( flags.body ),
 			} );
 			const { body } = await withSpinner(
-				`POST ${ parsed.namespace }/${ parsed.route } (${ index }/${ count })`,
+				`POST ${ generateNamespace }/${ generateRoute } (${ index }/${ count })${
+					isRetry ? ', retry' : ''
+				}`,
 				! flags.quiet,
 				() =>
 					client.request( request.url, {
@@ -1862,7 +1901,52 @@ export async function runRestCommand(
 						body: request.body,
 					} )
 			);
-			created.push( body );
+			return body;
+		}
+
+		const created: unknown[] = [];
+		for ( let i = 0; i < count; i++ ) {
+			const index = i + 1;
+			try {
+				created.push(
+					await sendGenerateRequest(
+						index,
+						buildGenerateFields( index )
+					)
+				);
+			} catch ( error ) {
+				const canRetry =
+					emptyContentFallbackArgs.length === 0 &&
+					error instanceof WpApiError &&
+					error.code === 'empty_content';
+				const fallbackEntry = canRetry
+					? [ 'title', 'content', 'excerpt' ]
+							.map(
+								( name ) =>
+									[ name, generateArgs?.[ name ] ] as const
+							)
+							.find(
+								( [ name, arg ] ) =>
+									arg && ! ( name in createFields )
+							)
+					: undefined;
+				if ( ! fallbackEntry || ! fallbackEntry[ 1 ] ) {
+					throw error;
+				}
+				const [ fallbackName, fallbackArg ] = fallbackEntry;
+				emptyContentFallbackArgs.push( [ fallbackName, fallbackArg ] );
+				notice(
+					`Note: the API rejected an empty item; also generating --${ fallbackName }.`,
+					! flags.quiet
+				);
+				created.push(
+					await sendGenerateRequest(
+						index,
+						buildGenerateFields( index ),
+						true
+					)
+				);
+			}
 		}
 		if ( flags.format === 'table' && ! flags.field && ! flags.fields ) {
 			const ids = created
