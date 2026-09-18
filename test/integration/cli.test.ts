@@ -918,7 +918,7 @@ describe( 'wp-rest-cli (integration)', () => {
 			expect( created.map( ( s ) => s.age ) ).toEqual( [ 1, 2 ] );
 		} );
 
-		it( 'retries once on a live "empty_content" rejection (WP core posts/pages), reusing the synthesized field for the rest of the batch and printing the fallback notice exactly once', async () => {
+		it( 'retries once on a live "empty_content" rejection (WP core posts/pages), synthesizing every empty-content field (not just one), reused for the rest of the batch, printing the fallback notice exactly once', async () => {
 			const before = await run( [
 				'wp/v2',
 				'articles',
@@ -936,7 +936,7 @@ describe( 'wp-rest-cli (integration)', () => {
 			expect( verbose.exitCode ).toBe( 0 );
 			const noticeOccurrences = (
 				verbose.stderr.match(
-					/Note: the API rejected an empty item; also generating --title\./g
+					/Note: the API rejected an empty item; also generating --title, --content, --excerpt\./g
 				) ?? []
 			).length;
 			expect( noticeOccurrences ).toBe( 1 );
@@ -949,12 +949,24 @@ describe( 'wp-rest-cli (integration)', () => {
 			] );
 			const items = JSON.parse( after.stdout ) as Array< {
 				title: { rendered: string };
+				content: { rendered: string };
+				excerpt: { rendered: string };
 			} >;
 			const created = items.slice( beforeCount );
 			expect( created.map( ( a ) => a.title.rendered ) ).toEqual( [
 				'Generated title 1',
 				'Generated title 2',
 				'Generated title 3',
+			] );
+			expect( created.map( ( a ) => a.content.rendered ) ).toEqual( [
+				'Generated content 1',
+				'Generated content 2',
+				'Generated content 3',
+			] );
+			expect( created.map( ( a ) => a.excerpt.rendered ) ).toEqual( [
+				'Generated excerpt 1',
+				'Generated excerpt 2',
+				'Generated excerpt 3',
 			] );
 		} );
 

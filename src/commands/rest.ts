@@ -1837,8 +1837,11 @@ export async function runRestCommand(
 		// title/content/excerpt are ALL empty via a plain-PHP check in
 		// create_item() — not expressed as a schema `required` flag at all,
 		// so `missingRequiredArgs` above never catches it. Detected instead
-		// from a live 'empty_content' error response; the first field this
-		// finds (in priority order) is added here and reused for every
+		// from a live 'empty_content' error response; every one of
+		// title/content/excerpt the schema declares (that the user didn't
+		// already supply) is added here — same treatment as any other
+		// field `generate` decides needs a synthesized value, not just the
+		// bare minimum to dodge the rejection — and reused for every
 		// subsequent item, so only the one item that triggers it needs a
 		// retry — the rest are pre-filled from the start.
 		const emptyContentFallbackArgs: Array< [ string, EndpointArgSchema ] > =
@@ -1916,7 +1919,9 @@ export async function runRestCommand(
 						emptyContentFallbackArgs.length === 0 &&
 						error instanceof WpApiError &&
 						error.code === 'empty_content';
-					const fallbackEntry = canRetry
+					const fallbackEntries: Array<
+						[ string, EndpointArgSchema ]
+					> = canRetry
 						? [ 'title', 'content', 'excerpt' ]
 								.map(
 									( name ) =>
@@ -1925,21 +1930,22 @@ export async function runRestCommand(
 											generateArgs?.[ name ],
 										] as const
 								)
-								.find(
-									( [ name, arg ] ) =>
-										arg && ! ( name in createFields )
+								.filter(
+									(
+										entry
+									): entry is [ string, EndpointArgSchema ] =>
+										Boolean( entry[ 1 ] ) &&
+										! ( entry[ 0 ] in createFields )
 								)
-						: undefined;
-					if ( ! fallbackEntry || ! fallbackEntry[ 1 ] ) {
+						: [];
+					if ( ! fallbackEntries.length ) {
 						throw error;
 					}
-					const [ fallbackName, fallbackArg ] = fallbackEntry;
-					emptyContentFallbackArgs.push( [
-						fallbackName,
-						fallbackArg,
-					] );
+					emptyContentFallbackArgs.push( ...fallbackEntries );
 					progress.log(
-						`Note: the API rejected an empty item; also generating --${ fallbackName }.`
+						`Note: the API rejected an empty item; also generating ${ fallbackEntries
+							.map( ( [ name ] ) => `--${ name }` )
+							.join( ', ' ) }.`
 					);
 					created.push(
 						await sendGenerateRequest(
