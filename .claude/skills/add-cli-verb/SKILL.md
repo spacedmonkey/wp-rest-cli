@@ -32,7 +32,7 @@ Before touching code, work out:
 4. **`README.md`** — add the verb to the "Command grammar" block and, if it needs one, an example under `## Examples`.
 5. **Tests** — this is not optional; see `extend-fixture-server` skill for the fixture side. At minimum add:
    - A case in `test/unit/parse-command-args.test.ts` if you changed parsing behavior.
-   - One or more `it()` blocks in `test/integration/cli.test.ts` exercising the verb end-to-end against the fixture server (`wp/v2 widgets <verb> ...`), covering the success path and at least one failure/edge case.
+   - One or more `it()` blocks exercising the verb end-to-end against the fixture server (`wp/v2 widgets <verb> ...`), covering the success path and at least one failure/edge case — `test/integration/cli-core.test.ts` for a basic verb (`list`/`get`/`create`/`update`/`delete`), `cli-core-routing.test.ts` for `exists`/`generate` or anything route-addressing-related (see `extend-fixture-server` skill for the full file-by-content breakdown).
 
 ## Gotchas from past additions
 

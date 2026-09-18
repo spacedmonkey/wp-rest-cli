@@ -44,7 +44,7 @@ Run a single test file or a single test by name while iterating:
 NODE_OPTIONS=--experimental-vm-modules npx wp-scripts test-unit-js formatter.test.ts     # unit
 NODE_OPTIONS=--experimental-vm-modules npx wp-scripts test-unit-js -t "name substring"   # unit
 
-npx vitest run test/integration/cli.test.ts                           # integration
+npx vitest run test/integration/cli-core.test.ts                      # integration (one file)
 npx vitest run -t "name substring"                                    # integration
 ```
 
@@ -62,16 +62,33 @@ for `src/cli.ts`/`src/core/debug.ts` as an example).
 
 - **Unit tests** (`test/unit/`), run under **Jest**, exercise pure logic - command/route parsing,
   formatting, indexer route matching - with no network involved.
-- **Integration tests** (`test/integration/cli.test.ts`), run under **Vitest**, are the source of truth
-  for end-to-end CLI behavior. They spawn a plain `node:http` fixture server
+- **Integration tests** (`test/integration/cli-core.test.ts`, `cli-core-routing.test.ts`,
+  `cli-meta.test.ts`, `cli-auth.test.ts`, `cli-auth-oauth2.test.ts` - split across files, balanced by
+  profiled time rather than line count, so Vitest can run them in parallel), run under **Vitest**, are
+  the source of truth
+  for end-to-end CLI behavior. Each file spawns its own plain `node:http` fixture server
   (`test/integration/fixtures/server.ts`) that models a `wp/v2` index, a `widgets` collection with full
-  CRUD + `meta`, and a parameterized-only route, then drive the actual CLI binary against it via `execa` +
-  `tsx`. **No live WordPress site is needed** to run or write these tests, and none should be required to
-  add new ones - when adding a new verb or command, prefer extending the fixture and adding an
-  integration test over mocking `fetch` at the unit level, since most of the value here is in the
-  URL-building and dispatch logic across the whole pipeline, and Jest's ESM setup here can't hoist
-  `jest.mock()` module replacement the way Vitest's `vi.mock()` did. Expect these tests to take seconds
-  rather than milliseconds.
+  CRUD + `meta`, and a parameterized-only route, then drives the actual *built* CLI binary (`dist/cli.js`)
+  against it via `test/integration/fixtures/run-cli.ts`'s shared `runCli` helper (`npm run
+  test:integration` builds it automatically via a `pretest:integration` hook - a direct `vitest run`
+  needs a prior `npm run build`). **No live WordPress site is needed** to run or write these tests, and
+  none should be required to add new ones - when adding a new verb or command, prefer extending the
+  fixture and adding an integration test over mocking `fetch` at the unit level, since most of the value
+  here is in the URL-building and dispatch logic across the whole pipeline, and Jest's ESM setup here
+  can't hoist `jest.mock()` module replacement the way Vitest's `vi.mock()` did. Expect these tests to
+  take seconds rather than milliseconds.
+
+## Coverage
+
+`npm run coverage` runs both suites and produces a merged coverage report under `coverage/`
+(`coverage-summary.json`, `lcov.info`) plus updates the coverage badges at the top of this repo's
+`README.md`. It deliberately doesn't just run each suite's own `--coverage` flag and combine the
+results - Jest's and a V8-based tool's instrumentation build incompatible statement/branch/function
+maps for the same file, so merging them at that level produces misleading numbers. Instead both suites
+write raw V8 coverage profiles into a shared `coverage/tmp` directory (via `NODE_V8_COVERAGE`), and a
+single `c8 report` pass converts the combined raw data into one report. See `CLAUDE.md`'s testing
+conventions section for the full mechanism if you need to change it. CI only commits the regenerated
+badge on pushes to `main`, not on pull requests.
 
 ## Architecture
 

@@ -6,7 +6,7 @@
 			"Bash(npx tsc --noEmit)",
 			"Bash(npm view *)",
 			"Bash(npx vitest run)",
-			"Bash(npx vitest run test/integration/cli.test.ts --testTimeout=20000)",
+			"Bash(npx vitest run test/integration/cli-core.test.ts --testTimeout=20000)",
 			"Bash(npx eslint src test)",
 			"Bash(npx prettier --check \"src/**/*.ts\" \"test/**/*.ts\")",
 			"Bash(npm run test:unit)",

@@ -31,7 +31,7 @@ Every subcommand in this file is therefore a **documented best-effort mapping** 
 3. Add a `case` in `parseMetaArgs` — validate required positionals explicitly (throw `CliError` with the `META_VERB_SYNOPSES[verb](...)`-built usage string, matching the existing pattern) rather than letting `undefined` propagate.
 4. Add a description to `META_VERB_DESCRIPTIONS` and a synopsis builder to `META_VERB_SYNOPSES`.
 5. Add a `case` in `runMetaCommand`. Decide up front whether it's read-only (`get`/`list`/`pluck`) or needs a GET-then-PATCH round trip (everything that mutates).
-6. Add integration tests in `test/integration/cli.test.ts` under the `describe('meta', ...)` block, following the `createWidget()` helper pattern already there — the fixture's `widgets` route already supports `meta` (see `extend-fixture-server` skill if you need a *new* meta-capable route rather than reusing `widgets`).
+6. Add integration tests in `test/integration/cli-meta.test.ts` under the `describe('meta', ...)` block, following the `createWidget()` helper pattern already there — the fixture's `widgets` route already supports `meta` (see `extend-fixture-server` skill if you need a *new* meta-capable route rather than reusing `widgets`).
 
 ## Discoverability
 
