@@ -30,7 +30,7 @@
 		"wp-rest-cli": "./dist/cli.js"
 	},
 	"dependencies": {
-		"@wordpress/url": "^4.54.0",
+		"@wordpress/url": "^4.55.0",
 		"cli-progress": "^3.12.0",
 		"commander": "^15.0.0",
 		"conf": "^15.1.0",
@@ -40,12 +40,12 @@
 		"ora": "^9.4.1",
 		"picocolors": "^1.1.1",
 		"table": "^6.9.0",
-		"yaml": "^2.9.0"
+		"yaml": "^2.9.1"
 	},
 	"devDependencies": {
 		"@jest/globals": "^30.5.1",
 		"@types/cli-progress": "^3.11.6",
-		"@types/node": "^26.4.1",
+		"@types/node": "^26.6.1",
 		"@wordpress/eslint-plugin": "^26.0.0",
 		"@wordpress/prettier-config": "^4.54.0",
 		"@wordpress/scripts": "^35.0.0",
@@ -59,7 +59,7 @@
 		"tsup": "^8.3.5",
 		"tsx": "^4.19.2",
 		"typescript": "^5.7.2",
-		"vitest": "^5.0.0"
+		"vitest": "^5.0.1"
 	},
 	"scripts": {
 		"wp": "tsx src/cli.ts",
