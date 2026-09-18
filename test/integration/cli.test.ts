@@ -1688,6 +1688,32 @@ describe( 'wp-rest-cli (integration)', () => {
 			expect( result.stderr ).toContain( 'Client Credentials Grant' );
 		} );
 
+		it( 'reports a distinct, more accurate error when the site never routes the request to client_credentials handling at all', async () => {
+			// Distinguishes this from the "grant not enabled" case above:
+			// `rest_missing_callback_param`/`rest_invalid_param` only ever
+			// come from the plugin's authorization_code validation path, so
+			// seeing one here — rather than the real handle_client_credentials()
+			// failure's `oauth2.endpoints.token.invalid_client` — means the
+			// request never reached client_credentials handling server-side
+			// at all (an outdated plugin, stale opcode cache, or a WAF), not
+			// that the grant is simply disabled for this Application.
+			const result = await runOAuth2( [
+				'auth',
+				'add',
+				fixture.baseUrl,
+				'client-id=test-client-id-wrong-code-path',
+				'client-secret=shh',
+			] );
+			expect( result.exitCode ).toBe( 1 );
+			expect( result.stderr ).toContain(
+				'responded as though this were an authorization_code request'
+			);
+			expect( result.stderr ).toContain(
+				'not the same as the grant being disabled'
+			);
+			expect( result.stderr ).not.toContain( 'Client Credentials Grant' );
+		} );
+
 		it( 'runs the full authorization_code login flow via the local callback server', async () => {
 			await removeIfPresent( fixture.baseUrl );
 

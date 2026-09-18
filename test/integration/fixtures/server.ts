@@ -99,10 +99,18 @@ export function getRevokedApplicationPasswordUuids(): Set< string > {
 //                                that redirects on error, per the real
 //                                plugin's behavior).
 //   - 'test-client-id-no-cc'  → succeeds for authorization_code, but the
-//                                token endpoint 400s it for
+//                                token endpoint 401s it for
 //                                client_credentials specifically — models an
 //                                Application that doesn't have the
-//                                "Client Credentials Grant" setting enabled.
+//                                "Client Credentials Grant" setting enabled
+//                                (oauth2.endpoints.token.invalid_client).
+//   - 'test-client-id-wrong-code-path' (client_credentials/`add` only, not
+//     listed in KNOWN_OAUTH2_CLIENT_IDS below since it never goes through
+//     GET /oauth2-authorize) → the token endpoint responds as though the
+//     request fell through to authorization_code validation instead
+//     (rest_missing_callback_param) — models a site whose deployed
+//     WP-API/OAuth2 code doesn't actually route client_credentials to its
+//     own handler at all (outdated plugin, stale opcode cache, a WAF).
 // Any other client_id is "unknown" — GET /oauth2-authorize refuses it with a
 // plain (non-redirect) error, matching the real plugin's wp_die() (it can't
 // safely redirect to an unvalidated redirect_uri in the first place).
@@ -454,14 +462,45 @@ export async function startFixture(): Promise< Fixture > {
 					basicAuth?.password ??
 					body.get( 'client_secret' ) ??
 					undefined;
+				// Below, error bodies match the real plugin's actual shape —
+				// WordPress's REST framework always serializes a route
+				// callback's returned `WP_Error` as `{code, message, data}`,
+				// never a bare OAuth2-style `{error: "..."}` — so the CLI's
+				// own error-code-based diagnosis (`core/auth/oauth2.ts`) is
+				// exercised the same way a real site's response would.
 				if ( ! clientId || ! clientSecret ) {
-					send( res, 400, { error: 'invalid_client' } );
+					send( res, 400, {
+						code: 'oauth2.endpoints.token.invalid_request',
+						message: 'Client credentials not provided.',
+						data: { status: 400 },
+					} );
 					return;
 				}
 				// Models an Application without the "Client Credentials
-				// Grant" setting enabled in wp-admin.
+				// Grant" setting enabled in wp-admin — the plugin's own
+				// handle_client_credentials() deliberately collapses
+				// "unknown client_id", "wrong secret", and "grant disabled"
+				// into this one generic 401.
 				if ( clientId === 'test-client-id-no-cc' ) {
-					send( res, 400, { error: 'unsupported_grant_type' } );
+					send( res, 401, {
+						code: 'oauth2.endpoints.token.invalid_client',
+						message: 'Client authentication failed.',
+						data: { status: 401 },
+					} );
+					return;
+				}
+				// Models a site whose deployed WP-API/OAuth2 code doesn't
+				// actually route client_credentials to its own handler (an
+				// outdated plugin build, a stale opcode cache, or a
+				// proxy/WAF) — the request instead falls through to the
+				// plugin's authorization_code validation, which reports
+				// `code` missing since client_credentials never sends one.
+				if ( clientId === 'test-client-id-wrong-code-path' ) {
+					send( res, 400, {
+						code: 'rest_missing_callback_param',
+						message: 'Missing parameter(s): code',
+						data: { status: 400, params: [ 'code' ] },
+					} );
 					return;
 				}
 				const token = `oauth2-token-${ ++oauth2TokenCounter }`;

@@ -8,7 +8,7 @@ import http from 'node:http';
  * Internal dependencies
  */
 import type { WpRestClient } from '../client.js';
-import { CliError } from '../errors.js';
+import { CliError, WpApiError } from '../errors.js';
 import {
 	fetchIndex,
 	getOAuth2Endpoints,
@@ -409,20 +409,56 @@ export async function fetchOAuth2ClientCredentialsToken(
 		}
 		return { accessToken: tokenResponse.access_token };
 	} catch ( error ) {
-		// Every failure here is wrapped with this hint, not just non-CliError
-		// ones: a real OAuth2 token-endpoint error body (`{error: "..."}`)
-		// doesn't match WordPress's own `{code, message, data}` REST error
-		// shape, so `parseErrorResponse` (`core/errors.ts`) always turns it
-		// into a generic `CliError`, not a `WpApiError` — a narrower
-		// "only wrap non-CliError errors" check would make this hint
-		// effectively unreachable for the one case it exists for.
+		// A WordPress REST route always serializes a returned `WP_Error` as
+		// `{code, message, data}`, so `parseErrorResponse` (`core/errors.ts`)
+		// does turn this into a real `WpApiError` with a usable `.code` — not
+		// a generic `CliError`, as an earlier version of this comment assumed
+		// before the plugin's actual source was read directly. That `.code`
+		// is what lets the three branches below give a genuinely different
+		// diagnosis instead of one blanket guess.
+		if (
+			error instanceof WpApiError &&
+			error.code === 'oauth2.endpoints.token.invalid_client'
+		) {
+			// The plugin's own client_credentials failure path
+			// (handle_client_credentials()) deliberately collapses "unknown
+			// client_id", "wrong secret", and "grant disabled" into this one
+			// generic 401 — so this genuinely is the case the hint below
+			// describes, not a guess.
+			throw new CliError(
+				'Could not obtain a token via client_credentials — the site rejected these credentials. ' +
+					'This could mean the client-id=/client-secret= are wrong, or that this Application ' +
+					'doesn\'t have the "Client Credentials Grant" setting enabled. In wp-admin, check ' +
+					'Users → Applications → this application → "Client Credentials Grant" ("Allow this ' +
+					'application to obtain tokens using the client_credentials grant.").'
+			);
+		}
+		if (
+			error instanceof WpApiError &&
+			( error.code === 'rest_missing_callback_param' ||
+				error.code === 'rest_invalid_param' )
+		) {
+			// These codes only ever come from the plugin's authorization_code
+			// validation path, never from handle_client_credentials() itself
+			// — seeing one here means this request never reached
+			// client_credentials handling at all, which points at something
+			// more fundamental than a disabled grant: an outdated WP-API/OAuth2
+			// install (client_credentials is a relatively recent addition to
+			// that plugin), a stale PHP opcode cache after an update, or a
+			// proxy/WAF modifying the request before it reaches WordPress.
+			throw new CliError(
+				'Could not obtain a token via client_credentials — the site responded as though this were ' +
+					`an authorization_code request instead (${ error.code }: ${ error.message }). This usually ` +
+					"means the site's WP-API/OAuth2 installation isn't actually routing client_credentials " +
+					'requests to their own handler — check for an outdated plugin version, a stale PHP opcode ' +
+					'cache after an update, or a proxy/WAF altering the request. This is not the same as the ' +
+					'grant being disabled for this Application.'
+			);
+		}
 		throw new CliError(
-			'Could not obtain a token via client_credentials — this Application may not have that ' +
-				'grant enabled. In wp-admin, check Users → Applications → this application → ' +
-				'"Client Credentials Grant" ("Allow this application to obtain tokens using the ' +
-				`client_credentials grant."). Original error: ${
-					error instanceof Error ? error.message : String( error )
-				}`
+			`Could not obtain a token via client_credentials. Original error: ${
+				error instanceof Error ? error.message : String( error )
+			}`
 		);
 	}
 }
