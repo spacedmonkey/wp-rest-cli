@@ -343,32 +343,17 @@ export async function runOAuth2AuthorizationCodeFlow(
  * grant — no browser involved. Checks the site supports OAuth2 first (see
  * {@link assertOAuth2Supported}): no request is sent at all to a site that
  * doesn't advertise support.
- * @param client              The REST client to fetch the site's index with.
- * @param apiRoot             The resolved REST API root.
- * @param clientId            The OAuth2 client id of a manually-created wp-admin Application.
- * @param clientSecret        The Application's client secret.
- * @param diagnosticCode      TEMPORARY, diagnostic-only: sends an arbitrary
- *                            `code=` body param alongside the request, to
- *                            help confirm server-side whether a site's
- *                            deployed WP-API/OAuth2 code actually
- *                            special-cases `client_credentials` before
- *                            falling through to its `authorization_code`
- *                            validation. `client_credentials` has no real
- *                            code to exchange — remove this parameter once
- *                            diagnosis is done.
- * @param diagnosticGrantType TEMPORARY, diagnostic-only: overrides the
- *                            `grant_type` value sent (normally hardcoded to
- *                            `client_credentials`) — remove this parameter
- *                            once diagnosis is done.
+ * @param client       The REST client to fetch the site's index with.
+ * @param apiRoot      The resolved REST API root.
+ * @param clientId     The OAuth2 client id of a manually-created wp-admin Application.
+ * @param clientSecret The Application's client secret.
  * @return The newly-issued access token.
  */
 export async function fetchOAuth2ClientCredentialsToken(
 	client: WpRestClient,
 	apiRoot: string,
 	clientId: string,
-	clientSecret: string,
-	diagnosticCode?: string,
-	diagnosticGrantType?: string
+	clientSecret: string
 ): Promise< OAuth2TokenResult > {
 	const endpoints = await assertOAuth2Supported( client, apiRoot );
 
@@ -380,10 +365,9 @@ export async function fetchOAuth2ClientCredentialsToken(
 	// real, common hosting-config gotcha); sending only the fallback transport
 	// leaves that failure mode unnecessarily reachable.
 	const body = new URLSearchParams( {
-		grant_type: diagnosticGrantType ?? 'client_credentials',
+		grant_type: 'client_credentials',
 		client_id: clientId,
 		client_secret: clientSecret,
-		...( diagnosticCode ? { code: diagnosticCode } : {} ),
 	} ).toString();
 	const basicAuth = Buffer.from(
 		`${ clientId }:${ clientSecret }`,
