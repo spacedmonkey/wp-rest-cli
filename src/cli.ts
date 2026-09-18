@@ -71,6 +71,7 @@ const KNOWN_LONG_FLAGS = new Set( [
 	'password',
 	'client-id',
 	'client-secret',
+	'token',
 	'use-auth',
 	'context',
 	'format',
@@ -117,6 +118,7 @@ interface RawOptions {
 	password?: string;
 	clientId?: string;
 	clientSecret?: string;
+	token?: string;
 	useAuth?: string;
 	context: string;
 	format: string;
@@ -166,6 +168,7 @@ function toGlobalFlags( options: RawOptions ): GlobalFlags {
 		password: options.password,
 		clientId: options.clientId,
 		clientSecret: options.clientSecret,
+		token: options.token,
 		useAuth: options.useAuth as AuthSource | undefined,
 		context: options.context as Context,
 		format: options.format as OutputFormat,
@@ -294,6 +297,10 @@ program
 	.option(
 		'--client-secret <secret>',
 		'OAuth2 client secret (for "wp auth oauth2 login/add"; required for add, optional for login)'
+	)
+	.option(
+		'--token <token>',
+		'OAuth2 personal access token, generated in wp-admin (for "wp auth oauth2 add"; alternative to --client-id/--client-secret)'
 	)
 	.option(
 		'--use-auth <source>',

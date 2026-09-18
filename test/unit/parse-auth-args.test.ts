@@ -380,6 +380,27 @@ describe( 'parseAuthArgs: oauth2', () => {
 				authType: OAUTH2_TYPE,
 				mode: 'add',
 				url: 'https://example.com',
+				skipVerify: false,
+			} );
+		} );
+
+		// --token= (a personal access token, an alternative to
+		// --client-id/--client-secret) is read from GlobalFlags at
+		// handler-execution time too, the same as --client-id/--client-secret
+		// — only its own skip-verify= field is parsed here.
+		it( 'parses an optional skip-verify= field', () => {
+			expect(
+				parseAuthArgs( [
+					OAUTH2_TYPE,
+					'add',
+					'https://example.com',
+					'skip-verify=true',
+				] )
+			).toEqual( {
+				authType: OAUTH2_TYPE,
+				mode: 'add',
+				url: 'https://example.com',
+				skipVerify: true,
 			} );
 		} );
 
@@ -403,6 +424,18 @@ describe( 'parseAuthArgs: oauth2', () => {
 					'https://example.com',
 					'client-id=abc123',
 					'client-secret=shh',
+				] )
+			).toThrow( '--client-id=' );
+		} );
+
+		it( 'throws the migration hint even when skip-verify= is also given', () => {
+			expect( () =>
+				parseAuthArgs( [
+					OAUTH2_TYPE,
+					'add',
+					'https://example.com',
+					'client-id=abc123',
+					'skip-verify=true',
 				] )
 			).toThrow( '--client-id=' );
 		} );
@@ -502,7 +535,12 @@ describe( 'parseAuthArgs: <url> falls back to defaultUrl (the --url flag/saved d
 
 	it( 'add uses defaultUrl when no positional url is given (oauth2)', () => {
 		expect( parseAuthArgs( [ OAUTH2_TYPE, 'add' ], DEFAULT_URL ) ).toEqual(
-			{ authType: OAUTH2_TYPE, mode: 'add', url: DEFAULT_URL }
+			{
+				authType: OAUTH2_TYPE,
+				mode: 'add',
+				url: DEFAULT_URL,
+				skipVerify: false,
+			}
 		);
 	} );
 

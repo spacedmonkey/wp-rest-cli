@@ -285,6 +285,40 @@ describe( 'site credentials: oauth2', () => {
 			)
 		).toBe( false );
 	} );
+
+	it( 'round-trips a personal_token credential with no clientId', () => {
+		configModule.setSiteCredential(
+			'https://oauth2-personal.example.com',
+			'oauth2',
+			{
+				accessToken: 'personal-token-abc',
+				grantType: 'personal_token',
+				tokenType: 'bearer',
+			}
+		);
+		expect(
+			configModule.getSiteCredential(
+				'https://oauth2-personal.example.com',
+				'oauth2'
+			)
+		).toEqual( {
+			accessToken: 'personal-token-abc',
+			grantType: 'personal_token',
+			tokenType: 'bearer',
+		} );
+
+		const sites = configModule.listSiteCredentials();
+		const entry = sites.find(
+			( site ) => site.url === 'https://oauth2-personal.example.com'
+		);
+		expect( entry ).toEqual( {
+			url: 'https://oauth2-personal.example.com',
+			authType: 'oauth2',
+			clientId: undefined,
+			grantType: 'personal_token',
+		} );
+		expect( JSON.stringify( sites ) ).not.toContain( 'personal-token-abc' );
+	} );
 } );
 
 describe( 'site credentials: cross-type isolation', () => {

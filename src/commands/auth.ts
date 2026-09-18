@@ -29,8 +29,8 @@ export type AuthResult = { output: string; exitCode: number };
  * `port` for oauth2) only exist on that type's own union member, so a
  * handler can't accidentally read a field that was never parsed for the type
  * it's handling. Credentials themselves (`--username`/`--password` for
- * application-passwords, `--client-id`/`--client-secret` for oauth2) are
- * deliberately *not* carried here — both come from the global `GlobalFlags`
+ * application-passwords, `--client-id`/`--client-secret`/`--token` for
+ * oauth2) are deliberately *not* carried here — all come from the global `GlobalFlags`
  * at handler-execution time instead (see `runApplicationPasswordsAuthCommand`'s
  * `handleAdd`/`handleLogin` for the existing pattern this follows), since
  * they're real CLI-wide flags, not subcommand-scoped field tokens. The other
@@ -61,6 +61,7 @@ export type ParsedAuth =
 			authType: typeof OAUTH2_AUTH_TYPE;
 			mode: 'add';
 			url: string;
+			skipVerify: boolean;
 	  }
 	| { authType: typeof APPLICATION_PASSWORDS_AUTH_TYPE; mode: 'list' }
 	| { authType: typeof OAUTH2_AUTH_TYPE; mode: 'list' }
@@ -124,9 +125,9 @@ export function assertKnownAuthType(
 export function authUsageText( authType?: AuthType ): string {
 	if ( authType === OAUTH2_AUTH_TYPE ) {
 		return (
-			`Usage: wp auth ${ OAUTH2_AUTH_TYPE } <login|add|list|remove|use|status> [<url>] [--client-id=] [--client-secret=] [redirect-uri=] [port=] [--all]\n` +
+			`Usage: wp auth ${ OAUTH2_AUTH_TYPE } <login|add|list|remove|use|status> [<url>] [--client-id=] [--client-secret=] [--token=] [redirect-uri=] [port=] [skip-verify=] [--all]\n` +
 			`${ AVAILABLE_AUTH_TYPES_LINE }\n` +
-			'login requires --client-id= (--client-secret= is optional); add requires both --client-id= and --client-secret=.'
+			'login requires --client-id= (--client-secret= is optional); add requires either --token= (a personal access token) or both --client-id= and --client-secret= (client_credentials) — add also accepts skip-verify=true to skip verifying --token= against the site.'
 		);
 	}
 	if ( authType === APPLICATION_PASSWORDS_AUTH_TYPE ) {
@@ -328,11 +329,13 @@ function parseLoginArgs(
  * Parses `wp auth <type> add ...`, authType-conditionally: application-passwords
  * takes username/password from the global `--username`/`--password` flags
  * (see `handleAdd` in `commands/auth/application-passwords.ts`) plus an
- * optional `skip-verify=true` field; oauth2 takes its client id/secret from
- * the global `--client-id`/`--client-secret` flags the same way (see
- * `handleAdd` in `commands/auth/oauth2.ts`) — `client_credentials` has no
- * browser step to obtain them from, so both are required there, checked at
- * handler-execution time once `flags` is available.
+ * optional `skip-verify=true` field; oauth2 takes its credential from the
+ * global `--client-id`/`--client-secret` flags (the `client_credentials`
+ * grant) or `--token` (a personal access token) the same way, plus its own
+ * optional `skip-verify=true` field (see `handleAdd` in
+ * `commands/auth/oauth2.ts`) — required-ness of the credential flags, and
+ * their mutual exclusivity, is checked at handler-execution time once
+ * `flags` is available.
  * `<url>` is optional in both — see `resolveAuthUrlArgument`.
  * @param authType   The already-validated auth type.
  * @param rest       The tokens following `add`.
@@ -351,7 +354,7 @@ function parseAddArgs(
 		// ignored — see the equivalent check in `parseLoginArgs`.
 		const { url, fieldTokens } = resolveAuthUrlArgument(
 			rest,
-			[ 'client-id', 'client-secret' ],
+			[ 'client-id', 'client-secret', 'skip-verify' ],
 			defaultUrl
 		);
 		const fields = parseFields( fieldTokens );
@@ -365,13 +368,14 @@ function parseAddArgs(
 		}
 		if ( ! url ) {
 			throw new CliError(
-				`Usage: wp auth ${ authType } add [<url>] --client-id=<id> --client-secret=<secret>\n${ NO_URL_HINT }`
+				`Usage: wp auth ${ authType } add [<url>] (--client-id=<id> --client-secret=<secret> | --token=<token>) [skip-verify=true]\n${ NO_URL_HINT }`
 			);
 		}
 		return {
 			authType: OAUTH2_AUTH_TYPE,
 			mode: 'add',
 			url,
+			skipVerify: fields[ 'skip-verify' ] === 'true',
 		};
 	}
 
