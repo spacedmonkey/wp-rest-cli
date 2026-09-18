@@ -35,7 +35,7 @@ import type {
 	RouteSchema,
 	Verb,
 } from '../types.js';
-import { withSpinner, pc, notice } from '../ui.js';
+import { withSpinner, pc, notice, createProgressBar } from '../ui.js';
 import {
 	META_VERBS,
 	parseMetaArgs,
@@ -1869,17 +1869,13 @@ export async function runRestCommand(
 
 		/**
 		 * Sends this item's create request, built from `fields`.
-		 * @param index   The 1-based position of the item being generated.
-		 * @param fields  This item's `field=value` map.
-		 * @param isRetry Whether this is a retry after an 'empty_content'
-		 *                rejection, shown in the spinner label so it isn't
-		 *                mistaken for a duplicate of the failed attempt.
+		 * @param index  The 1-based position of the item being generated.
+		 * @param fields This item's `field=value` map.
 		 * @return The created item's response body.
 		 */
 		async function sendGenerateRequest(
 			index: number,
-			fields: Record< string, string >,
-			isRetry = false
+			fields: Record< string, string >
 		): Promise< unknown > {
 			const request = buildVerbRequest( {
 				verb: 'create',
@@ -1890,63 +1886,72 @@ export async function runRestCommand(
 				fields: coerceJsonFields( fields, generateArgs ),
 				bodyOverride: resolveBodyOverride( flags.body ),
 			} );
-			const { body } = await withSpinner(
-				`POST ${ generateNamespace }/${ generateRoute } (${ index }/${ count })${
-					isRetry ? ', retry' : ''
-				}`,
-				! flags.quiet,
-				() =>
-					client.request( request.url, {
-						method: request.method,
-						body: request.body,
-					} )
-			);
+			const { body } = await client.request( request.url, {
+				method: request.method,
+				body: request.body,
+			} );
 			return body;
 		}
 
+		// Progress bar takes over from here — no more per-item spinner text,
+		// it just ticks once for every item actually created.
+		const progress = createProgressBar(
+			`Generating ${ generateNamespace }/${ generateRoute }`,
+			count,
+			! flags.quiet
+		);
 		const created: unknown[] = [];
-		for ( let i = 0; i < count; i++ ) {
-			const index = i + 1;
-			try {
-				created.push(
-					await sendGenerateRequest(
-						index,
-						buildGenerateFields( index )
-					)
-				);
-			} catch ( error ) {
-				const canRetry =
-					emptyContentFallbackArgs.length === 0 &&
-					error instanceof WpApiError &&
-					error.code === 'empty_content';
-				const fallbackEntry = canRetry
-					? [ 'title', 'content', 'excerpt' ]
-							.map(
-								( name ) =>
-									[ name, generateArgs?.[ name ] ] as const
-							)
-							.find(
-								( [ name, arg ] ) =>
-									arg && ! ( name in createFields )
-							)
-					: undefined;
-				if ( ! fallbackEntry || ! fallbackEntry[ 1 ] ) {
-					throw error;
+		try {
+			for ( let i = 0; i < count; i++ ) {
+				const index = i + 1;
+				try {
+					created.push(
+						await sendGenerateRequest(
+							index,
+							buildGenerateFields( index )
+						)
+					);
+				} catch ( error ) {
+					const canRetry =
+						emptyContentFallbackArgs.length === 0 &&
+						error instanceof WpApiError &&
+						error.code === 'empty_content';
+					const fallbackEntry = canRetry
+						? [ 'title', 'content', 'excerpt' ]
+								.map(
+									( name ) =>
+										[
+											name,
+											generateArgs?.[ name ],
+										] as const
+								)
+								.find(
+									( [ name, arg ] ) =>
+										arg && ! ( name in createFields )
+								)
+						: undefined;
+					if ( ! fallbackEntry || ! fallbackEntry[ 1 ] ) {
+						throw error;
+					}
+					const [ fallbackName, fallbackArg ] = fallbackEntry;
+					emptyContentFallbackArgs.push( [
+						fallbackName,
+						fallbackArg,
+					] );
+					progress.log(
+						`Note: the API rejected an empty item; also generating --${ fallbackName }.`
+					);
+					created.push(
+						await sendGenerateRequest(
+							index,
+							buildGenerateFields( index )
+						)
+					);
 				}
-				const [ fallbackName, fallbackArg ] = fallbackEntry;
-				emptyContentFallbackArgs.push( [ fallbackName, fallbackArg ] );
-				notice(
-					`Note: the API rejected an empty item; also generating --${ fallbackName }.`,
-					! flags.quiet
-				);
-				created.push(
-					await sendGenerateRequest(
-						index,
-						buildGenerateFields( index ),
-						true
-					)
-				);
+				progress.tick();
 			}
+		} finally {
+			progress.finish();
 		}
 		if ( flags.format === 'table' && ! flags.field && ! flags.fields ) {
 			const ids = created
