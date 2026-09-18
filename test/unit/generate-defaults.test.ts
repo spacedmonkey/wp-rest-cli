@@ -166,4 +166,32 @@ describe( 'generateDefaultValue', () => {
 			'Generated anything 1'
 		);
 	} );
+
+	it.each( [ 'username', 'user_login' ] )(
+		'synthesizes a lowercase, hyphenated, unique-per-item placeholder for %s, not a spaced/capitalized one',
+		( name ) => {
+			// WordPress's own username validation (validate_username()) is
+			// invisible to the live schema (no pattern/format at all — just
+			// {type: 'string', required: true}), but rejects the generic
+			// "Generated username 1" placeholder's spaces/capitals in
+			// practice, so this field name gets special-cased instead.
+			const arg: EndpointArgSchema = { type: 'string' };
+			expect( generateDefaultValue( name, arg, 1 ) ).toBe(
+				'generated-user-1'
+			);
+			expect( generateDefaultValue( name, arg, 2 ) ).toBe(
+				'generated-user-2'
+			);
+		}
+	);
+
+	it.each( [ 'slug', 'user_nicename', 'nicename' ] )(
+		'synthesizes a lowercase, hyphenated, unique-per-item placeholder for %s',
+		( name ) => {
+			const arg: EndpointArgSchema = { type: 'string' };
+			expect( generateDefaultValue( name, arg, 1 ) ).toBe(
+				'generated-slug-1'
+			);
+		}
+	);
 } );

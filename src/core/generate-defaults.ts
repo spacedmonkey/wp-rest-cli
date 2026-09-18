@@ -52,6 +52,25 @@ function isRawRenderedShape( arg: EndpointArgSchema ): boolean {
 }
 
 /**
+ * Field names WordPress treats as a login/slug-style identifier rather than
+ * free text — `username`/`slug`'s own live schema (like `title`/`content`
+ * above) gives no hint of this at all: no `pattern`, no `format`, nothing
+ * beyond `{type: 'string', required: true}` — the actual constraint lives
+ * in WordPress's own `validate_username()`/`sanitize_title()`, invisible to
+ * introspection. A generic `Generated ${name} ${index}` placeholder (with
+ * its spaces and capital letters) is liable to be rejected — real WP-CLI's
+ * own `wp user generate` likewise never uses freeform text for a username —
+ * so these get a lowercase, hyphenated, space-free placeholder instead.
+ */
+const IDENTIFIER_FIELD_NAMES: Record< string, string > = {
+	username: 'generated-user',
+	user_login: 'generated-user',
+	slug: 'generated-slug',
+	user_nicename: 'generated-slug',
+	nicename: 'generated-slug',
+};
+
+/**
  * Reads a numeric schema constraint (`minimum`/`maximum`) off an arg. These
  * aren't named fields on `EndpointArgSchema` — only reachable through its
  * index signature — so this narrows the `unknown` value safely.
@@ -139,7 +158,11 @@ export function generateDefaultValue(
 				? `Generated ${ name } ${ index }`
 				: '{}';
 		case 'string':
-		default:
+		default: {
+			const identifierPrefix = IDENTIFIER_FIELD_NAMES[ name ];
+			if ( identifierPrefix ) {
+				return `${ identifierPrefix }-${ index }`;
+			}
 			switch ( arg.format ) {
 				case 'email':
 					return `generated-${ index }@example.com`;
@@ -166,5 +189,6 @@ export function generateDefaultValue(
 				default:
 					return `Generated ${ name } ${ index }`;
 			}
+		}
 	}
 }

@@ -575,6 +575,29 @@ const COLLECTION_VERB_METHOD: Partial< Record< Verb, string > > = {
 };
 
 /**
+ * Known WordPress core error codes for a hidden content requirement: a
+ * field a route's own live schema declares `required: false` (so
+ * `generate`'s normal required-field synthesis never touches it), yet a
+ * plain-PHP check elsewhere in the controller still rejects the item over
+ * it. Each entry lists the field(s) that error implies, in priority order
+ * — `generate`'s create loop catches one of these codes, synthesizes
+ * whichever of these fields the route's schema actually declares and the
+ * user didn't already supply, and retries once. Deliberately narrow (a
+ * fixed table of known codes, not "retry on any 400") so a genuinely
+ * invalid request from the user still fails loudly instead of being
+ * silently papered over.
+ * - `empty_content` (posts/pages/CPTs, `WP_REST_Posts_Controller`):
+ *   title/content/excerpt can't all be empty at once — any one of them
+ *   fixes it, so all three (that the schema declares) are filled.
+ * - `rest_comment_content_invalid` (`WP_REST_Comments_Controller`):
+ *   content is unconditionally required, unlike the posts case above.
+ */
+const HIDDEN_REQUIRED_FIELDS_BY_ERROR_CODE: Record< string, string[] > = {
+	empty_content: [ 'title', 'content', 'excerpt' ],
+	rest_comment_content_invalid: [ 'content' ],
+};
+
+/**
  * Renders an endpoint's args WP-CLI-synopsis-style: `[--name=<name>]`, or
  * bare `--name=<name>` if required — including when `name` is the route's
  * own URL parameter (see `formatEndpointArgs`), which the schema itself
@@ -1084,6 +1107,48 @@ async function resolveParamIndex(
 		fetchIndex( client, apiRoot )
 	);
 	return resolveRouteInfo( index, namespace, route ).paramIndex;
+}
+
+/**
+ * Best-effort discovers a real widget type id for `wp/v2/widgets`' `id_base`
+ * field — the one hidden-required-field case (see
+ * `HIDDEN_REQUIRED_FIELDS_BY_ERROR_CODE`) that can't be synthesized from
+ * nothing the way a title or username placeholder can: a widget type has
+ * to actually be registered on the site, discoverable only via the sibling
+ * `{namespace}/widget-types` collection, never the `widgets` route's own
+ * schema. Returns undefined on any failure (network error, empty list,
+ * unexpected shape) — a caller falls back to surfacing the original
+ * `rest_invalid_widget` error rather than one about this lookup itself.
+ * @param client    The REST client to issue the request with.
+ * @param apiRoot   The resolved REST API root URL.
+ * @param namespace The namespace `widgets` was addressed under (e.g. `wp/v2`).
+ * @return The first available widget type's id, or undefined.
+ */
+async function resolveWidgetIdBase(
+	client: WpRestClient,
+	apiRoot: string,
+	namespace: string
+): Promise< string | undefined > {
+	try {
+		const url = new URL(
+			`${ namespace }/widget-types`,
+			apiRoot
+		).toString();
+		const { body } = await client.request< unknown >( url, {
+			method: 'GET',
+		} );
+		const items = Array.isArray( body )
+			? body
+			: Object.values( ( body as Record< string, unknown > ) ?? {} );
+		const first = items[ 0 ];
+		const id =
+			first && typeof first === 'object' && 'id' in first
+				? ( first as { id: unknown } ).id
+				: undefined;
+		return typeof id === 'string' ? id : undefined;
+	} catch {
+		return undefined;
+	}
 }
 
 /**
@@ -1833,34 +1898,46 @@ export async function runRestCommand(
 			);
 		}
 
-		// Some WP core controllers (posts/pages/CPTs) reject an item whose
-		// title/content/excerpt are ALL empty via a plain-PHP check in
-		// create_item() — not expressed as a schema `required` flag at all,
-		// so `missingRequiredArgs` above never catches it. Detected instead
-		// from a live 'empty_content' error response; every one of
-		// title/content/excerpt the schema declares (that the user didn't
-		// already supply) is added here — same treatment as any other
-		// field `generate` decides needs a synthesized value, not just the
-		// bare minimum to dodge the rejection — and reused for every
-		// subsequent item, so only the one item that triggers it needs a
-		// retry — the rest are pre-filled from the start.
-		const emptyContentFallbackArgs: Array< [ string, EndpointArgSchema ] > =
-			[];
+		// Some WP core controllers reject an item over a field that's
+		// declared `required: false` in the schema — so `missingRequiredArgs`
+		// above never catches it — via a plain-PHP check elsewhere in the
+		// controller instead. Detected from a live error matching
+		// `HIDDEN_REQUIRED_FIELDS_BY_ERROR_CODE`; every field it implies that
+		// the route's schema actually declares (and the user didn't already
+		// supply) is added here — same treatment as any other field
+		// `generate` decides needs a synthesized value — and reused for
+		// every subsequent item, so only the one item that triggers it
+		// needs a retry — the rest are pre-filled from the start.
+		const hiddenRequiredFallbackArgs: Array<
+			[ string, EndpointArgSchema ]
+		> = [];
+
+		// A handful of fields (so far, just `wp/v2/widgets`' `id_base`) can't
+		// be synthesized at all — they need a real value discovered from a
+		// live request, not a placeholder — so they're resolved once, kept
+		// fixed (not re-derived per index like `generateDefaultValue`'s
+		// output), and reused for the rest of the batch. See
+		// `resolveWidgetIdBase`.
+		const fixedFallbackFields: Record< string, string > = {};
 
 		/**
-		 * Builds this item's request fields: user-supplied fields plus a
-		 * freshly synthesized value (unique to `index`) for every field
-		 * `generate` has decided needs one so far.
+		 * Builds this item's request fields: user-supplied fields, any
+		 * discovered fixed-value fallback fields, plus a freshly synthesized
+		 * value (unique to `index`) for every field `generate` has decided
+		 * needs one so far.
 		 * @param index The 1-based position of the item being generated.
 		 * @return The merged `field=value` map for this item.
 		 */
 		function buildGenerateFields(
 			index: number
 		): Record< string, string > {
-			const rawFields: Record< string, string > = { ...createFields };
+			const rawFields: Record< string, string > = {
+				...createFields,
+				...fixedFallbackFields,
+			};
 			for ( const [ name, arg ] of [
 				...missingRequiredArgs,
-				...emptyContentFallbackArgs,
+				...hiddenRequiredFallbackArgs,
 			] ) {
 				rawFields[ name ] = generateDefaultValue( name, arg, index );
 			}
@@ -1915,14 +1992,15 @@ export async function runRestCommand(
 						)
 					);
 				} catch ( error ) {
-					const canRetry =
-						emptyContentFallbackArgs.length === 0 &&
-						error instanceof WpApiError &&
-						error.code === 'empty_content';
+					const impliedFieldNames =
+						hiddenRequiredFallbackArgs.length === 0 &&
+						error instanceof WpApiError
+							? HIDDEN_REQUIRED_FIELDS_BY_ERROR_CODE[ error.code ]
+							: undefined;
 					const fallbackEntries: Array<
 						[ string, EndpointArgSchema ]
-					> = canRetry
-						? [ 'title', 'content', 'excerpt' ]
+					> = impliedFieldNames
+						? impliedFieldNames
 								.map(
 									( name ) =>
 										[
@@ -1938,14 +2016,47 @@ export async function runRestCommand(
 										! ( entry[ 0 ] in createFields )
 								)
 						: [];
-					if ( ! fallbackEntries.length ) {
+
+					if ( fallbackEntries.length ) {
+						hiddenRequiredFallbackArgs.push( ...fallbackEntries );
+						progress.log(
+							`Note: the API rejected an empty item; also generating ${ fallbackEntries
+								.map( ( [ name ] ) => `--${ name }` )
+								.join( ', ' ) }.`
+						);
+						created.push(
+							await sendGenerateRequest(
+								index,
+								buildGenerateFields( index )
+							)
+						);
+						progress.tick();
+						continue;
+					}
+
+					// `id_base` needs a value discovered from a live
+					// request (see `resolveWidgetIdBase`), not one of
+					// `HIDDEN_REQUIRED_FIELDS_BY_ERROR_CODE`'s synthesized
+					// placeholders — handled as a separate fallback path.
+					const canResolveIdBase =
+						! ( 'id_base' in fixedFallbackFields ) &&
+						generateArgs?.id_base &&
+						! ( 'id_base' in createFields ) &&
+						error instanceof WpApiError &&
+						error.code === 'rest_invalid_widget';
+					const discoveredIdBase = canResolveIdBase
+						? await resolveWidgetIdBase(
+								client,
+								apiRoot,
+								generateNamespace
+						  )
+						: undefined;
+					if ( ! discoveredIdBase ) {
 						throw error;
 					}
-					emptyContentFallbackArgs.push( ...fallbackEntries );
+					fixedFallbackFields.id_base = discoveredIdBase;
 					progress.log(
-						`Note: the API rejected an empty item; also generating ${ fallbackEntries
-							.map( ( [ name ] ) => `--${ name }` )
-							.join( ', ' ) }.`
+						`Note: --id_base not supplied; using the first available widget type ("${ discoveredIdBase }").`
 					);
 					created.push(
 						await sendGenerateRequest(
