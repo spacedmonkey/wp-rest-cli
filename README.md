@@ -32,8 +32,8 @@ wp <namespace>                                                  # list routes re
 wp <namespace> <route>                                          # introspect: show the route's supported methods/args/context (an OPTIONS request)
 wp <namespace> <route> list        [--page=] [--per_page=] [...]
 wp <namespace> <route> get <id>
-wp <namespace> <route> create      [--field=value...] [--content=<json>]
-wp <namespace> <route> update <id> [--field=value...] [--content=<json>]
+wp <namespace> <route> create      [--field=value...] [--body=<json>]
+wp <namespace> <route> update <id> [--field=value...] [--body=<json>]
 wp <namespace> <route> delete <id> [--force]
 ```
 
@@ -49,7 +49,7 @@ wp <namespace> <route> delete <id> [--force]
 | `--format=table\|json\|csv\|yaml\|ids\|count\|raw` | Default `table`. |
 | `--fields=<a,b,c>` | Limit output to specific top-level fields. |
 | `--field=<name>` | Print a single field's raw value (supports dotted paths, e.g. `title.rendered`). |
-| `--content=<json>` | Raw JSON request body for `create`/`update`, overriding/merged under `--field=` args. |
+| `--body=<json>` | Raw JSON request body for `create`/`update`, overriding/merged under `--field=` args. |
 | `--no-color` | Disable colored output. |
 | `--quiet` | Suppress spinners. |
 | `--debug` | Print a stack trace on unexpected (non-API) errors. |

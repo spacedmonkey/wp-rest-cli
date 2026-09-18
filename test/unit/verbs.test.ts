@@ -71,7 +71,7 @@ describe( 'buildVerbRequest', () => {
 		expect( req.body ).toEqual( { title: 'Hello', status: 'publish' } );
 	} );
 
-	it( 'prefers --content over field=value args, merging fields on top', () => {
+	it( 'prefers --body over field=value args, merging fields on top', () => {
 		const req = buildVerbRequest( {
 			verb: 'create',
 			apiRoot,
@@ -79,10 +79,10 @@ describe( 'buildVerbRequest', () => {
 			route: 'posts',
 			context: 'view',
 			fields: { status: 'draft' },
-			content: { title: 'From content', status: 'publish' },
+			bodyOverride: { title: 'From body', status: 'publish' },
 		} );
 		expect( req.body ).toEqual( {
-			title: 'From content',
+			title: 'From body',
 			status: 'draft',
 		} );
 	} );

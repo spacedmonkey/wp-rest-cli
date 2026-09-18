@@ -113,7 +113,7 @@ export interface GlobalFlags {
 	format: OutputFormat;
 	fields?: string;
 	field?: string;
-	content?: string;
+	body?: string;
 	color: boolean;
 	quiet: boolean;
 	debug: boolean;

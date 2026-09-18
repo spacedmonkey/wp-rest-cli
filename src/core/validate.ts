@@ -98,3 +98,47 @@ export function validateFieldTypes(
 		throw new CliError( problems.join( '\n' ) );
 	}
 }
+
+/**
+ * JSON-parses a `field=value` argument's raw string value when the route's
+ * live schema declares that field `object`/`array`-typed (e.g. `meta`), so a
+ * structured value like `--meta={"key":"value"}` is sent as real JSON rather
+ * than a literal string the API would reject or silently ignore. WordPress's
+ * own REST controllers for `content`/`title`/`excerpt` (declared `object` in
+ * schema, for their `{raw,rendered,protected}` shape) also accept a plain
+ * string directly, so a value that isn't valid JSON is left as-is rather
+ * than rejected here — the API is the final authority on whether the string
+ * is acceptable for that field.
+ * @param fields The parsed `field=value` arguments.
+ * @param args   The matching endpoint's argument schema, if any.
+ * @return A copy of `fields` with object/array-typed values JSON-parsed
+ *         where the raw value is valid JSON; everything else is left as the
+ *         original string.
+ */
+export function coerceJsonFields(
+	fields: Record< string, string >,
+	args: Record< string, EndpointArgSchema > | undefined
+): Record< string, unknown > {
+	if ( ! args ) {
+		return fields;
+	}
+	const result: Record< string, unknown > = { ...fields };
+	for ( const [ name, value ] of Object.entries( fields ) ) {
+		const arg = args[ name ];
+		if ( ! arg?.type ) {
+			continue;
+		}
+		const types = Array.isArray( arg.type ) ? arg.type : [ arg.type ];
+		if (
+			! types.some( ( type ) => type === 'object' || type === 'array' )
+		) {
+			continue;
+		}
+		try {
+			result[ name ] = JSON.parse( value );
+		} catch {
+			// Not valid JSON — leave the raw string.
+		}
+	}
+	return result;
+}
