@@ -40,14 +40,17 @@ function isOAuth2Row(
 }
 
 /**
- * `wp auth oauth2 login <url> client-id=<id> [...]`: runs the browser-based
+ * `wp auth oauth2 login <url> --client-id=<id> [...]`: runs the browser-based
  * `authorization_code` flow against a manually-created wp-admin Application,
  * then stores the resulting access token. Re-running `login` for the same
  * site overwrites the stored token silently — the WP-API/OAuth2 plugin
  * exposes no REST endpoint to revoke the old one, unlike Application
  * Passwords' `login`.
  * @param parsed The parsed `login` command.
- * @param flags  Global CLI flags.
+ * @param flags  Global CLI flags — `--client-id`/`--client-secret` (the
+ *               credential itself) live here rather than on `parsed`, the
+ *               same way `--username`/`--password` do for
+ *               application-passwords.
  * @return The command's rendered output and exit code.
  */
 async function handleLogin(
@@ -57,6 +60,12 @@ async function handleLogin(
 	>,
 	flags: GlobalFlags
 ): Promise< AuthResult > {
+	if ( ! flags.clientId ) {
+		throw new CliError(
+			`wp auth ${ OAUTH2_AUTH_TYPE } login requires --client-id, from a manually-created wp-admin Application (Users → Applications).`
+		);
+	}
+
 	const apiRoot = await withSpinner(
 		'Discovering REST API',
 		! flags.quiet,
@@ -73,14 +82,14 @@ async function handleLogin(
 	const { accessToken } = await runOAuth2AuthorizationCodeFlow(
 		client,
 		apiRoot,
-		parsed.clientId,
-		parsed.clientSecret,
+		flags.clientId,
+		flags.clientSecret,
 		redirectUri
 	);
 
 	setSiteCredential( parsed.url, OAUTH2_AUTH_TYPE, {
 		accessToken,
-		clientId: parsed.clientId,
+		clientId: flags.clientId,
 		grantType: 'authorization_code',
 		tokenType: 'bearer',
 	} );
@@ -100,15 +109,18 @@ async function handleLogin(
 }
 
 /**
- * `wp auth oauth2 add <url> client-id=<id> client-secret=<secret>`: exchanges
- * a client id/secret for an access token via `client_credentials` (no
- * browser), then stores it. Best-effort verifies the token against
+ * `wp auth oauth2 add <url> --client-id=<id> --client-secret=<secret>`:
+ * exchanges a client id/secret for an access token via `client_credentials`
+ * (no browser), then stores it. Best-effort verifies the token against
  * `wp/v2/users/me`, but treats the result as inconclusive-not-authoritative —
  * a `client_credentials` token authenticates as user id 0, which some
  * routes' permission callbacks may reject regardless of a valid token — so
  * this never blocks the save, only warns.
  * @param parsed The parsed `add` command.
- * @param flags  Global CLI flags.
+ * @param flags  Global CLI flags — `--client-id`/`--client-secret` (the
+ *               credential itself) live here rather than on `parsed`, the
+ *               same way `--username`/`--password` do for
+ *               application-passwords.
  * @return The command's rendered output and exit code.
  */
 async function handleAdd(
@@ -118,6 +130,12 @@ async function handleAdd(
 	>,
 	flags: GlobalFlags
 ): Promise< AuthResult > {
+	if ( ! flags.clientId || ! flags.clientSecret ) {
+		throw new CliError(
+			`wp auth ${ OAUTH2_AUTH_TYPE } add requires both --client-id and --client-secret, from a manually-created wp-admin Application with the client_credentials grant enabled.`
+		);
+	}
+
 	const apiRoot = await withSpinner(
 		'Discovering REST API',
 		! flags.quiet,
@@ -127,8 +145,8 @@ async function handleAdd(
 	const { accessToken } = await fetchOAuth2ClientCredentialsToken(
 		client,
 		apiRoot,
-		parsed.clientId,
-		parsed.clientSecret
+		flags.clientId,
+		flags.clientSecret
 	);
 
 	let warning: string | undefined;
@@ -148,7 +166,7 @@ async function handleAdd(
 
 	setSiteCredential( parsed.url, OAUTH2_AUTH_TYPE, {
 		accessToken,
-		clientId: parsed.clientId,
+		clientId: flags.clientId,
 		grantType: 'client_credentials',
 		tokenType: 'bearer',
 	} );

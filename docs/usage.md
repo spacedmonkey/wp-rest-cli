@@ -33,6 +33,8 @@ wp config get|set|clear
 | `--url=<site>` | WordPress site URL. Required unless a default is saved (`wp config set --url=`). |
 | `--username=<user>` | Also via the `WP_USERNAME` env var. |
 | `--password=<pass>` | Also via the `WP_PASSWORD` env var. A WordPress **Application Password** is strongly recommended over a real account password — see [Authentication](authentication.md). |
+| `--client-id=<id>` / `--client-secret=<secret>` | OAuth2 credential, for `wp auth oauth2 login`/`add` — see [OAuth2](authentication-oauth2.md). |
+| `--use-auth=env\|none\|application-passwords\|oauth2` | Pin credential resolution to one source, skipping the rest of the fallback chain — see [Authentication](authentication.md). |
 | `--context=view\|edit\|embed` | Default `view`. Run `wp <namespace> <route>` to see which values a given route actually supports. |
 | `--format=table\|json\|csv\|yaml\|ids\|count\|raw` | Default `table`. |
 | `--fields=<a,b,c>` | Limit output to specific top-level fields. |

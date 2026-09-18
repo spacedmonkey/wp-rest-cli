@@ -1,6 +1,12 @@
 # OAuth2
 
-The second supported `<type>` is `oauth2`, using the [WP-API/OAuth2](https://github.com/WP-API/OAuth2) WordPress plugin. It follows the same shape as [Application Passwords](authentication-application-passwords.md) — `login`/`add`/`list`/`remove`/`use`/`status` — with different fields, since OAuth2's credential shape (a client id/secret) is different from a username/password pair. See [Authentication](authentication.md) for the general `--username`/`--password`/env-var/`--use-auth` precedence shared by both auth types.
+The second supported `<type>` is `oauth2`, using the [WP-API/OAuth2](https://github.com/WP-API/OAuth2) WordPress plugin. It follows the same shape as [Application Passwords](authentication-application-passwords.md) — `login`/`add`/`list`/`remove`/`use`/`status` — with `--client-id`/`--client-secret` playing the same role `--username`/`--password` do there. See [Authentication](authentication.md) for the general `--username`/`--password`/env-var/`--use-auth` precedence shared by both auth types.
+
+!!! note "No need to repeat --url"
+    `<url>` here is the site the credential is *for* — it's a separate, positional argument, not the same thing as the global `--url` flag (which most other commands use to pick which site to talk to). `wp auth oauth2 add`/`login`/`remove`/`use` don't read the global `--url` flag at all, so there's no need to pass both:
+    ```sh
+    wp-rest-cli auth oauth2 add https://example.com --client-id=<id> --client-secret=<secret>
+    ```
 
 ## Prerequisite: creating an Application in wp-admin
 
@@ -8,24 +14,24 @@ Unlike Application Passwords' self-service `authorize-application.php` page, an 
 
 When creating the Application:
 
-- Set its redirect URI to `http://127.0.0.1:8787/callback` (the default `wp auth oauth2 login` uses), unless you plan to override it with `redirect-uri=`/`port=` (see below) — the plugin matches this exactly, so it must match whatever the CLI is told to use.
+- Set its redirect URI to `http://127.0.0.1:8787/callback` (the default `wp auth oauth2 login` uses), unless you plan to override it with the `redirect-uri=`/`port=` fields (see below) — the plugin matches this exactly, so it must match whatever the CLI is told to use.
 - To use `wp auth oauth2 add` (see below), also enable **"Client Credentials Grant"** ("Allow this application to obtain tokens using the client_credentials grant.") on the Application. **This checkbox only exists on a recent-enough build of the plugin** — see [Requires a recent plugin version](#requires-a-recent-plugin-version) below before assuming it's missing by mistake.
 
 ## `wp auth oauth2 login` — browser flow (`authorization_code`)
 
 ```sh
-wp-rest-cli auth oauth2 login https://example.com client-id=<your-client-id>
+wp-rest-cli auth oauth2 login https://example.com --client-id=<your-client-id>
 ```
 
-Runs the same kind of browser-based flow as `auth application-passwords login`: prints a URL, you open it and approve, and the CLI picks up the resulting access token via a local callback server. Unlike Application Passwords' OS-assigned ephemeral port, this binds to a **fixed** local address (`http://127.0.0.1:8787/callback` by default) — the plugin requires an exact redirect-URI match, so it has to be known ahead of time, not chosen at random each run. Override it with optional `redirect-uri=<uri>`/`port=<port>` fields if 8787 is taken or you registered a different one. `client-secret=<secret>` is also accepted but optional for this grant.
+Runs the same kind of browser-based flow as `auth application-passwords login`: prints a URL, you open it and approve, and the CLI picks up the resulting access token via a local callback server. Unlike Application Passwords' OS-assigned ephemeral port, this binds to a **fixed** local address (`http://127.0.0.1:8787/callback` by default) — the plugin requires an exact redirect-URI match, so it has to be known ahead of time, not chosen at random each run. Override it with optional `redirect-uri=<uri>`/`port=<port>` fields if 8787 is taken or you registered a different one. `--client-secret=<secret>` is also accepted but optional for this grant.
 
 ## `wp auth oauth2 add` — no browser (`client_credentials`)
 
 ```sh
-wp-rest-cli auth oauth2 add https://example.com client-id=<your-client-id> client-secret=<your-client-secret>
+wp-rest-cli auth oauth2 add https://example.com --client-id=<your-client-id> --client-secret=<your-client-secret>
 ```
 
-Exchanges a client id/secret directly for a token, no browser involved — requires the Application to have the "Client Credentials Grant" setting enabled (see above); the CLI reports a clear error naming that setting if the exchange fails. Both `client-id=`/`client-secret=` are required here (unlike `login`, where the plugin doesn't enforce a secret for `authorization_code`).
+Exchanges a client id/secret directly for a token, no browser involved — requires the Application to have the "Client Credentials Grant" setting enabled (see above); the CLI reports a clear error naming that setting if the exchange fails. Both `--client-id`/`--client-secret` are required here (unlike `login`, where the plugin doesn't enforce a secret for `authorization_code`).
 
 ### Requires a recent plugin version
 

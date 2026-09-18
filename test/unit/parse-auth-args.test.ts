@@ -262,40 +262,19 @@ describe( 'parseAuthArgs: oauth2', () => {
 	const OAUTH2_TYPE = 'oauth2';
 
 	describe( 'login', () => {
-		it( 'parses a url with a required client-id=', () => {
+		// client-id=/client-secret= are no longer parsed here at all — the
+		// real --client-id/--client-secret flags are read from GlobalFlags at
+		// handler-execution time instead (see handleLogin in
+		// commands/auth/oauth2.ts), the same way application-passwords reads
+		// --username/--password. parseAuthArgs only ever sees the tokens
+		// following `login`, which no longer include the credential.
+		it( 'parses a bare url', () => {
 			expect(
-				parseAuthArgs( [
-					OAUTH2_TYPE,
-					'login',
-					'https://example.com',
-					'client-id=abc123',
-				] )
+				parseAuthArgs( [ OAUTH2_TYPE, 'login', 'https://example.com' ] )
 			).toEqual( {
 				authType: OAUTH2_TYPE,
 				mode: 'login',
 				url: 'https://example.com',
-				clientId: 'abc123',
-				clientSecret: undefined,
-				redirectUri: undefined,
-				port: undefined,
-			} );
-		} );
-
-		it( 'parses an optional client-secret= field', () => {
-			expect(
-				parseAuthArgs( [
-					OAUTH2_TYPE,
-					'login',
-					'https://example.com',
-					'client-id=abc123',
-					'client-secret=shh',
-				] )
-			).toEqual( {
-				authType: OAUTH2_TYPE,
-				mode: 'login',
-				url: 'https://example.com',
-				clientId: 'abc123',
-				clientSecret: 'shh',
 				redirectUri: undefined,
 				port: undefined,
 			} );
@@ -307,15 +286,12 @@ describe( 'parseAuthArgs: oauth2', () => {
 					OAUTH2_TYPE,
 					'login',
 					'https://example.com',
-					'client-id=abc123',
 					'redirect-uri=http://127.0.0.1:9999/callback',
 				] )
 			).toEqual( {
 				authType: OAUTH2_TYPE,
 				mode: 'login',
 				url: 'https://example.com',
-				clientId: 'abc123',
-				clientSecret: undefined,
 				redirectUri: 'http://127.0.0.1:9999/callback',
 				port: undefined,
 			} );
@@ -327,30 +303,21 @@ describe( 'parseAuthArgs: oauth2', () => {
 					OAUTH2_TYPE,
 					'login',
 					'https://example.com',
-					'client-id=abc123',
 					'port=9999',
 				] )
 			).toEqual( {
 				authType: OAUTH2_TYPE,
 				mode: 'login',
 				url: 'https://example.com',
-				clientId: 'abc123',
-				clientSecret: undefined,
 				redirectUri: undefined,
 				port: 9999,
 			} );
 		} );
 
 		it( 'throws when no url is given', () => {
-			expect( () =>
-				parseAuthArgs( [ OAUTH2_TYPE, 'login', 'client-id=abc123' ] )
-			).toThrow( CliError );
-		} );
-
-		it( 'throws when client-id= is missing', () => {
-			expect( () =>
-				parseAuthArgs( [ OAUTH2_TYPE, 'login', 'https://example.com' ] )
-			).toThrow( 'client-id=' );
+			expect( () => parseAuthArgs( [ OAUTH2_TYPE, 'login' ] ) ).toThrow(
+				CliError
+			);
 		} );
 
 		it( 'throws when port= is not a valid port number', () => {
@@ -359,7 +326,6 @@ describe( 'parseAuthArgs: oauth2', () => {
 					OAUTH2_TYPE,
 					'login',
 					'https://example.com',
-					'client-id=abc123',
 					'port=not-a-number',
 				] )
 			).toThrow( CliError );
@@ -371,64 +337,74 @@ describe( 'parseAuthArgs: oauth2', () => {
 					OAUTH2_TYPE,
 					'login',
 					'https://example.com',
-					'client-id=abc123',
 					'redirect-uri=http://127.0.0.1:9999/callback',
 					'port=9999',
 				] )
 			).toThrow( 'pass either redirect-uri= ' );
 		} );
+
+		it( 'throws a migration hint when the old client-id= field syntax is used where the url belongs', () => {
+			expect( () =>
+				parseAuthArgs( [ OAUTH2_TYPE, 'login', 'client-id=abc123' ] )
+			).toThrow( CliError );
+		} );
+
+		it( 'throws a migration hint when the old client-id=/client-secret= field syntax is used after a valid url', () => {
+			expect( () =>
+				parseAuthArgs( [
+					OAUTH2_TYPE,
+					'login',
+					'https://example.com',
+					'client-id=abc123',
+				] )
+			).toThrow( '--client-id=' );
+			expect( () =>
+				parseAuthArgs( [
+					OAUTH2_TYPE,
+					'login',
+					'https://example.com',
+					'client-secret=shh',
+				] )
+			).toThrow( '--client-secret=' );
+		} );
 	} );
 
 	describe( 'add', () => {
-		it( 'parses a url with client-id= and client-secret=', () => {
+		// Same rationale as login above — client-id=/client-secret= are no
+		// longer parsed here; --client-id/--client-secret are read from
+		// GlobalFlags at handler-execution time instead.
+		it( 'parses a bare url', () => {
 			expect(
-				parseAuthArgs( [
-					OAUTH2_TYPE,
-					'add',
-					'https://example.com',
-					'client-id=abc123',
-					'client-secret=shh',
-				] )
+				parseAuthArgs( [ OAUTH2_TYPE, 'add', 'https://example.com' ] )
 			).toEqual( {
 				authType: OAUTH2_TYPE,
 				mode: 'add',
 				url: 'https://example.com',
-				clientId: 'abc123',
-				clientSecret: 'shh',
 			} );
 		} );
 
 		it( 'throws when no url is given', () => {
+			expect( () => parseAuthArgs( [ OAUTH2_TYPE, 'add' ] ) ).toThrow(
+				CliError
+			);
+		} );
+
+		it( 'throws a migration hint when the old client-id= field syntax is used where the url belongs', () => {
 			expect( () =>
-				parseAuthArgs( [
-					OAUTH2_TYPE,
-					'add',
-					'client-id=abc123',
-					'client-secret=shh',
-				] )
+				parseAuthArgs( [ OAUTH2_TYPE, 'add', 'client-id=abc123' ] )
 			).toThrow( CliError );
 		} );
 
-		it( 'throws when client-secret= is missing', () => {
+		it( 'throws a migration hint when the old client-id=/client-secret= field syntax is used after a valid url', () => {
 			expect( () =>
 				parseAuthArgs( [
 					OAUTH2_TYPE,
 					'add',
 					'https://example.com',
 					'client-id=abc123',
-				] )
-			).toThrow( 'client-secret=' );
-		} );
-
-		it( 'throws when client-id= is missing', () => {
-			expect( () =>
-				parseAuthArgs( [
-					OAUTH2_TYPE,
-					'add',
-					'https://example.com',
 					'client-secret=shh',
 				] )
-			).toThrow( 'client-id=' );
+			).toThrow( '--client-id=' );
 		} );
 	} );
 

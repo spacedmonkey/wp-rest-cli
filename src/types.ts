@@ -102,6 +102,10 @@ export interface GlobalFlags {
 	url?: string;
 	username?: string;
 	password?: string;
+	/** OAuth2 client id, for `wp auth oauth2 login`/`add` — a global flag (like `username`/`password` above) rather than a subcommand-scoped field token, since it's a real credential value. */
+	clientId?: string;
+	/** OAuth2 client secret, for `wp auth oauth2 login`/`add`. */
+	clientSecret?: string;
 	useAuth?: AuthSource;
 	context: Context;
 	format: OutputFormat;

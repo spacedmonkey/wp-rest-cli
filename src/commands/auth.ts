@@ -25,12 +25,17 @@ export type AuthResult = { output: string; exitCode: number };
 
 /**
  * A parsed `wp auth <type> ...` command. `login`/`add` are authType-conditional —
- * each type's own fields (`appName` for application-passwords; `clientId`/
- * `clientSecret`/`redirectUri`/`port` for oauth2) only exist on that type's
- * own union member, so a handler can't accidentally read a field that was
- * never parsed for the type it's handling. The other five modes carry no
- * type-specific fields, so they stay a single member each, parameterized
- * over the full {@link AuthType} union.
+ * each type's own fields (`appName` for application-passwords; `redirectUri`/
+ * `port` for oauth2) only exist on that type's own union member, so a
+ * handler can't accidentally read a field that was never parsed for the type
+ * it's handling. Credentials themselves (`--username`/`--password` for
+ * application-passwords, `--client-id`/`--client-secret` for oauth2) are
+ * deliberately *not* carried here — both come from the global `GlobalFlags`
+ * at handler-execution time instead (see `runApplicationPasswordsAuthCommand`'s
+ * `handleAdd`/`handleLogin` for the existing pattern this follows), since
+ * they're real CLI-wide flags, not subcommand-scoped field tokens. The other
+ * five modes carry no type-specific fields, so they stay a single member
+ * each, parameterized over the full {@link AuthType} union.
  */
 export type ParsedAuth =
 	| {
@@ -43,8 +48,6 @@ export type ParsedAuth =
 			authType: typeof OAUTH2_AUTH_TYPE;
 			mode: 'login';
 			url: string;
-			clientId: string;
-			clientSecret?: string;
 			redirectUri?: string;
 			port?: number;
 	  }
@@ -58,8 +61,6 @@ export type ParsedAuth =
 			authType: typeof OAUTH2_AUTH_TYPE;
 			mode: 'add';
 			url: string;
-			clientId: string;
-			clientSecret: string;
 	  }
 	| { authType: typeof APPLICATION_PASSWORDS_AUTH_TYPE; mode: 'list' }
 	| { authType: typeof OAUTH2_AUTH_TYPE; mode: 'list' }
@@ -123,9 +124,9 @@ export function assertKnownAuthType(
 export function authUsageText( authType?: AuthType ): string {
 	if ( authType === OAUTH2_AUTH_TYPE ) {
 		return (
-			`Usage: wp auth ${ OAUTH2_AUTH_TYPE } <login|add|list|remove|use|status> [<url>] [client-id=] [client-secret=] [redirect-uri=] [port=] [--all]\n` +
+			`Usage: wp auth ${ OAUTH2_AUTH_TYPE } <login|add|list|remove|use|status> [<url>] [--client-id=] [--client-secret=] [redirect-uri=] [port=] [--all]\n` +
 			`${ AVAILABLE_AUTH_TYPES_LINE }\n` +
-			'login requires client-id= (client-secret= is optional); add requires both client-id= and client-secret=.'
+			'login requires --client-id= (--client-secret= is optional); add requires both --client-id= and --client-secret=.'
 		);
 	}
 	if ( authType === APPLICATION_PASSWORDS_AUTH_TYPE ) {
@@ -189,31 +190,47 @@ function parsePortField( raw: string | undefined ): number | undefined {
 
 /**
  * Parses `wp auth <type> login ...`, authType-conditionally: application-passwords
- * takes an optional trailing `app-name=<name>` field; oauth2 requires a
- * `client-id=<id>` field (from a manually-created wp-admin Application) and
- * accepts optional `client-secret=`/`redirect-uri=`/`port=` fields.
+ * takes an optional trailing `app-name=<name>` field; oauth2 accepts optional
+ * `redirect-uri=`/`port=` fields (the actual `--client-id`/`--client-secret`
+ * credential comes from global flags — see `handleLogin` in
+ * `commands/auth/oauth2.ts`, and the {@link ParsedAuth} doc comment for why).
  * @param authType The already-validated auth type.
  * @param rest     The tokens following `login`.
  * @return The parsed `login` command.
  */
 function parseLoginArgs( authType: AuthType, rest: string[] ): ParsedAuth {
 	if ( authType === OAUTH2_AUTH_TYPE ) {
-		const knownFields = [
-			'client-id',
-			'client-secret',
-			'redirect-uri',
-			'port',
-		];
+		const knownFields = [ 'redirect-uri', 'port' ];
 		const [ url, ...fieldTokens ] = rest;
-		if ( ! url || isKnownFieldToken( url, knownFields ) ) {
+		// Also checked against the old, now-removed `client-id=`/`client-secret=`
+		// field names here — not just after a valid `url` below — so
+		// `wp auth oauth2 login client-id=xxx` (no URL at all, old syntax)
+		// gets the same clear rejection rather than "client-id=xxx" being
+		// misread as the site URL.
+		if (
+			! url ||
+			isKnownFieldToken( url, [
+				...knownFields,
+				'client-id',
+				'client-secret',
+			] )
+		) {
 			throw new CliError(
-				`Usage: wp auth ${ authType } login <url> client-id=<id> [client-secret=<secret>] [redirect-uri=<uri>] [port=<port>]`
+				`Usage: wp auth ${ authType } login <url> --client-id=<id> [--client-secret=<secret>] [redirect-uri=<uri>] [port=<port>]`
 			);
 		}
 		const fields = parseFields( fieldTokens );
-		if ( ! fields[ 'client-id' ] ) {
+		// `client-id=`/`client-secret=` were this type's field-token syntax
+		// before it switched to real `--client-id`/`--client-secret` flags —
+		// flagged explicitly rather than silently captured into `fields` and
+		// never read, which would otherwise look like a successful login
+		// using credentials that were actually ignored.
+		if (
+			fields[ 'client-id' ] !== undefined ||
+			fields[ 'client-secret' ] !== undefined
+		) {
 			throw new CliError(
-				`wp auth ${ authType } login requires a client-id=<id> field, from a manually-created wp-admin Application (Users → Applications).`
+				`wp auth ${ authType } login: client-id=/client-secret= are no longer accepted here — use --client-id=<id>/--client-secret=<secret> instead.`
 			);
 		}
 		// `redirect-uri=` already carries a port; combining it with `port=`
@@ -232,8 +249,6 @@ function parseLoginArgs( authType: AuthType, rest: string[] ): ParsedAuth {
 			authType: OAUTH2_AUTH_TYPE,
 			mode: 'login',
 			url,
-			clientId: fields[ 'client-id' ],
-			clientSecret: fields[ 'client-secret' ],
 			redirectUri: fields[ 'redirect-uri' ],
 			port: parsePortField( fields.port ),
 		};
@@ -262,34 +277,44 @@ function parseLoginArgs( authType: AuthType, rest: string[] ): ParsedAuth {
 /**
  * Parses `wp auth <type> add ...`, authType-conditionally: application-passwords
  * takes username/password from the global `--username`/`--password` flags
- * (see `runAuthCommand`) plus an optional `skip-verify=true` field; oauth2
- * requires both `client-id=<id>` and `client-secret=<secret>` fields, since
- * `client_credentials` has no browser step to obtain them from.
+ * (see `handleAdd` in `commands/auth/application-passwords.ts`) plus an
+ * optional `skip-verify=true` field; oauth2 takes its client id/secret from
+ * the global `--client-id`/`--client-secret` flags the same way (see
+ * `handleAdd` in `commands/auth/oauth2.ts`) — `client_credentials` has no
+ * browser step to obtain them from, so both are required there, checked at
+ * handler-execution time once `flags` is available.
  * @param authType The already-validated auth type.
  * @param rest     The tokens following `add`.
  * @return The parsed `add` command.
  */
 function parseAddArgs( authType: AuthType, rest: string[] ): ParsedAuth {
 	if ( authType === OAUTH2_AUTH_TYPE ) {
-		const knownFields = [ 'client-id', 'client-secret' ];
 		const [ url, ...fieldTokens ] = rest;
-		if ( ! url || isKnownFieldToken( url, knownFields ) ) {
+		// Checked here (not just via a generic "unknown field" fallthrough)
+		// so the old `client-id=`/`client-secret=` field-token syntax gets a
+		// clear migration message instead of being silently parsed and
+		// ignored — see the equivalent check in `parseLoginArgs`.
+		if (
+			! url ||
+			isKnownFieldToken( url, [ 'client-id', 'client-secret' ] )
+		) {
 			throw new CliError(
-				`Usage: wp auth ${ authType } add <url> client-id=<id> client-secret=<secret>`
+				`Usage: wp auth ${ authType } add <url> --client-id=<id> --client-secret=<secret>`
 			);
 		}
 		const fields = parseFields( fieldTokens );
-		if ( ! fields[ 'client-id' ] || ! fields[ 'client-secret' ] ) {
+		if (
+			fields[ 'client-id' ] !== undefined ||
+			fields[ 'client-secret' ] !== undefined
+		) {
 			throw new CliError(
-				`wp auth ${ authType } add requires both client-id=<id> and client-secret=<secret>, from a manually-created wp-admin Application with the client_credentials grant enabled.`
+				`wp auth ${ authType } add: client-id=/client-secret= are no longer accepted here — use --client-id=<id>/--client-secret=<secret> instead.`
 			);
 		}
 		return {
 			authType: OAUTH2_AUTH_TYPE,
 			mode: 'add',
 			url,
-			clientId: fields[ 'client-id' ],
-			clientSecret: fields[ 'client-secret' ],
 		};
 	}
 

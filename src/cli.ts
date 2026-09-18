@@ -69,6 +69,8 @@ const KNOWN_LONG_FLAGS = new Set( [
 	'url',
 	'username',
 	'password',
+	'client-id',
+	'client-secret',
 	'use-auth',
 	'context',
 	'format',
@@ -113,6 +115,8 @@ interface RawOptions {
 	url?: string;
 	username?: string;
 	password?: string;
+	clientId?: string;
+	clientSecret?: string;
 	useAuth?: string;
 	context: string;
 	format: string;
@@ -160,6 +164,8 @@ function toGlobalFlags( options: RawOptions ): GlobalFlags {
 		url: options.url,
 		username: options.username,
 		password: options.password,
+		clientId: options.clientId,
+		clientSecret: options.clientSecret,
 		useAuth: options.useAuth as AuthSource | undefined,
 		context: options.context as Context,
 		format: options.format as OutputFormat,
@@ -282,6 +288,14 @@ program
 		'Password or Application Password (also WP_PASSWORD env var)'
 	)
 	.option(
+		'--client-id <id>',
+		'OAuth2 client id, from a manually-created wp-admin Application (for "wp auth oauth2 login/add")'
+	)
+	.option(
+		'--client-secret <secret>',
+		'OAuth2 client secret (for "wp auth oauth2 login/add"; required for add, optional for login)'
+	)
+	.option(
 		'--use-auth <source>',
 		'env|none|application-passwords|oauth2 — force which auth source to use, skipping the rest of the normal fallback chain (an explicit --username/--password still wins)'
 	)
@@ -320,8 +334,8 @@ Examples:
   $ wp-rest-cli auth application-passwords add https://example.com --username=admin --password=xxxx-xxxx-xxxx-xxxx
   $ wp-rest-cli auth application-passwords list
   $ wp-rest-cli auth application-passwords remove --all
-  $ wp-rest-cli auth oauth2 login https://example.com client-id=abc123
-  $ wp-rest-cli auth oauth2 add https://example.com client-id=abc123 client-secret=xxxx
+  $ wp-rest-cli auth oauth2 login https://example.com --client-id=abc123
+  $ wp-rest-cli auth oauth2 add https://example.com --client-id=abc123 --client-secret=xxxx
   $ wp-rest-cli config rotate-key
   $ wp-rest-cli help wp/v2 posts list --url=https://example.com
   $ wp-rest-cli wp/v2 posts --help --url=https://example.com

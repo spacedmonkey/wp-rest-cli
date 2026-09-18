@@ -1604,7 +1604,7 @@ describe( 'wp-rest-cli (integration)', () => {
 					'oauth2',
 					'login',
 					url,
-					`client-id=${ clientId }`,
+					`--client-id=${ clientId }`,
 					`port=${ port }`,
 					'--quiet',
 					'--no-color',
@@ -1658,8 +1658,8 @@ describe( 'wp-rest-cli (integration)', () => {
 				'auth',
 				'add',
 				fixture.baseUrl,
-				'client-id=test-client-id',
-				'client-secret=shh',
+				'--client-id=test-client-id',
+				'--client-secret=shh',
 			] );
 			expect( add.exitCode ).toBe( 0 );
 			expect( add.stdout ).toContain( 'Success' );
@@ -1681,8 +1681,8 @@ describe( 'wp-rest-cli (integration)', () => {
 				'auth',
 				'add',
 				fixture.baseUrl,
-				'client-id=test-client-id-no-cc',
-				'client-secret=shh',
+				'--client-id=test-client-id-no-cc',
+				'--client-secret=shh',
 			] );
 			expect( result.exitCode ).toBe( 1 );
 			expect( result.stderr ).toContain( 'Client Credentials Grant' );
@@ -1701,8 +1701,8 @@ describe( 'wp-rest-cli (integration)', () => {
 				'auth',
 				'add',
 				fixture.baseUrl,
-				'client-id=test-client-id-wrong-code-path',
-				'client-secret=shh',
+				'--client-id=test-client-id-wrong-code-path',
+				'--client-secret=shh',
 			] );
 			expect( result.exitCode ).toBe( 1 );
 			expect( result.stderr ).toContain(
@@ -1780,7 +1780,7 @@ describe( 'wp-rest-cli (integration)', () => {
 						'oauth2',
 						'login',
 						fixture.baseUrl,
-						'client-id=test-client-id',
+						'--client-id=test-client-id',
 						`port=${ port }`,
 						'--quiet',
 						'--no-color',
@@ -1808,7 +1808,7 @@ describe( 'wp-rest-cli (integration)', () => {
 				'auth',
 				'login',
 				noSiteUrl,
-				'client-id=test-client-id',
+				'--client-id=test-client-id',
 			] );
 			expect( loginResult.exitCode ).toBe( 1 );
 			expect( loginResult.stderr ).toContain(
@@ -1819,8 +1819,8 @@ describe( 'wp-rest-cli (integration)', () => {
 				'auth',
 				'add',
 				noSiteUrl,
-				'client-id=test-client-id',
-				'client-secret=shh',
+				'--client-id=test-client-id',
+				'--client-secret=shh',
 			] );
 			expect( addResult.exitCode ).toBe( 1 );
 			expect( addResult.stderr ).toContain(
@@ -1847,8 +1847,8 @@ describe( 'wp-rest-cli (integration)', () => {
 				'auth',
 				'add',
 				fixture.baseUrl,
-				'client-id=test-client-id',
-				'client-secret=shh',
+				'--client-id=test-client-id',
+				'--client-secret=shh',
 			] );
 
 			const ambiguous = await runRestWithConfig( [
@@ -1904,8 +1904,8 @@ describe( 'wp-rest-cli (integration)', () => {
 				'auth',
 				'add',
 				fixture.baseUrl,
-				'client-id=test-client-id',
-				'client-secret=shh',
+				'--client-id=test-client-id',
+				'--client-secret=shh',
 			] );
 
 			const removeAll = await runAppPasswordsAuth( [
@@ -1940,8 +1940,8 @@ describe( 'wp-rest-cli (integration)', () => {
 				'auth',
 				'add',
 				fixture.baseUrl,
-				'client-id=test-client-id',
-				'client-secret=shh',
+				'--client-id=test-client-id',
+				'--client-secret=shh',
 			] );
 
 			const removed = await runOAuth2( [
