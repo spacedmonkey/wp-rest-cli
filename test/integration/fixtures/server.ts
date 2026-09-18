@@ -555,6 +555,10 @@ export async function startFixture(): Promise< Fixture > {
 								required: true,
 								description: 'The widget title.',
 							},
+							content: {
+								type: 'string',
+								description: 'The widget content.',
+							},
 							meta: {
 								type: 'object',
 								description: 'Meta fields.',
@@ -589,6 +593,7 @@ export async function startFixture(): Promise< Fixture > {
 			const record = {
 				id,
 				title: { rendered: String( body.title ?? '' ) },
+				content: { rendered: String( body.content ?? '' ) },
 				meta,
 			};
 			widgets.set( id, record );
@@ -645,6 +650,10 @@ export async function startFixture(): Promise< Fixture > {
 						body.title !== undefined
 							? { rendered: String( body.title ) }
 							: existing.title,
+					content:
+						body.content !== undefined
+							? { rendered: String( body.content ) }
+							: existing.content,
 					meta,
 				};
 				widgets.set( id, updated );

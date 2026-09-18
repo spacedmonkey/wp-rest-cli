@@ -52,9 +52,15 @@ export interface BuildRequestOptions {
 	 */
 	paramIndex?: number;
 	context: Context;
-	fields: Record< string, string >;
-	/** Raw JSON body override for create/update, from --content. */
-	content?: unknown;
+	/**
+	 * Parsed `field=value` CLI arguments. Values are usually raw strings, but
+	 * a field the route's live schema declares `object`/`array`-typed (e.g.
+	 * `meta`) may already be parsed JSON (see `core/validate.ts`'s
+	 * `coerceJsonFields`) by the time it reaches here.
+	 */
+	fields: Record< string, unknown >;
+	/** Raw JSON body override for create/update, from --body. */
+	bodyOverride?: unknown;
 }
 
 /**
@@ -88,7 +94,7 @@ export function buildVerbRequest( options: BuildRequestOptions ): VerbRequest {
 		paramIndex,
 		context,
 		fields,
-		content,
+		bodyOverride,
 	} = options;
 
 	if ( REQUIRES_ID.includes( verb ) && ! id ) {
@@ -127,33 +133,36 @@ export function buildVerbRequest( options: BuildRequestOptions ): VerbRequest {
 			return {
 				method,
 				url: collectionUrl,
-				body: resolveBody( fields, content ),
+				body: resolveBody( fields, bodyOverride ),
 			};
 		case 'update':
 			return {
 				method,
 				url: singularUrl,
-				body: resolveBody( fields, content ),
+				body: resolveBody( fields, bodyOverride ),
 			};
 	}
 }
 
 /**
- * Merges `--content`'s parsed JSON object with `field=value` overrides, or
- * falls back to just the fields when there's no `--content`.
- * @param fields  Parsed `field=value` CLI arguments.
- * @param content Parsed `--content` value, if given.
+ * Merges `--body`'s parsed JSON object with `field=value` overrides, or
+ * falls back to just the fields when there's no `--body`.
+ * @param fields       Parsed `field=value` CLI arguments.
+ * @param bodyOverride Parsed `--body` value, if given.
  * @return The request body to send.
  */
 function resolveBody(
-	fields: Record< string, string >,
-	content: unknown
+	fields: Record< string, unknown >,
+	bodyOverride: unknown
 ): Record< string, unknown > {
-	if ( content !== undefined ) {
-		if ( typeof content === 'object' && content !== null ) {
-			return { ...( content as Record< string, unknown > ), ...fields };
+	if ( bodyOverride !== undefined ) {
+		if ( typeof bodyOverride === 'object' && bodyOverride !== null ) {
+			return {
+				...( bodyOverride as Record< string, unknown > ),
+				...fields,
+			};
 		}
-		throw new CliError( '--content must resolve to a JSON object.' );
+		throw new CliError( '--body must resolve to a JSON object.' );
 	}
 	return fields;
 }

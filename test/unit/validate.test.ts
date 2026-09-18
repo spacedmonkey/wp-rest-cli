@@ -7,7 +7,10 @@ import { describe, expect, it } from '@jest/globals';
  * Internal dependencies
  */
 import { CliError } from '../../src/core/errors.js';
-import { validateFieldTypes } from '../../src/core/validate.js';
+import {
+	coerceJsonFields,
+	validateFieldTypes,
+} from '../../src/core/validate.js';
 import type { EndpointArgSchema } from '../../src/types.js';
 
 const args: Record< string, EndpointArgSchema > = {
@@ -143,5 +146,46 @@ describe( 'validateFieldTypes', () => {
 				);
 			}
 		} );
+	} );
+} );
+
+describe( 'coerceJsonFields', () => {
+	it( 'returns fields unchanged when there is no arg schema', () => {
+		expect( coerceJsonFields( { meta: '{"a":1}' }, undefined ) ).toEqual( {
+			meta: '{"a":1}',
+		} );
+	} );
+
+	it( 'JSON-parses an object-typed field whose value is valid JSON', () => {
+		expect( coerceJsonFields( { meta: '{"color":"red"}' }, args ) ).toEqual(
+			{ meta: { color: 'red' } }
+		);
+	} );
+
+	it( 'JSON-parses an array-typed field whose value is valid JSON', () => {
+		expect( coerceJsonFields( { tags: '[1,2,3]' }, args ) ).toEqual( {
+			tags: [ 1, 2, 3 ],
+		} );
+	} );
+
+	it( 'leaves an object-typed field as the raw string when it is not valid JSON', () => {
+		expect( coerceJsonFields( { meta: 'not json' }, args ) ).toEqual( {
+			meta: 'not json',
+		} );
+	} );
+
+	it( 'never touches a string-typed field, even if it looks like JSON', () => {
+		expect(
+			coerceJsonFields( { title: '{"looks":"like json"}' }, args )
+		).toEqual( { title: '{"looks":"like json"}' } );
+	} );
+
+	it( 'leaves fields with no matching or untyped arg untouched', () => {
+		expect(
+			coerceJsonFields(
+				{ unknown_field: 'whatever', untyped: 'whatever' },
+				args
+			)
+		).toEqual( { unknown_field: 'whatever', untyped: 'whatever' } );
 	} );
 } );

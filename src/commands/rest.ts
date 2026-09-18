@@ -24,9 +24,10 @@ import {
 	type RouteChildSegment,
 } from '../core/indexer.js';
 import { introspectRoute, supportedContexts } from '../core/introspect.js';
-import { validateFieldTypes } from '../core/validate.js';
+import { coerceJsonFields, validateFieldTypes } from '../core/validate.js';
 import { buildVerbRequest } from '../core/verbs.js';
 import type {
+	EndpointArgSchema,
 	GlobalFlags,
 	IndexResponse,
 	RouteEndpoint,
@@ -437,23 +438,23 @@ function buildAuth(
 }
 
 /**
- * Parses `--content`'s raw value as JSON, for use as a create/update request body.
- * @param raw The raw `--content` flag value.
- * @return The parsed JSON value, or undefined if `--content` wasn't given.
+ * Parses `--body`'s raw value as JSON, for use as a create/update request body.
+ * @param raw The raw `--body` flag value.
+ * @return The parsed JSON value, or undefined if `--body` wasn't given.
  */
-function resolveContent( raw: string | undefined ): unknown {
+function resolveBodyOverride( raw: string | undefined ): unknown {
 	if ( raw === undefined ) {
 		return undefined;
 	}
 	if ( raw.startsWith( '@' ) ) {
 		throw new CliError(
-			'Reading --content from a file (@path) is not supported in this environment; pass inline JSON instead.'
+			'Reading --body from a file (@path) is not supported in this environment; pass inline JSON instead.'
 		);
 	}
 	try {
 		return JSON.parse( raw );
 	} catch {
-		throw new CliError( `--content must be valid JSON: ${ raw }` );
+		throw new CliError( `--body must be valid JSON: ${ raw }` );
 	}
 }
 
@@ -1099,6 +1100,9 @@ async function resolveParamIndex(
  * @param verb        The verb being run.
  * @param fields      The parsed `field=value` arguments to validate.
  * @param showSpinner Whether to show a progress spinner for the schema request.
+ * @return The matching endpoint's arg schema, if any — callers reuse it to
+ *         JSON-coerce object/array-typed field values (`coerceJsonFields`)
+ *         without a second schema request.
  */
 async function validateVerbFields(
 	client: WpRestClient,
@@ -1108,10 +1112,10 @@ async function validateVerbFields(
 	verb: Verb,
 	fields: Record< string, string >,
 	showSpinner: boolean
-): Promise< void > {
+): Promise< Record< string, EndpointArgSchema > | undefined > {
 	const method = COLLECTION_VERB_METHOD[ verb ];
 	if ( ! method ) {
-		return;
+		return undefined;
 	}
 	const { schema } = await getRouteSchema(
 		client,
@@ -1130,6 +1134,7 @@ async function validateVerbFields(
 	// exempt from the required check.
 	const checkRequired = verb !== 'update';
 	validateFieldTypes( fields, endpoint?.args, checkRequired );
+	return endpoint?.args;
 }
 
 /**
@@ -1790,7 +1795,7 @@ export async function runRestCommand(
 				`--count must be a positive integer, got "${ countRaw }".`
 			);
 		}
-		await validateVerbFields(
+		const generateArgs = await validateVerbFields(
 			client,
 			apiRoot,
 			parsed.namespace,
@@ -1798,6 +1803,10 @@ export async function runRestCommand(
 			'generate',
 			createFields,
 			! flags.quiet
+		);
+		const generateRequestFields = coerceJsonFields(
+			createFields,
+			generateArgs
 		);
 
 		const created: unknown[] = [];
@@ -1808,8 +1817,8 @@ export async function runRestCommand(
 				namespace: parsed.namespace,
 				route: parsed.route,
 				context: flags.context,
-				fields: createFields,
-				content: resolveContent( flags.content ),
+				fields: generateRequestFields,
+				bodyOverride: resolveBodyOverride( flags.body ),
 			} );
 			const { body } = await withSpinner(
 				`POST ${ parsed.namespace }/${ parsed.route } (${
@@ -1845,7 +1854,7 @@ export async function runRestCommand(
 	}
 
 	// parsed.mode === 'verb', parsed.verb is now one of list/get/create/update/delete
-	await validateVerbFields(
+	const verbArgs = await validateVerbFields(
 		client,
 		apiRoot,
 		parsed.namespace,
@@ -1871,8 +1880,8 @@ export async function runRestCommand(
 		id: parsed.id,
 		paramIndex,
 		context: flags.context,
-		fields: parsed.fields,
-		content: resolveContent( flags.content ),
+		fields: coerceJsonFields( parsed.fields, verbArgs ),
+		bodyOverride: resolveBodyOverride( flags.body ),
 	} );
 
 	const { body } = await withSpinner(

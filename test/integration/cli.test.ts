@@ -121,10 +121,10 @@ describe( 'wp-rest-cli (integration)', () => {
 			'   or: wp-rest-cli wp/v2 widgets get <id> [--context=<context>]'
 		);
 		expect( lines[ 2 ] ).toBe(
-			'   or: wp-rest-cli wp/v2 widgets create --title=<title> [--meta=<meta>] [--<field>=<value>]'
+			'   or: wp-rest-cli wp/v2 widgets create --title=<title> [--content=<content>] [--meta=<meta>] [--<field>=<value>]'
 		);
 		expect( lines[ 3 ] ).toBe(
-			'   or: wp-rest-cli wp/v2 widgets update <id> --title=<title> [--meta=<meta>] [--<field>=<value>]'
+			'   or: wp-rest-cli wp/v2 widgets update <id> --title=<title> [--content=<content>] [--meta=<meta>] [--<field>=<value>]'
 		);
 		expect( lines[ 4 ] ).toBe(
 			'   or: wp-rest-cli wp/v2 widgets delete <id> [--force]'
@@ -133,7 +133,7 @@ describe( 'wp-rest-cli (integration)', () => {
 			'   or: wp-rest-cli wp/v2 widgets exists <id>'
 		);
 		expect( lines[ 6 ] ).toBe(
-			'   or: wp-rest-cli wp/v2 widgets generate [--count=<count>] --title=<title> [--meta=<meta>] [--<field>=<value>]'
+			'   or: wp-rest-cli wp/v2 widgets generate [--count=<count>] --title=<title> [--content=<content>] [--meta=<meta>] [--<field>=<value>]'
 		);
 	} );
 
@@ -184,6 +184,53 @@ describe( 'wp-rest-cli (integration)', () => {
 		] );
 		expect( result.exitCode ).toBe( 0 );
 		expect( result.stdout ).toContain( 'Success' );
+	} );
+
+	it( 'sends --content=<value> as a plain field, not the (renamed) raw-body-override flag', async () => {
+		const result = await run( [
+			'wp/v2',
+			'widgets',
+			'create',
+			'--title=Plain content',
+			'--content=Hello there',
+			'--format=json',
+		] );
+		expect( result.exitCode ).toBe( 0 );
+		const body = JSON.parse( result.stdout );
+		expect( body.content.rendered ).toBe( 'Hello there' );
+	} );
+
+	it( 'JSON-parses an object-typed field passed via field=value, instead of sending it as a literal string', async () => {
+		const result = await run( [
+			'wp/v2',
+			'widgets',
+			'create',
+			'--title=Widget with meta',
+			'--meta={"color":"red"}',
+			'--format=json',
+		] );
+		expect( result.exitCode ).toBe( 0 );
+		const body = JSON.parse( result.stdout );
+		expect( body.meta ).toEqual( { color: 'red' } );
+	} );
+
+	it( '--body=<json> still overrides the request body, merged under field=value args', async () => {
+		// The required-field check only inspects field=value tokens, not
+		// --body's JSON contents, so --title still has to be passed
+		// separately — this asserts fields win where they overlap with
+		// --body (title), and --body alone supplies what fields don't (meta).
+		const result = await run( [
+			'wp/v2',
+			'widgets',
+			'create',
+			'--title=From fields',
+			'--body={"title":"From body","meta":{"color":"blue"}}',
+			'--format=json',
+		] );
+		expect( result.exitCode ).toBe( 0 );
+		const body = JSON.parse( result.stdout );
+		expect( body.title.rendered ).toBe( 'From fields' );
+		expect( body.meta ).toEqual( { color: 'blue' } );
 	} );
 
 	it( 'updates an item by id', async () => {

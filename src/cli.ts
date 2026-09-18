@@ -77,7 +77,7 @@ const KNOWN_LONG_FLAGS = new Set( [
 	'format',
 	'fields',
 	'field',
-	'content',
+	'body',
 	'color',
 	'no-color',
 	'quiet',
@@ -124,7 +124,7 @@ interface RawOptions {
 	format: string;
 	fields?: string;
 	field?: string;
-	content?: string;
+	body?: string;
 	color: boolean;
 	quiet?: boolean;
 	debug?: boolean;
@@ -174,7 +174,7 @@ function toGlobalFlags( options: RawOptions ): GlobalFlags {
 		format: options.format as OutputFormat,
 		fields: options.fields,
 		field: options.field,
-		content: options.content,
+		body: options.body,
 		color: options.color,
 		quiet: Boolean( options.quiet ),
 		debug: Boolean( options.debug ),
@@ -311,7 +311,7 @@ program
 	.option( '--fields <fields>', 'Comma-separated list of fields to display' )
 	.option( '--field <field>', 'Display a single field only' )
 	.option(
-		'--content <content>',
+		'--body <json>',
 		'Raw JSON body for create/update, overriding field=value args'
 	)
 	.option( '--no-color', 'Disable colored output' )
