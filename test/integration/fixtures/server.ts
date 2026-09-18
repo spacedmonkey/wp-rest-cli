@@ -31,6 +31,28 @@ async function readBody(
 }
 
 /**
+ * Extracts plain text from a `title`/`content`/`excerpt`-shaped POST body
+ * value, the way real WordPress's post-type controllers do: a plain string
+ * is accepted directly, and the full `{raw, rendered}` object shape (which
+ * `title`/`content`/`excerpt` are declared as in the OPTIONS schema) is
+ * accepted too, reading its `raw` sub-value. Anything else is treated as
+ * empty, matching WordPress's own `empty_content` rejection.
+ *
+ * @param value The raw `title`/`content`/`excerpt` value from a POST body.
+ * @return The plain text, or `''` if `value` carries none.
+ */
+function extractRawText( value: unknown ): string {
+	if ( typeof value === 'string' ) {
+		return value;
+	}
+	if ( value && typeof value === 'object' && 'raw' in value ) {
+		const { raw } = value as { raw: unknown };
+		return typeof raw === 'string' ? raw : '';
+	}
+	return '';
+}
+
+/**
  * Parses an `Authorization: Basic <base64>` request header into its
  * decoded username/password, shared by the three `users/me` routes below.
  *
@@ -71,6 +93,60 @@ const widgets = new Map< number, Record< string, unknown > >( [
 	],
 ] );
 let nextId = 2;
+
+// Synthetic fixture, not modelled on any real WordPress controller — exists
+// purely so `generate` integration tests have required fields with a
+// `format` (email) and an `integer` type to exercise smart-default
+// synthesis against, without touching `widgets`' own schema/tests.
+const subscribers = new Map< number, Record< string, unknown > >();
+let nextSubscriberId = 1;
+
+// Modelled on WP_REST_Posts_Controller: title/content/excerpt are all
+// declared `required: false` in the schema (matching real WordPress core),
+// yet POST still rejects a body where all three are empty — a plain-PHP
+// check in create_item(), not expressed in the schema at all. Exists so
+// `generate` integration tests can exercise the 'empty_content' retry path.
+const articles = new Map< number, Record< string, unknown > >();
+let nextArticleId = 1;
+
+// Modelled on WP_REST_Users_Controller: `username`'s live schema is bare
+// {type: 'string', required: true} — no pattern/format at all — yet
+// WordPress's own validate_username() rejects a generic freeform-text
+// placeholder in practice. Exists so `generate` integration tests can
+// exercise the identifier-field (username/slug) synthesis path.
+const members = new Map< number, Record< string, unknown > >();
+let nextMemberId = 1;
+
+// Modelled on WP_REST_Comments_Controller: `content`'s live schema is
+// `required: false` (matching real WordPress core — same {raw, rendered}
+// object shape as posts' title/content), yet POST unconditionally rejects
+// an empty one with 'rest_comment_content_invalid' — unlike posts'
+// 'empty_content', there's no other field that can substitute for it.
+// Exists so `generate` integration tests can exercise a second entry in
+// HIDDEN_REQUIRED_FIELDS_BY_ERROR_CODE (rest.ts), not just 'empty_content'.
+const remarks = new Map< number, Record< string, unknown > >();
+let nextRemarkId = 1;
+
+// Modelled on WP_REST_Widgets_Controller: `id_base`'s live schema is
+// `{type: 'string', required: false}` — no hint it's needed at all — yet
+// POST rejects an item lacking it with 'rest_invalid_widget'. Unlike every
+// other hidden-required-field case, there's no placeholder text that could
+// possibly satisfy this: a widget type has to really exist, discoverable
+// only via the sibling `widget-types` collection (`rest.ts`'s
+// `resolveWidgetIdBase` fetches that fixed, real-WordPress route name —
+// not one derived from the generated route — so this fixture's sibling
+// route has to be named `widget-types` too, even though the "widgets"
+// route itself is named `gadgets` here to avoid colliding with the
+// existing `widgets` fixture). `sidebar` is `required: true` *with* a
+// `default` (matching real WordPress core's own odd-looking combination)
+// — exercises `generateDefaultValue`'s default-takes-priority-over-
+// required-ness path end-to-end alongside the id_base lookup.
+const gadgets = new Map< number, Record< string, unknown > >();
+let nextGadgetId = 1;
+const WIDGET_TYPES = [
+	{ id: 'search', name: 'Search' },
+	{ id: 'text', name: 'Text' },
+];
 
 const settings: Record< string, unknown > = { title: 'Fixture Site' };
 
@@ -271,6 +347,51 @@ export async function startFixture(): Promise< Fixture > {
 							{ methods: [ 'PUT' ] },
 							{ methods: [ 'DELETE' ] },
 						],
+					},
+					'/wp/v2/subscribers': {
+						namespace: 'wp/v2',
+						methods: [ 'GET', 'POST' ],
+						endpoints: [
+							{ methods: [ 'GET' ] },
+							{ methods: [ 'POST' ] },
+						],
+					},
+					'/wp/v2/articles': {
+						namespace: 'wp/v2',
+						methods: [ 'GET', 'POST' ],
+						endpoints: [
+							{ methods: [ 'GET' ] },
+							{ methods: [ 'POST' ] },
+						],
+					},
+					'/wp/v2/members': {
+						namespace: 'wp/v2',
+						methods: [ 'GET', 'POST' ],
+						endpoints: [
+							{ methods: [ 'GET' ] },
+							{ methods: [ 'POST' ] },
+						],
+					},
+					'/wp/v2/remarks': {
+						namespace: 'wp/v2',
+						methods: [ 'GET', 'POST' ],
+						endpoints: [
+							{ methods: [ 'GET' ] },
+							{ methods: [ 'POST' ] },
+						],
+					},
+					'/wp/v2/gadgets': {
+						namespace: 'wp/v2',
+						methods: [ 'GET', 'POST' ],
+						endpoints: [
+							{ methods: [ 'GET' ] },
+							{ methods: [ 'POST' ] },
+						],
+					},
+					'/wp/v2/widget-types': {
+						namespace: 'wp/v2',
+						methods: [ 'GET' ],
+						endpoints: [ { methods: [ 'GET' ] } ],
 					},
 					// Modelled on WP_REST_Global_Styles_Controller: no bare collection
 					// route exists here at all, only this parameterised one.
@@ -666,6 +787,379 @@ export async function startFixture(): Promise< Fixture > {
 				send( res, 200, { deleted: true, previous: existing } );
 				return;
 			}
+		}
+
+		if (
+			path === '/wp-json/wp/v2/subscribers' &&
+			req.method === 'OPTIONS'
+		) {
+			send( res, 200, {
+				namespace: 'wp/v2',
+				methods: [ 'GET', 'POST' ],
+				endpoints: [
+					{
+						methods: [ 'GET' ],
+						args: {
+							context: {
+								type: 'string',
+								enum: [ 'view', 'edit', 'embed' ],
+								default: 'view',
+								required: false,
+							},
+						},
+					},
+					{
+						methods: [ 'POST' ],
+						args: {
+							email: {
+								type: 'string',
+								format: 'email',
+								required: true,
+								description: "The subscriber's email address.",
+							},
+							age: {
+								type: 'integer',
+								required: true,
+								description: "The subscriber's age.",
+							},
+							name: {
+								type: 'string',
+								required: false,
+								description: "The subscriber's display name.",
+							},
+						},
+					},
+				],
+			} );
+			return;
+		}
+
+		if ( path === '/wp-json/wp/v2/subscribers' && req.method === 'GET' ) {
+			send( res, 200, [ ...subscribers.values() ] );
+			return;
+		}
+
+		if ( path === '/wp-json/wp/v2/subscribers' && req.method === 'POST' ) {
+			const body = await readBody( req );
+			const id = nextSubscriberId++;
+			const record = {
+				id,
+				email: String( body.email ?? '' ),
+				age: Number( body.age ),
+				name: String( body.name ?? '' ),
+			};
+			subscribers.set( id, record );
+			send( res, 201, record );
+			return;
+		}
+
+		if ( path === '/wp-json/wp/v2/articles' && req.method === 'OPTIONS' ) {
+			send( res, 200, {
+				namespace: 'wp/v2',
+				methods: [ 'GET', 'POST' ],
+				endpoints: [
+					{
+						methods: [ 'GET' ],
+						args: {
+							context: {
+								type: 'string',
+								enum: [ 'view', 'edit', 'embed' ],
+								default: 'view',
+								required: false,
+							},
+						},
+					},
+					{
+						methods: [ 'POST' ],
+						args: {
+							// Modelled on the real title/content/excerpt
+							// schema WP_REST_Posts_Controller registers: an
+							// `object` (not `string`) type, for the
+							// `{raw, rendered}` shape — the controller
+							// itself still accepts a plain string in place
+							// of the full object (see `extractRawText`
+							// below), which `generate`'s smart-default
+							// synthesis must account for rather than
+							// synthesizing an empty `{}` object.
+							title: {
+								type: 'object',
+								required: false,
+								description: 'The title for the article.',
+								properties: {
+									raw: { type: 'string' },
+									rendered: {
+										type: 'string',
+										readonly: true,
+									},
+								},
+							},
+							content: {
+								type: 'object',
+								required: false,
+								description: 'The content for the article.',
+								properties: {
+									raw: { type: 'string' },
+									rendered: {
+										type: 'string',
+										readonly: true,
+									},
+								},
+							},
+							excerpt: {
+								type: 'object',
+								required: false,
+								description: 'The excerpt for the article.',
+								properties: {
+									raw: { type: 'string' },
+									rendered: {
+										type: 'string',
+										readonly: true,
+									},
+								},
+							},
+						},
+					},
+				],
+			} );
+			return;
+		}
+
+		if ( path === '/wp-json/wp/v2/articles' && req.method === 'GET' ) {
+			send( res, 200, [ ...articles.values() ] );
+			return;
+		}
+
+		if ( path === '/wp-json/wp/v2/articles' && req.method === 'POST' ) {
+			const body = await readBody( req );
+			const title = extractRawText( body.title );
+			const content = extractRawText( body.content );
+			const excerpt = extractRawText( body.excerpt );
+			if ( ! title && ! content && ! excerpt ) {
+				send( res, 400, {
+					code: 'empty_content',
+					message: 'Content, title, and excerpt are empty.',
+					data: { status: 400 },
+				} );
+				return;
+			}
+			const id = nextArticleId++;
+			const record = {
+				id,
+				title: { rendered: title },
+				content: { rendered: content },
+				excerpt: { rendered: excerpt },
+			};
+			articles.set( id, record );
+			send( res, 201, record );
+			return;
+		}
+
+		if ( path === '/wp-json/wp/v2/members' && req.method === 'OPTIONS' ) {
+			send( res, 200, {
+				namespace: 'wp/v2',
+				methods: [ 'GET', 'POST' ],
+				endpoints: [
+					{ methods: [ 'GET' ], args: {} },
+					{
+						methods: [ 'POST' ],
+						args: {
+							username: {
+								type: 'string',
+								required: true,
+								description: 'Login name for the member.',
+							},
+							email: {
+								type: 'string',
+								format: 'email',
+								required: true,
+								description: "The member's email address.",
+							},
+							password: {
+								type: 'string',
+								required: true,
+								description: 'Password for the member.',
+							},
+							slug: {
+								type: 'string',
+								required: false,
+								description:
+									'An alphanumeric identifier for the member.',
+							},
+						},
+					},
+				],
+			} );
+			return;
+		}
+
+		if ( path === '/wp-json/wp/v2/members' && req.method === 'GET' ) {
+			send( res, 200, [ ...members.values() ] );
+			return;
+		}
+
+		if ( path === '/wp-json/wp/v2/members' && req.method === 'POST' ) {
+			const body = await readBody( req );
+			const username = String( body.username ?? '' );
+			// Models a real-world constraint some sites enforce beyond
+			// WordPress core's own (looser) validate_username() — lowercase,
+			// no spaces — that a generic "Generated username 1" placeholder
+			// fails but the identifier-field synthesis (generated-user-N)
+			// satisfies.
+			if ( ! /^[a-z0-9_.-]+$/.test( username ) ) {
+				send( res, 400, {
+					code: 'rest_invalid_param',
+					message: 'Invalid parameter(s): username',
+					data: {
+						status: 400,
+						params: { username: 'Invalid username.' },
+					},
+				} );
+				return;
+			}
+			const id = nextMemberId++;
+			const record = {
+				id,
+				username,
+				email: String( body.email ?? '' ),
+				slug: String( body.slug ?? '' ),
+			};
+			members.set( id, record );
+			send( res, 201, record );
+			return;
+		}
+
+		if ( path === '/wp-json/wp/v2/remarks' && req.method === 'OPTIONS' ) {
+			send( res, 200, {
+				namespace: 'wp/v2',
+				methods: [ 'GET', 'POST' ],
+				endpoints: [
+					{ methods: [ 'GET' ], args: {} },
+					{
+						methods: [ 'POST' ],
+						args: {
+							content: {
+								type: 'object',
+								required: false,
+								description: 'The content for the remark.',
+								properties: {
+									raw: { type: 'string' },
+									rendered: {
+										type: 'string',
+										readonly: true,
+									},
+								},
+							},
+							post: {
+								type: 'integer',
+								default: 0,
+								required: false,
+								description:
+									'The ID of the associated post object.',
+							},
+						},
+					},
+				],
+			} );
+			return;
+		}
+
+		if ( path === '/wp-json/wp/v2/remarks' && req.method === 'GET' ) {
+			send( res, 200, [ ...remarks.values() ] );
+			return;
+		}
+
+		if ( path === '/wp-json/wp/v2/remarks' && req.method === 'POST' ) {
+			const body = await readBody( req );
+			const content = extractRawText( body.content );
+			if ( ! content ) {
+				send( res, 400, {
+					code: 'rest_comment_content_invalid',
+					message: 'Invalid comment content.',
+					data: { status: 400 },
+				} );
+				return;
+			}
+			const id = nextRemarkId++;
+			const record = {
+				id,
+				content: { rendered: content },
+				post: Number( body.post ?? 0 ),
+			};
+			remarks.set( id, record );
+			send( res, 201, record );
+			return;
+		}
+
+		if ( path === '/wp-json/wp/v2/gadgets' && req.method === 'OPTIONS' ) {
+			send( res, 200, {
+				namespace: 'wp/v2',
+				methods: [ 'GET', 'POST' ],
+				endpoints: [
+					{ methods: [ 'GET' ], args: {} },
+					{
+						methods: [ 'POST' ],
+						args: {
+							id_base: {
+								type: 'string',
+								required: false,
+								description: 'The type of the gadget.',
+							},
+							sidebar: {
+								type: 'string',
+								default: 'wp_inactive_widgets',
+								required: true,
+								description:
+									'The sidebar to which the gadget belongs.',
+							},
+						},
+					},
+				],
+			} );
+			return;
+		}
+
+		if ( path === '/wp-json/wp/v2/gadgets' && req.method === 'GET' ) {
+			send( res, 200, [ ...gadgets.values() ] );
+			return;
+		}
+
+		if ( path === '/wp-json/wp/v2/gadgets' && req.method === 'POST' ) {
+			const body = await readBody( req );
+			const idBase = typeof body.id_base === 'string' ? body.id_base : '';
+			if ( ! idBase ) {
+				send( res, 400, {
+					code: 'rest_invalid_widget',
+					message: 'Widget type (id_base) is required.',
+					data: { status: 400 },
+				} );
+				return;
+			}
+			const id = nextGadgetId++;
+			const record = {
+				id,
+				id_base: idBase,
+				sidebar: String( body.sidebar ?? '' ),
+			};
+			gadgets.set( id, record );
+			send( res, 201, record );
+			return;
+		}
+
+		if (
+			path === '/wp-json/wp/v2/widget-types' &&
+			req.method === 'OPTIONS'
+		) {
+			send( res, 200, {
+				namespace: 'wp/v2',
+				methods: [ 'GET' ],
+				endpoints: [ { methods: [ 'GET' ] } ],
+			} );
+			return;
+		}
+
+		if ( path === '/wp-json/wp/v2/widget-types' && req.method === 'GET' ) {
+			send( res, 200, WIDGET_TYPES );
+			return;
 		}
 
 		if ( path === '/wp-json/wp/v2/file-size' && req.method === 'OPTIONS' ) {

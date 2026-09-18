@@ -814,6 +814,332 @@ describe( 'wp-rest-cli (integration)', () => {
 				'--count must be a positive integer'
 			);
 		} );
+
+		// Same as `run()`, but without `--quiet`, so the auto-fill notice
+		// (suppressed by `--quiet`, like every other progress line) is
+		// observable — `wp/v2 subscribers` (unlike `widgets`) has required
+		// fields with an email `format` and an `integer` type, to exercise
+		// smart-default synthesis.
+		function runVerbose( args: string[] ) {
+			return execa(
+				'tsx',
+				[
+					cliEntry,
+					...args,
+					`--url=${ fixture.baseUrl }`,
+					'--no-color',
+				],
+				{ reject: false, preferLocal: true }
+			);
+		}
+
+		it( 'auto-fills missing required fields with synthesized, unique-per-item values', async () => {
+			const before = await run( [
+				'wp/v2',
+				'subscribers',
+				'list',
+				'--format=count',
+			] );
+			const beforeCount = Number( before.stdout.trim() );
+
+			const result = await run( [
+				'wp/v2',
+				'subscribers',
+				'generate',
+				'--count=3',
+			] );
+			expect( result.exitCode ).toBe( 0 );
+
+			const after = await run( [
+				'wp/v2',
+				'subscribers',
+				'list',
+				'--format=json',
+			] );
+			const items = JSON.parse( after.stdout ) as Array< {
+				email: string;
+				age: number;
+			} >;
+			const created = items.slice( beforeCount );
+			expect( created.map( ( s ) => s.email ) ).toEqual( [
+				'generated-1@example.com',
+				'generated-2@example.com',
+				'generated-3@example.com',
+			] );
+			expect( created.map( ( s ) => s.age ) ).toEqual( [ 1, 2, 3 ] );
+		} );
+
+		it( 'prints a notice naming auto-filled fields, unless --quiet is passed', async () => {
+			const verbose = await runVerbose( [
+				'wp/v2',
+				'subscribers',
+				'generate',
+				'--count=1',
+			] );
+			expect( verbose.exitCode ).toBe( 0 );
+			expect( verbose.stderr ).toContain(
+				'Note: --email, --age not supplied; using generated values.'
+			);
+
+			const quiet = await run( [
+				'wp/v2',
+				'subscribers',
+				'generate',
+				'--count=1',
+			] );
+			expect( quiet.exitCode ).toBe( 0 );
+			expect( quiet.stderr ).not.toContain( 'Note:' );
+		} );
+
+		it( 'keeps a user-supplied value for a required field instead of generating one', async () => {
+			const result = await run( [
+				'wp/v2',
+				'subscribers',
+				'generate',
+				'--count=2',
+				'--email=fixed@example.com',
+			] );
+			expect( result.exitCode ).toBe( 0 );
+
+			const after = await run( [
+				'wp/v2',
+				'subscribers',
+				'list',
+				'--format=json',
+			] );
+			const items = JSON.parse( after.stdout ) as Array< {
+				email: string;
+				age: number;
+			} >;
+			const created = items.slice( -2 );
+			expect(
+				created.every( ( s ) => s.email === 'fixed@example.com' )
+			).toBe( true );
+			expect( created.map( ( s ) => s.age ) ).toEqual( [ 1, 2 ] );
+		} );
+
+		it( 'retries once on a live "empty_content" rejection (WP core posts/pages), synthesizing every empty-content field (not just one), reused for the rest of the batch, printing the fallback notice exactly once', async () => {
+			const before = await run( [
+				'wp/v2',
+				'articles',
+				'list',
+				'--format=count',
+			] );
+			const beforeCount = Number( before.stdout.trim() );
+
+			const verbose = await runVerbose( [
+				'wp/v2',
+				'articles',
+				'generate',
+				'--count=3',
+			] );
+			expect( verbose.exitCode ).toBe( 0 );
+			const noticeOccurrences = (
+				verbose.stderr.match(
+					/Note: the API rejected an empty item; also generating --title, --content, --excerpt\./g
+				) ?? []
+			).length;
+			expect( noticeOccurrences ).toBe( 1 );
+
+			const after = await run( [
+				'wp/v2',
+				'articles',
+				'list',
+				'--format=json',
+			] );
+			const items = JSON.parse( after.stdout ) as Array< {
+				title: { rendered: string };
+				content: { rendered: string };
+				excerpt: { rendered: string };
+			} >;
+			const created = items.slice( beforeCount );
+			expect( created.map( ( a ) => a.title.rendered ) ).toEqual( [
+				'Generated title 1',
+				'Generated title 2',
+				'Generated title 3',
+			] );
+			expect( created.map( ( a ) => a.content.rendered ) ).toEqual( [
+				'Generated content 1',
+				'Generated content 2',
+				'Generated content 3',
+			] );
+			expect( created.map( ( a ) => a.excerpt.rendered ) ).toEqual( [
+				'Generated excerpt 1',
+				'Generated excerpt 2',
+				'Generated excerpt 3',
+			] );
+		} );
+
+		it( 'never retries when a user-supplied field already satisfies the API', async () => {
+			const before = await run( [
+				'wp/v2',
+				'articles',
+				'list',
+				'--format=count',
+			] );
+			const beforeCount = Number( before.stdout.trim() );
+
+			const result = await run( [
+				'wp/v2',
+				'articles',
+				'generate',
+				'--count=2',
+				'--content=Hand-written content',
+			] );
+			expect( result.exitCode ).toBe( 0 );
+
+			const after = await run( [
+				'wp/v2',
+				'articles',
+				'list',
+				'--format=json',
+			] );
+			const items = JSON.parse( after.stdout ) as Array< {
+				title: { rendered: string };
+				content: { rendered: string };
+			} >;
+			const created = items.slice( beforeCount );
+			expect(
+				created.every(
+					( a ) => a.content.rendered === 'Hand-written content'
+				)
+			).toBe( true );
+			expect( created.every( ( a ) => a.title.rendered === '' ) ).toBe(
+				true
+			);
+		} );
+
+		it( 'synthesizes a lowercase, hyphenated username (not a generic "Generated username N" placeholder)', async () => {
+			// wp/v2/members' `username` schema, like real WordPress's own
+			// wp/v2/users, gives no hint (no pattern/format) that it needs
+			// to be login-safe — the fixture's POST handler enforces that
+			// constraint itself and would 400 on the generic placeholder.
+			const result = await run( [
+				'wp/v2',
+				'members',
+				'generate',
+				'--count=3',
+			] );
+			expect( result.exitCode ).toBe( 0 );
+
+			const after = await run( [
+				'wp/v2',
+				'members',
+				'list',
+				'--format=json',
+			] );
+			const items = JSON.parse( after.stdout ) as Array< {
+				username: string;
+				email: string;
+			} >;
+			expect( items.map( ( m ) => m.username ) ).toEqual( [
+				'generated-user-1',
+				'generated-user-2',
+				'generated-user-3',
+			] );
+			expect( items.map( ( m ) => m.email ) ).toEqual( [
+				'generated-1@example.com',
+				'generated-2@example.com',
+				'generated-3@example.com',
+			] );
+		} );
+
+		it( 'retries on a second known hidden-content error code ("rest_comment_content_invalid"), not just "empty_content"', async () => {
+			// wp/v2/remarks' `content` is required: false in the schema
+			// (like articles' title/content/excerpt), but unlike articles,
+			// only `content` itself can satisfy the rejection — there's no
+			// title/excerpt to substitute — proving
+			// HIDDEN_REQUIRED_FIELDS_BY_ERROR_CODE (rest.ts) is a real
+			// per-code lookup, not hardcoded to the posts/pages case.
+			const before = await run( [
+				'wp/v2',
+				'remarks',
+				'list',
+				'--format=count',
+			] );
+			const beforeCount = Number( before.stdout.trim() );
+
+			const verbose = await runVerbose( [
+				'wp/v2',
+				'remarks',
+				'generate',
+				'--count=2',
+			] );
+			expect( verbose.exitCode ).toBe( 0 );
+			const noticeOccurrences = (
+				verbose.stderr.match(
+					/Note: the API rejected an empty item; also generating --content\./g
+				) ?? []
+			).length;
+			expect( noticeOccurrences ).toBe( 1 );
+
+			const after = await run( [
+				'wp/v2',
+				'remarks',
+				'list',
+				'--format=json',
+			] );
+			const items = JSON.parse( after.stdout ) as Array< {
+				content: { rendered: string };
+			} >;
+			const created = items.slice( beforeCount );
+			expect( created.map( ( r ) => r.content.rendered ) ).toEqual( [
+				'Generated content 1',
+				'Generated content 2',
+			] );
+		} );
+
+		it( 'discovers a real widget type for id_base via the sibling widget-types route, not a synthesized placeholder', async () => {
+			// wp/v2/gadgets' `id_base` is required: false in the schema
+			// (like real WordPress's own wp/v2/widgets), but POST still
+			// rejects an item missing it — with no field that could ever
+			// stand in for it, since a widget type has to really exist.
+			// `sidebar` is required: true *with* a default, exercising the
+			// default-wins-over-required-ness path (generateDefaultValue)
+			// alongside the id_base discovery in the same run.
+			const before = await run( [
+				'wp/v2',
+				'gadgets',
+				'list',
+				'--format=count',
+			] );
+			const beforeCount = Number( before.stdout.trim() );
+
+			const verbose = await runVerbose( [
+				'wp/v2',
+				'gadgets',
+				'generate',
+				'--count=3',
+			] );
+			expect( verbose.exitCode ).toBe( 0 );
+			expect( verbose.stderr ).toContain(
+				'Note: --sidebar not supplied; using generated values.'
+			);
+			const noticeOccurrences = (
+				verbose.stderr.match(
+					/Note: --id_base not supplied; using the first available widget type \("search"\)\./g
+				) ?? []
+			).length;
+			expect( noticeOccurrences ).toBe( 1 );
+
+			const after = await run( [
+				'wp/v2',
+				'gadgets',
+				'list',
+				'--format=json',
+			] );
+			const items = JSON.parse( after.stdout ) as Array< {
+				id_base: string;
+				sidebar: string;
+			} >;
+			const created = items.slice( beforeCount );
+			expect( created.every( ( g ) => g.id_base === 'search' ) ).toBe(
+				true
+			);
+			expect(
+				created.every( ( g ) => g.sidebar === 'wp_inactive_widgets' )
+			).toBe( true );
+		} );
 	} );
 
 	describe( '--debug', () => {
