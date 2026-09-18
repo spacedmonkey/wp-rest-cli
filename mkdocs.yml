@@ -11,7 +11,10 @@ nav:
   - Home: index.md
   - Installation: installation.md
   - Usage: usage.md
-  - Authentication: authentication.md
+  - Authentication:
+      - Overview: authentication.md
+      - Application Passwords: authentication-application-passwords.md
+      - OAuth2: authentication-oauth2.md
   - Configuration: configuration.md
   - Meta commands: meta-commands.md
   - Examples: examples.md
