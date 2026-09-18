@@ -2,6 +2,7 @@
  * External dependencies
  */
 import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
+import Conf from 'conf';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -73,15 +74,22 @@ describe( 'normalizeSiteUrl', () => {
 	} );
 } );
 
-describe( 'site credentials', () => {
+describe( 'site credentials: application-passwords', () => {
 	it( 'round-trips a stored credential', () => {
-		configModule.setSiteCredential( 'https://one.example.com', {
-			username: 'admin',
-			password: 'xxxx-xxxx-xxxx-xxxx',
-			authMethod: 'application-password',
-		} );
+		configModule.setSiteCredential(
+			'https://one.example.com',
+			'application-passwords',
+			{
+				username: 'admin',
+				password: 'xxxx-xxxx-xxxx-xxxx',
+				authMethod: 'application-password',
+			}
+		);
 		expect(
-			configModule.getSiteCredential( 'https://one.example.com/' )
+			configModule.getSiteCredential(
+				'https://one.example.com/',
+				'application-passwords'
+			)
 		).toEqual( {
 			username: 'admin',
 			password: 'xxxx-xxxx-xxxx-xxxx',
@@ -90,17 +98,22 @@ describe( 'site credentials', () => {
 	} );
 
 	it( 'lists stored credentials without leaking passwords', () => {
-		configModule.setSiteCredential( 'https://two.example.com', {
-			username: 'editor',
-			password: 'super-secret',
-			authMethod: 'password',
-		} );
+		configModule.setSiteCredential(
+			'https://two.example.com',
+			'application-passwords',
+			{
+				username: 'editor',
+				password: 'super-secret',
+				authMethod: 'password',
+			}
+		);
 		const sites = configModule.listSiteCredentials();
 		const entry = sites.find(
 			( site ) => site.url === 'https://two.example.com'
 		);
 		expect( entry ).toEqual( {
 			url: 'https://two.example.com',
+			authType: 'application-passwords',
 			username: 'editor',
 			authMethod: 'password',
 		} );
@@ -108,23 +121,34 @@ describe( 'site credentials', () => {
 	} );
 
 	it( 'removes a stored credential', () => {
-		configModule.setSiteCredential( 'https://three.example.com', {
-			username: 'admin',
-			password: 'pw',
-			authMethod: 'password',
-		} );
+		configModule.setSiteCredential(
+			'https://three.example.com',
+			'application-passwords',
+			{
+				username: 'admin',
+				password: 'pw',
+				authMethod: 'password',
+			}
+		);
 		expect(
-			configModule.removeSiteCredential( 'https://three.example.com' )
+			configModule.removeSiteCredential(
+				'https://three.example.com',
+				'application-passwords'
+			)
 		).toBe( true );
 		expect(
-			configModule.getSiteCredential( 'https://three.example.com' )
+			configModule.getSiteCredential(
+				'https://three.example.com',
+				'application-passwords'
+			)
 		).toBeUndefined();
 	} );
 
 	it( 'reports false when removing a credential that was never stored', () => {
 		expect(
 			configModule.removeSiteCredential(
-				'https://never-stored.example.com'
+				'https://never-stored.example.com',
+				'application-passwords'
 			)
 		).toBe( false );
 	} );
@@ -132,14 +156,21 @@ describe( 'site credentials', () => {
 
 describe( 'site credentials: uuid', () => {
 	it( 'round-trips the uuid field through setSiteCredential/getSiteCredential', () => {
-		configModule.setSiteCredential( 'https://uuid.example.com', {
-			username: 'admin',
-			password: 'xxxx-xxxx-xxxx-xxxx',
-			authMethod: 'application-password',
-			uuid: 'abc-123-uuid',
-		} );
+		configModule.setSiteCredential(
+			'https://uuid.example.com',
+			'application-passwords',
+			{
+				username: 'admin',
+				password: 'xxxx-xxxx-xxxx-xxxx',
+				authMethod: 'application-password',
+				uuid: 'abc-123-uuid',
+			}
+		);
 		expect(
-			configModule.getSiteCredential( 'https://uuid.example.com' )
+			configModule.getSiteCredential(
+				'https://uuid.example.com',
+				'application-passwords'
+			)
 		).toEqual( {
 			username: 'admin',
 			password: 'xxxx-xxxx-xxxx-xxxx',
@@ -149,21 +180,201 @@ describe( 'site credentials: uuid', () => {
 	} );
 
 	it( 'does not include uuid in listSiteCredentials, even when stored', () => {
-		configModule.setSiteCredential( 'https://uuid-list.example.com', {
-			username: 'admin',
-			password: 'xxxx-xxxx-xxxx-xxxx',
-			authMethod: 'application-password',
-			uuid: 'should-not-leak',
-		} );
+		configModule.setSiteCredential(
+			'https://uuid-list.example.com',
+			'application-passwords',
+			{
+				username: 'admin',
+				password: 'xxxx-xxxx-xxxx-xxxx',
+				authMethod: 'application-password',
+				uuid: 'should-not-leak',
+			}
+		);
 		const entry = configModule
 			.listSiteCredentials()
 			.find( ( site ) => site.url === 'https://uuid-list.example.com' );
 		expect( entry ).toEqual( {
 			url: 'https://uuid-list.example.com',
+			authType: 'application-passwords',
 			username: 'admin',
 			authMethod: 'application-password',
 		} );
 		expect( entry ).not.toHaveProperty( 'uuid' );
+	} );
+} );
+
+describe( 'site credentials: oauth2', () => {
+	it( 'round-trips a stored credential', () => {
+		configModule.setSiteCredential(
+			'https://oauth2.example.com',
+			'oauth2',
+			{
+				accessToken: 'token-abc',
+				clientId: 'client-123',
+				grantType: 'authorization_code',
+				tokenType: 'bearer',
+			}
+		);
+		expect(
+			configModule.getSiteCredential(
+				'https://oauth2.example.com/',
+				'oauth2'
+			)
+		).toEqual( {
+			accessToken: 'token-abc',
+			clientId: 'client-123',
+			grantType: 'authorization_code',
+			tokenType: 'bearer',
+		} );
+	} );
+
+	it( 'lists stored oauth2 credentials without leaking the access token', () => {
+		configModule.setSiteCredential(
+			'https://oauth2-list.example.com',
+			'oauth2',
+			{
+				accessToken: 'should-not-leak',
+				clientId: 'client-456',
+				grantType: 'client_credentials',
+				tokenType: 'bearer',
+			}
+		);
+		const sites = configModule.listSiteCredentials();
+		const entry = sites.find(
+			( site ) => site.url === 'https://oauth2-list.example.com'
+		);
+		expect( entry ).toEqual( {
+			url: 'https://oauth2-list.example.com',
+			authType: 'oauth2',
+			clientId: 'client-456',
+			grantType: 'client_credentials',
+		} );
+		expect( JSON.stringify( sites ) ).not.toContain( 'should-not-leak' );
+	} );
+
+	it( 'removes a stored oauth2 credential', () => {
+		configModule.setSiteCredential(
+			'https://oauth2-remove.example.com',
+			'oauth2',
+			{
+				accessToken: 'token-xyz',
+				clientId: 'client-789',
+				grantType: 'client_credentials',
+				tokenType: 'bearer',
+			}
+		);
+		expect(
+			configModule.removeSiteCredential(
+				'https://oauth2-remove.example.com',
+				'oauth2'
+			)
+		).toBe( true );
+		expect(
+			configModule.getSiteCredential(
+				'https://oauth2-remove.example.com',
+				'oauth2'
+			)
+		).toBeUndefined();
+	} );
+
+	it( 'reports false when removing an oauth2 credential that was never stored', () => {
+		expect(
+			configModule.removeSiteCredential(
+				'https://oauth2-never-stored.example.com',
+				'oauth2'
+			)
+		).toBe( false );
+	} );
+} );
+
+describe( 'site credentials: cross-type isolation', () => {
+	const url = 'https://both-types.example.com';
+
+	it( 'setting an oauth2 credential does not disturb an existing application-passwords one for the same site', () => {
+		configModule.setSiteCredential( url, 'application-passwords', {
+			username: 'admin',
+			password: 'app-pw',
+			authMethod: 'application-password',
+		} );
+		configModule.setSiteCredential( url, 'oauth2', {
+			accessToken: 'token-both',
+			clientId: 'client-both',
+			grantType: 'authorization_code',
+			tokenType: 'bearer',
+		} );
+
+		expect(
+			configModule.getSiteCredential( url, 'application-passwords' )
+		).toEqual( {
+			username: 'admin',
+			password: 'app-pw',
+			authMethod: 'application-password',
+		} );
+		expect( configModule.getSiteCredential( url, 'oauth2' ) ).toEqual( {
+			accessToken: 'token-both',
+			clientId: 'client-both',
+			grantType: 'authorization_code',
+			tokenType: 'bearer',
+		} );
+	} );
+
+	it( 'removing one type leaves the other type stored for the same site untouched', () => {
+		expect(
+			configModule.removeSiteCredential( url, 'application-passwords' )
+		).toBe( true );
+
+		expect(
+			configModule.getSiteCredential( url, 'application-passwords' )
+		).toBeUndefined();
+		expect( configModule.getSiteCredential( url, 'oauth2' ) ).toEqual( {
+			accessToken: 'token-both',
+			clientId: 'client-both',
+			grantType: 'authorization_code',
+			tokenType: 'bearer',
+		} );
+	} );
+} );
+
+describe( 'legacy sites shape migration', () => {
+	it( 'reads a pre-multi-auth-type flat sites entry as an application-passwords credential', () => {
+		const legacyUrl = 'https://legacy.example.com';
+
+		// Writes the OLD flat shape directly on disk, bypassing
+		// `setSiteCredential` (which only ever writes the new nested shape) —
+		// a second `Conf` instance pointed at the same file/key simulates what
+		// a pre-multi-auth-type version of this tool would have written.
+		const configDir = dirname( configModule.configFilePath() );
+		const encryptionKey = readFileSync(
+			join( configDir, 'credential-key' ),
+			'utf8'
+		).trim();
+		const rawStore = new Conf< { sites?: Record< string, unknown > } >( {
+			projectName: 'wp-rest-cli',
+			cwd: configDir,
+			encryptionKey,
+		} );
+		const existingSites = rawStore.get( 'sites' ) ?? {};
+		rawStore.set( 'sites', {
+			...existingSites,
+			[ legacyUrl ]: {
+				username: 'legacy-admin',
+				password: 'legacy-pw',
+				authMethod: 'application-password',
+				uuid: 'legacy-uuid',
+			},
+		} );
+
+		expect(
+			configModule.getSiteCredential( legacyUrl, 'application-passwords' )
+		).toEqual( {
+			username: 'legacy-admin',
+			password: 'legacy-pw',
+			authMethod: 'application-password',
+			uuid: 'legacy-uuid',
+		} );
+		expect(
+			configModule.getSiteCredential( legacyUrl, 'oauth2' )
+		).toBeUndefined();
 	} );
 } );
 
@@ -190,12 +401,16 @@ describe( 'rotateEncryptionKey', () => {
 			url: 'https://rotate.example.com',
 			username: 'rotate-user',
 		} );
-		configModule.setSiteCredential( 'https://rotate-site.example.com', {
-			username: 'rotate-admin',
-			password: 'rotate-pw',
-			authMethod: 'application-password',
-			uuid: 'rotate-uuid',
-		} );
+		configModule.setSiteCredential(
+			'https://rotate-site.example.com',
+			'application-passwords',
+			{
+				username: 'rotate-admin',
+				password: 'rotate-pw',
+				authMethod: 'application-password',
+				uuid: 'rotate-uuid',
+			}
+		);
 
 		const keyBefore = readFileSync( keyFilePath, 'utf8' );
 
@@ -209,7 +424,10 @@ describe( 'rotateEncryptionKey', () => {
 		);
 		expect( configModule.getDefaultUsername() ).toBe( 'rotate-user' );
 		expect(
-			configModule.getSiteCredential( 'https://rotate-site.example.com' )
+			configModule.getSiteCredential(
+				'https://rotate-site.example.com',
+				'application-passwords'
+			)
 		).toEqual( {
 			username: 'rotate-admin',
 			password: 'rotate-pw',
@@ -225,18 +443,25 @@ describe( 'clearDefaults', () => {
 			url: 'https://default.example.com',
 			username: 'admin',
 		} );
-		configModule.setSiteCredential( 'https://kept.example.com', {
-			username: 'admin',
-			password: 'pw',
-			authMethod: 'password',
-		} );
+		configModule.setSiteCredential(
+			'https://kept.example.com',
+			'application-passwords',
+			{
+				username: 'admin',
+				password: 'pw',
+				authMethod: 'password',
+			}
+		);
 
 		configModule.clearDefaults();
 
 		expect( configModule.getDefaultUrl() ).toBeUndefined();
 		expect( configModule.getDefaultUsername() ).toBeUndefined();
 		expect(
-			configModule.getSiteCredential( 'https://kept.example.com' )
+			configModule.getSiteCredential(
+				'https://kept.example.com',
+				'application-passwords'
+			)
 		).toBeDefined();
 	} );
 } );
