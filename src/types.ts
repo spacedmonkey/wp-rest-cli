@@ -114,6 +114,8 @@ export interface GlobalFlags {
 	fields?: string;
 	field?: string;
 	body?: string;
+	/** Upload/download timeout in milliseconds (`--timeout`). */
+	timeout?: number;
 	color: boolean;
 	quiet: boolean;
 	debug: boolean;

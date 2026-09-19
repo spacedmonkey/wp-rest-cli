@@ -31,6 +31,15 @@ export class WpRestClient {
 	) {}
 
 	/**
+	 * The auth headers this client attaches to every request, for callers
+	 * (like the streaming file upload) that issue their own HTTP request.
+	 * @return The headers, or an empty object when unauthenticated.
+	 */
+	async authHeaders(): Promise< Record< string, string > > {
+		return this.auth ? await this.auth.getHeaders() : {};
+	}
+
+	/**
 	 * Issues an HTTP request against the REST API, JSON-encoding the body and
 	 * decoding the response.
 	 * @param url     The absolute URL to request.

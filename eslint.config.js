@@ -47,7 +47,7 @@ export default [
 	},
 	{
 		// This is a CLI: writing to stdout/stderr is the entire point.
-		files: [ 'src/cli.ts', 'src/core/debug.ts' ],
+		files: [ 'src/cli.ts', 'src/core/debug.ts', 'src/commands/upload.ts' ],
 		rules: {
 			'no-console': 'off',
 		},

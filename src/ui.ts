@@ -78,8 +78,11 @@ export function notice( message: string, enabled: boolean ): void {
 
 /** A running progress bar, as returned by {@link createProgressBar}. */
 export interface ProgressBar {
-	/** Advances the bar by one step. */
-	tick: () => void;
+	/**
+	 * Advances the bar.
+	 * @param by How many steps to advance (default 1; bytes for a download bar).
+	 */
+	tick: ( by?: number ) => void;
 	/**
 	 * Prints a line above the bar without disturbing it (the bar redraws
 	 * itself on the line below immediately after).
@@ -137,8 +140,8 @@ export function createProgressBar(
 	);
 	bar.start( total, 0, { msg: message } );
 	return {
-		tick() {
-			bar.increment();
+		tick( by = 1 ) {
+			bar.increment( by );
 		},
 		// Routed through `notice` (ora), not cli-progress's own `MultiBar.log()`
 		// buffering — that buffer only ever flushes on the bar's own redraw

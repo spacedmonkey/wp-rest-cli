@@ -95,6 +95,10 @@ A *list of child items* (as opposed to a single route/verb's own args) is a sepa
 
 Any other `--format` keeps returning the plain `{route, verbs}` rows (`buildChildRows`/`renderRouteChildren`) at every level instead, since those are consumed by scripts, not read as a page.
 
+### Uploads
+
+A `field=value` whose value starts with `@` (or, on `wp/v2/media`, any bare `file=`; or an arg whose live schema has `format: binary`) is a file field. The field name is **the endpoint's own parameter name** — there is deliberately no `--file` CLI flag. Uploads bypass `fetch` (which buffers whole files) for a streaming `node:http(s)` multipart POST in `src/core/upload.ts`; `http(s)://` sources are downloaded to a temp file first by `src/core/download.ts` (never sending WP credentials). Repeating the same field is a batch: one request per file, per-file errors, exit 1 on partial failure. Integration coverage is in `test/integration/cli-upload.test.ts`. User docs: `docs/uploading-files.md`.
+
 ### Testing conventions
 
 - Unit tests (`test/unit/`), run under **Jest** (ESM via `ts-jest`, config in `jest.config.js`), test pure logic (parsing, formatting, indexer route-matching) with no network. Jest's ESM setup here can't hoist `jest.mock()` module replacement the way Vitest's `vi.mock()` did — a future test needing to mock one of this project's own modules would need `jest.unstable_mockModule()` plus a dynamic `import()`.

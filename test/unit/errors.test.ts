@@ -38,9 +38,52 @@ describe( 'parseErrorResponse', () => {
 		const error = await parseErrorResponse( response );
 		expect( error ).toBeInstanceOf( CliError );
 	} );
+
+	it( 'explains a 413 without dumping the HTML page', async () => {
+		const response = new Response(
+			'<html><head><title>413 Request Entity Too Large</title></head></html>',
+			{ status: 413 }
+		);
+		const error = await parseErrorResponse( response );
+		expect( error ).toBeInstanceOf( CliError );
+		expect( error.message ).toMatch( /too large \(HTTP 413\)/ );
+		expect( error.message ).not.toContain( '<html>' );
+	} );
+
+	it( 'strips tags from other HTML error bodies', async () => {
+		const response = new Response(
+			'<html><body><h1>Bad Gateway</h1></body></html>',
+			{ status: 502 }
+		);
+		const error = await parseErrorResponse( response );
+		expect( error.message ).toBe(
+			'Request failed with status 502: Bad Gateway'
+		);
+	} );
+
+	it( 'keeps response headers on the error', async () => {
+		const response = new Response(
+			JSON.stringify( { code: 'x', message: 'y' } ),
+			{ status: 500, headers: { 'x-wp-upload-attachment-id': '77' } }
+		);
+		const error = await parseErrorResponse( response );
+		expect( error.headers?.get( 'x-wp-upload-attachment-id' ) ).toBe(
+			'77'
+		);
+	} );
 } );
 
 describe( 'formatErrorForDisplay', () => {
+	it( 'appends a hint to upload errors', () => {
+		const error = new WpApiError(
+			{ code: 'rest_upload_no_data', message: 'No data supplied.' },
+			400
+		);
+		expect( formatErrorForDisplay( error ) ).toMatch(
+			/rest_upload_no_data, status 400\)\n.*post_max_size/
+		);
+	} );
+
 	it( 'formats a WpApiError with its code and status', () => {
 		const error = new WpApiError(
 			{ code: 'rest_forbidden', message: 'Not allowed.' },

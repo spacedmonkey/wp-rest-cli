@@ -40,6 +40,7 @@ wp config get|set|clear
 | `--fields=<a,b,c>` | Limit output to specific top-level fields. |
 | `--field=<name>` | Print a single field's raw value (supports dotted paths, e.g. `title.rendered`). |
 | `--body=<json>` | Raw JSON request body for `create`/`update`, overriding/merged under `--field=` args. |
+| `--timeout=<ms>` | Timeout for file uploads/downloads (default 300000). |
 | `--no-color` | Disable colored output. |
 | `--quiet` | Suppress spinners. |
 | `--debug` | Print a stack trace on unexpected (non-API) errors, and log every HTTP request/response to stderr (with the `Authorization` header redacted). |
@@ -49,3 +50,7 @@ Any other `--name=value` (or bare `--name`, treated as `--name=true`) is passed 
 ## Help
 
 `wp help [<namespace> [<route...> [<verb>]]]` renders the same usage synopsis you'd see interactively, built dynamically from the site's live introspected schema, but never performs the underlying request.
+
+## Uploading files
+
+Mark a value with `@` to upload it, using the parameter name the endpoint expects: `wp wp/v2 media create --file=./cat.jpg`. See [Uploading files](uploading-files.md).

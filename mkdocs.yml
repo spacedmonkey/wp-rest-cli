@@ -17,6 +17,7 @@ nav:
       - OAuth2: authentication-oauth2.md
   - Configuration: configuration.md
   - Meta commands: meta-commands.md
+  - Uploading files: uploading-files.md
   - Examples: examples.md
   - Contributing: contributing.md
 

@@ -2,6 +2,16 @@
  * Internal dependencies
  */
 import { getSiteCredential, normalizeSiteUrl } from '../config.js';
+import {
+	META_VERBS,
+	parseMetaArgs,
+	runMetaCommand,
+	printMetaUsage,
+	printMetaVerbHelp,
+	routeSupportsMeta,
+	type MetaVerb,
+	type ParsedMeta,
+} from './meta.js';
 import { BasicAuthProvider } from '../core/auth/basic.js';
 import { OAuth2AuthProvider } from '../core/auth/oauth2.js';
 import type { AuthProvider } from '../core/auth/types.js';
@@ -25,6 +35,7 @@ import {
 	type RouteChildSegment,
 } from '../core/indexer.js';
 import { introspectRoute, supportedContexts } from '../core/introspect.js';
+import { planUploads } from '../core/upload.js';
 import { coerceJsonFields, validateFieldTypes } from '../core/validate.js';
 import { buildVerbRequest } from '../core/verbs.js';
 import type {
@@ -36,16 +47,7 @@ import type {
 	Verb,
 } from '../types.js';
 import { withSpinner, pc, notice, createProgressBar } from '../ui.js';
-import {
-	META_VERBS,
-	parseMetaArgs,
-	runMetaCommand,
-	printMetaUsage,
-	printMetaVerbHelp,
-	routeSupportsMeta,
-	type MetaVerb,
-	type ParsedMeta,
-} from './meta.js';
+import { runUploadCommand } from './upload.js';
 
 const VERBS: Verb[] = [
 	'list',
@@ -71,6 +73,8 @@ export type ParsedCommand =
 			verb: Verb;
 			id?: string;
 			fields: Record< string, string >;
+			/** Every value of a field given more than once (only file fields honor repeats). */
+			repeated?: Record< string, string[] >;
 	  };
 
 /**
@@ -99,6 +103,30 @@ function parseFields( tokens: string[] ): Record< string, string > {
 		fields[ token.slice( 0, eq ) ] = token.slice( eq + 1 );
 	}
 	return fields;
+}
+
+/**
+ * Collects every value of each `field=value` key that appears more than once,
+ * so a repeated file field (`--file=@a --file=@b`) isn't lost to last-one-wins.
+ * @param tokens The tokens to scan.
+ * @return The values per repeated key, or undefined when no key repeats.
+ */
+function collectRepeated(
+	tokens: string[]
+): Record< string, string[] > | undefined {
+	const seen: Record< string, string[] > = {};
+	for ( const token of tokens ) {
+		const eq = token.indexOf( '=' );
+		if ( eq > 0 ) {
+			( seen[ token.slice( 0, eq ) ] ??= [] ).push(
+				token.slice( eq + 1 )
+			);
+		}
+	}
+	const repeated = Object.fromEntries(
+		Object.entries( seen ).filter( ( [ , values ] ) => values.length > 1 )
+	);
+	return Object.keys( repeated ).length > 0 ? repeated : undefined;
 }
 
 /**
@@ -196,6 +224,7 @@ export function parseCommandArgs( args: string[] ): ParsedCommand {
 			verb,
 			id,
 			fields: parseFields( fieldTokens ),
+			repeated: collectRepeated( fieldTokens ),
 		};
 	}
 
@@ -205,6 +234,7 @@ export function parseCommandArgs( args: string[] ): ParsedCommand {
 		route,
 		verb,
 		fields: parseFields( verbRest ),
+		repeated: collectRepeated( verbRest ),
 	};
 }
 
@@ -2109,6 +2139,20 @@ export async function runRestCommand(
 				! flags.quiet
 		  )
 		: undefined;
+	const uploadPlan =
+		parsed.verb === 'create' || parsed.verb === 'update'
+			? planUploads( {
+					namespace: parsed.namespace,
+					route: parsed.route,
+					fields: parsed.fields,
+					repeated: parsed.repeated,
+					args: verbArgs,
+			  } )
+			: undefined;
+	const requestFields = coerceJsonFields(
+		uploadPlan ? uploadPlan.textFields : parsed.fields,
+		verbArgs
+	);
 	const request = buildVerbRequest( {
 		verb: parsed.verb,
 		apiRoot,
@@ -2117,9 +2161,26 @@ export async function runRestCommand(
 		id: parsed.id,
 		paramIndex,
 		context: flags.context,
-		fields: coerceJsonFields( parsed.fields, verbArgs ),
+		fields: requestFields,
 		bodyOverride: resolveBodyOverride( flags.body ),
 	} );
+
+	if (
+		uploadPlan &&
+		( parsed.verb === 'create' || parsed.verb === 'update' )
+	) {
+		return runUploadCommand( {
+			client,
+			apiRoot,
+			namespace: parsed.namespace,
+			route: parsed.route,
+			verb: parsed.verb,
+			url: request.url,
+			plan: uploadPlan,
+			textFields: requestFields,
+			flags,
+		} );
+	}
 
 	const { body } = await withSpinner(
 		`${ request.method } ${ parsed.namespace }/${ parsed.route }`,
