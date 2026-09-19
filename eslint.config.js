@@ -47,9 +47,24 @@ export default [
 	},
 	{
 		// This is a CLI: writing to stdout/stderr is the entire point.
-		files: [ 'src/cli.ts', 'src/core/debug.ts' ],
+		files: [ 'src/cli.ts', 'src/core/debug.ts', 'src/commands/upload.ts' ],
 		rules: {
 			'no-console': 'off',
+		},
+	},
+	{
+		// Every HTTP request goes through `timedFetch` so `--timeout` applies to it.
+		files: [ 'src/**/*.ts' ],
+		ignores: [ 'src/core/timeout.ts' ],
+		rules: {
+			'no-restricted-globals': [
+				'error',
+				{
+					name: 'fetch',
+					message:
+						'Use timedFetch() from core/timeout.ts so --timeout applies.',
+				},
+			],
 		},
 	},
 	{

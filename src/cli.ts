@@ -34,6 +34,8 @@ import {
 	type AuthType,
 } from './core/auth/types.js';
 import { formatErrorForDisplay, CliError, WpApiError } from './core/errors.js';
+import { setUserTimeout } from './core/timeout.js';
+import { disableTlsVerification } from './core/tls.js';
 import type {
 	AuthSource,
 	Context,
@@ -78,6 +80,7 @@ const KNOWN_LONG_FLAGS = new Set( [
 	'fields',
 	'field',
 	'body',
+	'timeout',
 	'color',
 	'no-color',
 	'quiet',
@@ -112,6 +115,24 @@ function normalizeDynamicFlags( argv: string[] ): string[] {
 	} );
 }
 
+/**
+ * Parses the `--timeout` value into milliseconds.
+ * @param value The raw option value, if given.
+ * @return The timeout in milliseconds, or undefined when not given.
+ */
+function parseTimeout( value: string | undefined ): number | undefined {
+	if ( value === undefined ) {
+		return undefined;
+	}
+	const ms = Number( value );
+	if ( ! Number.isInteger( ms ) || ms <= 0 ) {
+		throw new CliError(
+			`--timeout must be a positive number of milliseconds (got "${ value }").`
+		);
+	}
+	return ms;
+}
+
 interface RawOptions {
 	url?: string;
 	username?: string;
@@ -125,6 +146,7 @@ interface RawOptions {
 	fields?: string;
 	field?: string;
 	body?: string;
+	timeout?: string;
 	color: boolean;
 	quiet?: boolean;
 	debug?: boolean;
@@ -138,6 +160,7 @@ interface RawOptions {
  * @return The validated global flags.
  */
 function toGlobalFlags( options: RawOptions ): GlobalFlags {
+	const timeout = parseTimeout( options.timeout );
 	if ( ! CONTEXTS.includes( options.context as Context ) ) {
 		throw new CliError(
 			`--context must be one of: ${ CONTEXTS.join( ', ' ) } (got "${
@@ -162,6 +185,8 @@ function toGlobalFlags( options: RawOptions ): GlobalFlags {
 			}").`
 		);
 	}
+	// Every HTTP request this process makes honours --timeout.
+	setUserTimeout( timeout );
 	return {
 		url: options.url,
 		username: options.username,
@@ -175,6 +200,7 @@ function toGlobalFlags( options: RawOptions ): GlobalFlags {
 		fields: options.fields,
 		field: options.field,
 		body: options.body,
+		timeout,
 		color: options.color,
 		quiet: Boolean( options.quiet ),
 		debug: Boolean( options.debug ),
@@ -275,6 +301,9 @@ async function handleHelpCommand(
 	return exitCode;
 }
 
+// Sites with self-signed/expired certificates must work: never verify TLS.
+disableTlsVerification();
+
 const program = new Command();
 
 program
@@ -314,6 +343,10 @@ program
 		'--body <json>',
 		'Raw JSON body for create/update, overriding field=value args'
 	)
+	.option(
+		'--timeout <ms>',
+		'Timeout in milliseconds for every request; overrides all defaults (API calls 20000, discovery/auth 8000, file transfers 300000)'
+	)
 	.option( '--no-color', 'Disable colored output' )
 	.option( '--quiet', 'Suppress spinner/progress output' )
 	.option(
@@ -336,6 +369,8 @@ Examples:
   $ wp-rest-cli wp/v2 posts get 42 --context=edit --url=https://example.com --username=admin --password=xxxx-xxxx-xxxx-xxxx
   $ wp-rest-cli wp/v2 posts create --title="Hello" --status=publish --url=https://example.com
   $ wp-rest-cli wp/v2 posts delete 42 --force --url=https://example.com
+  $ wp-rest-cli wp/v2 media create --file=./cat.jpg --title="Cat" --url=https://example.com
+  $ wp-rest-cli wp/v2 media create --file=https://example.com/cat.jpg --url=https://example.com
   $ wp-rest-cli config set --url=https://example.com --username=admin
   $ wp-rest-cli auth application-passwords login https://example.com
   $ wp-rest-cli auth application-passwords add https://example.com --username=admin --password=xxxx-xxxx-xxxx-xxxx

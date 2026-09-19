@@ -58,3 +58,18 @@ wp-rest-cli wp/v2 posts meta patch 42 update my_settings some.nested.path "new v
 ```
 
 See [Meta commands](meta-commands.md) for the full set.
+
+## Uploads
+
+```sh
+# Single file (core media reads the `file` parameter)
+wp-rest-cli wp/v2 media create --file=./cat.jpg --title="Cat" --url=https://example.com
+
+# Several files, print only the new ids
+wp-rest-cli wp/v2 media create --file=./a.jpg --file=./b.png --format=ids --url=https://example.com
+
+# Attach to post 42; a custom route would use its own parameter name, e.g. --attachment=./a.pdf
+wp-rest-cli wp/v2 media create --file=./cat.jpg --post=42 --url=https://example.com
+```
+
+See [Uploading files](uploading-files.md).

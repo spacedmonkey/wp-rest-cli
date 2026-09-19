@@ -532,3 +532,38 @@ describe( '--no-color', () => {
 		expect( result.stdout ).not.toMatch( /\x1b\[/ );
 	} );
 } );
+
+describe( '--timeout', () => {
+	it( 'aborts an API request that takes longer than --timeout', async () => {
+		const result = await run( [
+			'wp/v2',
+			'widgets',
+			'list',
+			'--slow=2000',
+			'--timeout=300',
+		] );
+		expect( result.exitCode ).toBe( 1 );
+		expect( result.stderr.toLowerCase() ).toMatch(
+			/timed out|timeout|abort/
+		);
+	} );
+
+	it( 'lets the same request finish when it is within --timeout', async () => {
+		const result = await run( [
+			'wp/v2',
+			'widgets',
+			'list',
+			'--slow=300',
+			'--timeout=5000',
+		] );
+		expect( result.exitCode ).toBe( 0 );
+	} );
+
+	it( 'rejects a non-numeric --timeout', async () => {
+		const result = await run( [ '--timeout=soon' ] );
+		expect( result.exitCode ).toBe( 1 );
+		expect( result.stderr ).toContain(
+			'--timeout must be a positive number'
+		);
+	} );
+} );

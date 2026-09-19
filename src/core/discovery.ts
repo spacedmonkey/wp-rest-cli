@@ -8,6 +8,10 @@ import { prependHTTPS } from '@wordpress/url';
  */
 import { debugLog } from './debug.js';
 import { CliError } from './errors.js';
+import { timedFetch } from './timeout.js';
+
+/** Default timeout for one discovery probe, in milliseconds (override with `--timeout`). */
+const PROBE_TIMEOUT_MS = 8000;
 
 const LINK_REL = 'https://api.w.org/';
 
@@ -58,7 +62,7 @@ async function probe( url: string, debug: boolean ): Promise< boolean > {
 		debugLog( `→ GET ${ url }` );
 	}
 	try {
-		const res = await fetch( url, { signal: AbortSignal.timeout( 8000 ) } );
+		const res = await timedFetch( url, {}, PROBE_TIMEOUT_MS );
 		if ( debug ) {
 			debugLog( `← ${ res.status } ${ res.statusText }` );
 		}
@@ -100,10 +104,11 @@ export async function resolveApiRoot(
 		if ( debug ) {
 			debugLog( `→ HEAD ${ baseUrl }` );
 		}
-		const headRes = await fetch( baseUrl, {
-			method: 'HEAD',
-			signal: AbortSignal.timeout( 8000 ),
-		} );
+		const headRes = await timedFetch(
+			baseUrl,
+			{ method: 'HEAD' },
+			PROBE_TIMEOUT_MS
+		);
 		if ( debug ) {
 			debugLog( `← ${ headRes.status } ${ headRes.statusText }` );
 		}
@@ -126,9 +131,7 @@ export async function resolveApiRoot(
 		if ( debug ) {
 			debugLog( `→ GET ${ baseUrl }` );
 		}
-		const getRes = await fetch( baseUrl, {
-			signal: AbortSignal.timeout( 8000 ),
-		} );
+		const getRes = await timedFetch( baseUrl, {}, PROBE_TIMEOUT_MS );
 		if ( debug ) {
 			debugLog( `← ${ getRes.status } ${ getRes.statusText }` );
 		}

@@ -8,22 +8,71 @@ export class WpApiError extends Error {
 	readonly code: string;
 	readonly status: number;
 	readonly params?: Record< string, string >;
+	readonly headers?: Headers;
 
-	constructor( body: WpApiErrorBody, fallbackStatus: number ) {
+	/**
+	 * @param body           The parsed `{code, message, data}` error body.
+	 * @param fallbackStatus HTTP status to use when the body carries none.
+	 * @param headers        The failed response's headers, if available.
+	 */
+	constructor(
+		body: WpApiErrorBody,
+		fallbackStatus: number,
+		headers?: Headers
+	) {
 		super( body.message );
 		this.name = 'WpApiError';
 		this.code = body.code;
 		this.status = body.data?.status ?? fallbackStatus;
 		this.params = body.data?.params;
+		this.headers = headers;
 	}
 }
 
 /** Raised when the CLI itself can't proceed (bad args, discovery failure, etc.), not a REST API error. */
 export class CliError extends Error {
-	constructor( message: string ) {
+	readonly headers?: Headers;
+
+	/**
+	 * @param message The human-readable error message.
+	 * @param headers The failed response's headers, if the error came from one.
+	 */
+	constructor( message: string, headers?: Headers ) {
 		super( message );
 		this.name = 'CliError';
+		this.headers = headers;
 	}
+}
+
+/** Hints appended to `rest_upload_*` errors, keyed by WordPress error code. */
+const UPLOAD_ERROR_HINTS: Record< string, string > = {
+	rest_upload_no_data:
+		'No file data reached WordPress. The file may be empty, or larger than the server allows (PHP post_max_size).',
+	rest_upload_unknown_error:
+		'The file may be a type WordPress does not allow, or larger than PHP upload_max_filesize.',
+	rest_upload_sideload_error:
+		'The file may be a type WordPress does not allow, or larger than PHP upload_max_filesize.',
+	rest_upload_file_too_big:
+		'The file is larger than this site allows; raise the upload size limit or use a smaller file.',
+	rest_upload_limited_space: 'This site has run out of upload space.',
+	rest_upload_user_quota_exceeded: 'This user has exceeded the upload quota.',
+	rest_upload_image_type_not_supported:
+		'The server cannot process this image type.',
+	rest_cannot_create: 'Uploading requires the upload_files capability.',
+};
+
+/**
+ * Strips markup from an HTML error page (e.g. an nginx/Apache error) so the
+ * text of a non-JSON error body is readable.
+ * @param html The raw response text.
+ * @return The text content, whitespace-collapsed.
+ */
+function stripHtml( html: string ): string {
+	return html
+		.replace( /<(script|style)[\s\S]*?<\/\1>/gi, ' ' )
+		.replace( /<[^>]*>/g, ' ' )
+		.replace( /\s+/g, ' ' )
+		.trim();
 }
 
 /**
@@ -44,15 +93,23 @@ export async function parseErrorResponse(
 			typeof body.code === 'string' &&
 			typeof body.message === 'string'
 		) {
-			return new WpApiError( body, response.status );
+			return new WpApiError( body, response.status, response.headers );
 		}
 	} catch {
 		// fall through to raw text error below
 	}
+	if ( response.status === 413 ) {
+		return new CliError(
+			'The server rejected the request body as too large (HTTP 413). Check the web server (client_max_body_size) and PHP (upload_max_filesize, post_max_size) upload limits.',
+			response.headers
+		);
+	}
+	const detail = /<\/?[a-z][\s\S]*>/i.test( text ) ? stripHtml( text ) : text;
 	return new CliError(
 		`Request failed with status ${ response.status }${
-			text ? `: ${ text.slice( 0, 500 ) }` : ''
-		}`
+			detail ? `: ${ detail.slice( 0, 500 ) }` : ''
+		}`,
+		response.headers
 	);
 }
 
@@ -63,7 +120,10 @@ export async function parseErrorResponse(
  */
 export function formatErrorForDisplay( error: unknown ): string {
 	if ( error instanceof WpApiError ) {
-		return `Error: ${ error.message } (${ error.code }, status ${ error.status })`;
+		const hint = UPLOAD_ERROR_HINTS[ error.code ];
+		return `Error: ${ error.message } (${ error.code }, status ${
+			error.status
+		})${ hint ? `\n${ hint }` : '' }`;
 	}
 	if ( error instanceof CliError ) {
 		return `Error: ${ error.message }`;

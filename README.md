@@ -41,6 +41,8 @@ wp <namespace> <route> update <id> [--field=value...] [--body=<json>]
 wp <namespace> <route> delete <id> [--force]
 ```
 
+> **TLS:** HTTPS certificates are never verified, so self-signed/expired certs on local or staging sites just work. Avoid real credentials on untrusted networks.
+
 ### Global flags
 
 | Flag | Description |
@@ -54,6 +56,7 @@ wp <namespace> <route> delete <id> [--force]
 | `--fields=<a,b,c>` | Limit output to specific top-level fields. |
 | `--field=<name>` | Print a single field's raw value (supports dotted paths, e.g. `title.rendered`). |
 | `--body=<json>` | Raw JSON request body for `create`/`update`, overriding/merged under `--field=` args. |
+| `--timeout=<ms>` | Timeout for every HTTP request; when given it replaces all the defaults below. Defaults: 20000 (20 s) for API calls, 8000 for site discovery and `wp auth` calls, and 300000 (5 min) for file uploads/downloads, where it is an idle timeout that resets whenever data moves. |
 | `--no-color` | Disable colored output. |
 | `--quiet` | Suppress spinners. |
 | `--debug` | Print a stack trace on unexpected (non-API) errors. |
@@ -109,6 +112,9 @@ wp-rest-cli wp/v2 posts update 42 --status=draft --url=https://example.com
 # Delete
 wp-rest-cli wp/v2 posts delete 42 --force --url=https://example.com
 
+# Upload a file — the flag is whatever parameter the endpoint expects (`file` for core media)
+wp-rest-cli wp/v2 media create --file=./cat.jpg --title="Cat" --url=https://example.com
+
 # Save defaults so you don't have to repeat --url/--username
 wp-rest-cli config set --url=https://example.com --username=admin
 wp-rest-cli config get
@@ -120,6 +126,8 @@ wp-rest-cli auth application-passwords list
 wp-rest-cli auth application-passwords remove --all   # if a machine/config is ever compromised
 wp-rest-cli config rotate-key   # re-encrypt the local store under a fresh key
 ```
+
+See [Uploading files](https://spacedmonkey.github.io/wp-rest-cli/uploading-files/) for batches, URL imports and other endpoints.
 
 ## Development
 

@@ -260,10 +260,88 @@ async function readFormBody(
 	return new URLSearchParams( Buffer.concat( chunks ).toString( 'utf8' ) );
 }
 
+/** One multipart upload the fixture received, for assertions. */
+export interface ReceivedUpload {
+	path: string;
+	method: string;
+	fields: Record< string, string >;
+	files: Array< { field: string; name: string; type: string; size: number } >;
+	contentLength: number;
+}
+
+const receivedUploads: ReceivedUpload[] = [];
+const postProcessHits = new Map< number, number >();
+const deletedMediaIds: number[] = [];
+const downloadRequests: Array< { path: string; authorization?: string } > = [];
+let nextMediaId = 100;
+
+/** @return Every multipart upload received so far (media + custom routes). */
+export function getReceivedUploads(): ReceivedUpload[] {
+	return receivedUploads;
+}
+
+/** @return How many times each attachment id's post-process route was hit. */
+export function getPostProcessHits(): Map< number, number > {
+	return postProcessHits;
+}
+
+/** @return Attachment ids removed via `DELETE ...?force=true`. */
+export function getDeletedMediaIds(): number[] {
+	return deletedMediaIds;
+}
+
+/** @return Every request the `/downloads/*` routes received, with its Authorization header. */
+export function getDownloadRequests(): typeof downloadRequests {
+	return downloadRequests;
+}
+
+/**
+ * Parses a multipart/form-data request body using the platform's own parser.
+ *
+ * @param req The incoming request.
+ * @return The text fields and files, plus the raw byte length.
+ */
+async function readMultipart( req: IncomingMessage ): Promise< {
+	fields: Record< string, string >;
+	files: ReceivedUpload[ 'files' ];
+	contentLength: number;
+} > {
+	const chunks: Buffer[] = [];
+	for await ( const chunk of req ) {
+		chunks.push( chunk as Buffer );
+	}
+	const buffer = Buffer.concat( chunks );
+	const form = await new Request( 'http://localhost/', {
+		method: 'POST',
+		headers: { 'content-type': String( req.headers[ 'content-type' ] ) },
+		body: buffer,
+	} ).formData();
+	const fields: Record< string, string > = {};
+	const files: ReceivedUpload[ 'files' ] = [];
+	for ( const [ field, value ] of form.entries() ) {
+		if ( typeof value === 'string' ) {
+			fields[ field ] = value;
+		} else {
+			files.push( {
+				field,
+				name: value.name,
+				type: value.type,
+				size: value.size,
+			} );
+		}
+	}
+	return { fields, files, contentLength: buffer.length };
+}
+
 export async function startFixture(): Promise< Fixture > {
 	const server = createServer( async ( req, res ) => {
 		const url = new URL( req.url ?? '/', 'http://localhost' );
 		const path = url.pathname;
+		// `?slow=<ms>` delays any response, for exercising --timeout.
+		const slowMs = Number( url.searchParams.get( 'slow' ) );
+		if ( slowMs > 0 ) {
+			await new Promise( ( resolve ) => setTimeout( resolve, slowMs ) );
+		}
 
 		if ( req.method === 'HEAD' && path === '/' ) {
 			res.writeHead( 200, {
@@ -347,6 +425,24 @@ export async function startFixture(): Promise< Fixture > {
 							{ methods: [ 'PUT' ] },
 							{ methods: [ 'DELETE' ] },
 						],
+					},
+					'/wp/v2/media': {
+						namespace: 'wp/v2',
+						methods: [ 'GET', 'POST' ],
+						endpoints: [
+							{ methods: [ 'GET' ] },
+							{ methods: [ 'POST' ] },
+						],
+					},
+					'/wp/v2/attachments-custom': {
+						namespace: 'wp/v2',
+						methods: [ 'POST' ],
+						endpoints: [ { methods: [ 'POST' ] } ],
+					},
+					'/wp/v2/plain-uploads': {
+						namespace: 'wp/v2',
+						methods: [ 'POST' ],
+						endpoints: [ { methods: [ 'POST' ] } ],
 					},
 					'/wp/v2/subscribers': {
 						namespace: 'wp/v2',
@@ -643,6 +739,265 @@ export async function startFixture(): Promise< Fixture > {
 			}
 
 			send( res, 400, { error: 'unsupported_grant_type' } );
+			return;
+		}
+
+		// --- File upload fixtures -------------------------------------------
+		// The block-editor settings route (Gutenberg plugin): which state it
+		// reports is chosen by the Basic-auth username, since one fixture
+		// instance serves a whole test file.
+		if ( path === '/wp-json/wp-block-editor/v1/settings' ) {
+			const user = parseBasicAuth( req )?.username;
+			if ( user === 'forbidden' ) {
+				send( res, 403, {
+					code: 'rest_cannot_read_block_editor_settings',
+					message:
+						'Sorry, you are not allowed to read the block editor settings.',
+					data: { status: 403 },
+				} );
+			} else if ( user === 'mimeuser' ) {
+				send( res, 200, {
+					allowedMimeTypes: {
+						'jpg|jpeg|jpe': 'image/jpeg',
+						png: 'image/png',
+						pdf: 'application/pdf',
+					},
+					maxUploadFileSize: 1000,
+				} );
+			} else {
+				send( res, 404, {
+					code: 'rest_no_route',
+					message:
+						'No route was found matching the URL and request method.',
+					data: { status: 404 },
+				} );
+			}
+			return;
+		}
+
+		if ( path === '/wp-json/wp/v2/media' && req.method === 'OPTIONS' ) {
+			send( res, 200, {
+				namespace: 'wp/v2',
+				methods: [ 'GET', 'POST' ],
+				endpoints: [
+					{ methods: [ 'GET' ], args: {} },
+					{
+						methods: [ 'POST' ],
+						args: {
+							title: {
+								type: 'string',
+								description: 'The title.',
+							},
+							alt_text: {
+								type: 'string',
+								description: 'Alt text.',
+							},
+							caption: {
+								type: 'string',
+								description: 'Caption.',
+							},
+						},
+					},
+				],
+			} );
+			return;
+		}
+
+		if (
+			path === '/wp-json/wp/v2/plain-uploads' &&
+			req.method === 'OPTIONS'
+		) {
+			// Like a real custom route: the file arg carries no schema hint.
+			send( res, 200, {
+				namespace: 'wp/v2',
+				methods: [ 'POST' ],
+				endpoints: [
+					{
+						methods: [ 'POST' ],
+						args: {
+							attachment: { type: 'string' },
+							title: { type: 'string' },
+							link: { type: 'string', format: 'uri' },
+						},
+					},
+				],
+			} );
+			return;
+		}
+
+		if (
+			path === '/wp-json/wp/v2/attachments-custom' &&
+			req.method === 'OPTIONS'
+		) {
+			send( res, 200, {
+				namespace: 'wp/v2',
+				methods: [ 'POST' ],
+				endpoints: [
+					{
+						methods: [ 'POST' ],
+						args: {
+							attachment: {
+								type: 'string',
+								format: 'binary',
+								required: true,
+								description: 'The file to attach.',
+							},
+							title: {
+								type: 'string',
+								description: 'The title.',
+							},
+						},
+					},
+				],
+			} );
+			return;
+		}
+
+		if (
+			( path === '/wp-json/wp/v2/media' ||
+				path === '/wp-json/wp/v2/attachments-custom' ||
+				path === '/wp-json/wp/v2/plain-uploads' ) &&
+			req.method === 'POST'
+		) {
+			if (
+				! /multipart\/form-data/.test(
+					req.headers[ 'content-type' ] ?? ''
+				)
+			) {
+				send( res, 400, {
+					code: 'rest_upload_no_data',
+					message: 'No data supplied.',
+					data: { status: 400 },
+				} );
+				return;
+			}
+			const upload = await readMultipart( req );
+			receivedUploads.push( {
+				path,
+				method: req.method,
+				fields: upload.fields,
+				files: upload.files,
+				contentLength: upload.contentLength,
+			} );
+			if ( upload.files.some( ( f ) => f.name === 'stall.png' ) ) {
+				// Sentinel: hold the response so --timeout's idle limit fires.
+				await new Promise( ( resolve ) => setTimeout( resolve, 3000 ) );
+			}
+			const expected = /attachments-custom|plain-uploads/.test( path )
+				? 'attachment'
+				: 'file';
+			const file = upload.files.find( ( f ) => f.field === expected );
+			if ( ! file ) {
+				send( res, 400, {
+					code: 'rest_upload_no_data',
+					message: 'No data supplied.',
+					data: { status: 400 },
+				} );
+				return;
+			}
+			if ( file.name === '413.bin' ) {
+				res.writeHead( 413, { 'content-type': 'text/html' } );
+				res.end(
+					'<html><head><title>413 Request Entity Too Large</title></head><body><center><h1>413 Request Entity Too Large</h1></center></body></html>'
+				);
+				return;
+			}
+			if ( file.name === 'noperm.bin' ) {
+				send( res, 500, {
+					code: 'rest_upload_unknown_error',
+					message:
+						'Sorry, you are not allowed to upload this file type.',
+					data: { status: 500 },
+				} );
+				return;
+			}
+			if ( file.name === 'crash.png' || file.name === 'recover.png' ) {
+				const id = file.name === 'crash.png' ? 77 : 78;
+				res.writeHead( 500, {
+					'content-type': 'application/json',
+					'x-wp-upload-attachment-id': String( id ),
+				} );
+				res.end(
+					JSON.stringify( {
+						code: 'internal_server_error',
+						message: 'Internal error.',
+						data: { status: 500 },
+					} )
+				);
+				return;
+			}
+			const id = nextMediaId++;
+			send( res, 201, {
+				id,
+				title: {
+					rendered:
+						upload.fields.title ??
+						file.name.replace( /\.[^.]+$/, '' ),
+				},
+				source_url: `${ baseUrlHolder.value }/uploads/${ file.name }`,
+				mime_type: file.type,
+				filename: file.name,
+				size: file.size,
+			} );
+			return;
+		}
+
+		const postProcessMatch = path.match(
+			/^\/wp-json\/wp\/v2\/media\/(\d+)\/post-process$/
+		);
+		if ( postProcessMatch && req.method === 'POST' ) {
+			const id = Number( postProcessMatch[ 1 ] );
+			postProcessHits.set( id, ( postProcessHits.get( id ) ?? 0 ) + 1 );
+			if ( id === 78 ) {
+				send( res, 200, { id, title: { rendered: 'recovered' } } );
+			} else {
+				send( res, 500, {
+					code: 'internal_server_error',
+					message: 'Internal error.',
+					data: { status: 500 },
+				} );
+			}
+			return;
+		}
+
+		const mediaDeleteMatch = path.match(
+			/^\/wp-json\/wp\/v2\/media\/(\d+)$/
+		);
+		if ( mediaDeleteMatch && req.method === 'DELETE' ) {
+			deletedMediaIds.push( Number( mediaDeleteMatch[ 1 ] ) );
+			send( res, 200, { deleted: true } );
+			return;
+		}
+
+		// Source files for URL uploads.
+		if ( path.startsWith( '/downloads/' ) ) {
+			downloadRequests.push( {
+				path,
+				authorization: req.headers.authorization,
+			} );
+			const body = Buffer.from( 'BINARY-FILE-CONTENT-'.repeat( 50 ) );
+			if ( path === '/downloads/cat.jpg' ) {
+				res.writeHead( 200, {
+					'content-type': 'image/jpeg',
+					'content-length': body.length,
+				} );
+				res.end( body );
+			} else if ( path === '/downloads/noext' ) {
+				res.writeHead( 200, { 'content-type': 'image/png' } );
+				res.end( body );
+			} else if ( path === '/downloads/disp' ) {
+				res.writeHead( 200, {
+					'content-type': 'application/octet-stream',
+					'content-disposition': 'attachment; filename="named.png"',
+				} );
+				res.end( body );
+			} else if ( path === '/downloads/redirect' ) {
+				res.writeHead( 302, { location: '/downloads/cat.jpg' } );
+				res.end();
+			} else {
+				res.writeHead( 404, { 'content-type': 'text/plain' } );
+				res.end( 'Not Found' );
+			}
 			return;
 		}
 

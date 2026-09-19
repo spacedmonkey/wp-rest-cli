@@ -4,6 +4,10 @@
 import type { AuthProvider } from './auth/types.js';
 import { debugLog, redactBody, redactHeaders } from './debug.js';
 import { parseErrorResponse } from './errors.js';
+import { timedFetch } from './timeout.js';
+
+/** Default timeout for an API request, in milliseconds (override with `--timeout`). */
+const DEFAULT_TIMEOUT_MS = 20_000;
 
 export interface RequestOptions {
 	method?: string;
@@ -29,6 +33,15 @@ export class WpRestClient {
 		private readonly auth?: AuthProvider,
 		private readonly debug = false
 	) {}
+
+	/**
+	 * The auth headers this client attaches to every request, for callers
+	 * (like the streaming file upload) that issue their own HTTP request.
+	 * @return The headers, or an empty object when unauthenticated.
+	 */
+	async authHeaders(): Promise< Record< string, string > > {
+		return this.auth ? await this.auth.getHeaders() : {};
+	}
 
 	/**
 	 * Issues an HTTP request against the REST API, JSON-encoding the body and
@@ -83,12 +96,11 @@ export class WpRestClient {
 		}
 
 		const startedAt = Date.now();
-		const response = await fetch( target, {
-			method,
-			headers,
-			body,
-			signal: AbortSignal.timeout( options.timeoutMs ?? 20_000 ),
-		} );
+		const response = await timedFetch(
+			target,
+			{ method, headers, body },
+			options.timeoutMs ?? DEFAULT_TIMEOUT_MS
+		);
 
 		if ( this.debug ) {
 			debugLog(
