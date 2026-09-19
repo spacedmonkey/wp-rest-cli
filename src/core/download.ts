@@ -19,6 +19,7 @@ import {
 	extensionOf,
 	mimeForFilename,
 } from './mime.js';
+import { resolveTimeout, timedFetch } from './timeout.js';
 
 /** Default download timeout, matching WP-CLI's `download_url`. */
 const DEFAULT_TIMEOUT_MS = 300_000;
@@ -154,7 +155,7 @@ export async function downloadToTemp(
 
 	// Idle timeout: re-armed on every received chunk, so a large download that
 	// keeps progressing isn't cut off.
-	const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+	const timeoutMs = resolveTimeout( opts.timeoutMs ?? DEFAULT_TIMEOUT_MS );
 	const controller = new AbortController();
 	let timer: NodeJS.Timeout | undefined;
 	const arm = () => {
@@ -168,7 +169,7 @@ export async function downloadToTemp(
 
 	let response: Response;
 	try {
-		response = await fetch( url, {
+		response = await timedFetch( url, {
 			redirect: 'follow',
 			headers: {
 				// The byte count for the progress bar must match what's written.

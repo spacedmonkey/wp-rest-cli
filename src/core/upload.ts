@@ -2,7 +2,7 @@
  * External dependencies
  */
 import { randomBytes } from 'node:crypto';
-import { createReadStream } from 'node:fs';
+import { createReadStream, statSync } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import http from 'node:http';
 import https from 'node:https';
@@ -53,6 +53,8 @@ export interface UploadPlan {
 	textFields: Record< string, string >;
 	/** Each file field with the sources (paths or URLs) given for it. */
 	files: Array< { field: string; sources: string[] } >;
+	/** Fields whose value was recognised as a file only by looking at it. */
+	detected: string[];
 }
 
 /** Inputs to {@link planUploads}. */
@@ -78,10 +80,68 @@ function isKnownUploadRoute( namespace: string, route: string ): boolean {
 	);
 }
 
+/** Fields that hold prose or identifiers, never files, on any WordPress route. */
+const TEXT_FIELDS = new Set( [
+	'title',
+	'content',
+	'excerpt',
+	'slug',
+	'name',
+	'description',
+	'caption',
+	'alt_text',
+	'status',
+	'password',
+	'author_name',
+	'search',
+] );
+
+/**
+ * Guesses whether a bare field value is a file to upload: an `http(s)://` URL, or
+ * a path that looks like one and points at an existing regular file. Fields whose
+ * schema says they aren't plain strings, or are URIs (`link`, `source_url`), fields
+ * named like prose (`title`, `content`, ...), and routes with no schema are never guessed.
+ * @param name   The field name.
+ * @param value  The raw field value.
+ * @param schema The field's live arg schema, if the route declares it.
+ * @return True when the value should be uploaded as a file.
+ */
+function looksLikeFile(
+	name: string,
+	value: string,
+	schema: EndpointArgSchema | undefined
+): boolean {
+	// Never guess without the route's schema, for well-known text fields, or for
+	// anything not declared as a plain string (core's `content`/`title` are
+	// `["object", "string"]`).
+	if ( ! schema || TEXT_FIELDS.has( name ) || schema.type !== 'string' ) {
+		return false;
+	}
+	if ( /^https?:\/\//i.test( value ) ) {
+		return ! [ 'uri', 'url', 'iri' ].includes( schema.format ?? '' );
+	}
+	if ( ! /[\\/]|^[.~]|\.[A-Za-z0-9]{1,8}$/.test( value ) ) {
+		return false;
+	}
+	try {
+		return statSync(
+			path.resolve(
+				value.startsWith( '~/' )
+					? path.join( os.homedir(), value.slice( 2 ) )
+					: value
+			)
+		).isFile();
+	} catch {
+		return false;
+	}
+}
+
 /**
  * Works out which `field=value` arguments are files to upload. A value is a file
- * when it starts with `@` (`@@` escapes a literal leading `@`), when the route's
- * schema declares that arg `format: binary`, or when it is core media's `file` field.
+ * when the route's schema declares that arg `format: binary`, when it is core
+ * media's `file` field, when it starts with `@` (an explicit override; `@@` escapes
+ * a literal leading `@`), or — on routes with no known file field — when it is an
+ * `http(s)://` URL or the path of an existing file.
  * @param opts `namespace`/`route` of the command, its parsed `fields`, every value
  *             of any repeated field (`repeated`), and the live POST `args` schema.
  * @return The plan, or undefined when no field is a file.
@@ -92,6 +152,12 @@ export function planUploads(
 	const known = isKnownUploadRoute( opts.namespace, opts.route );
 	const textFields: Record< string, string > = {};
 	const files: UploadPlan[ 'files' ] = [];
+	const detected: string[] = [];
+	// Once the route names its file field (schema or core media), other fields
+	// are never guessed, so `--title=cat.jpg` stays text next to `--file=cat.jpg`.
+	const hasKnownFileField =
+		known ||
+		Object.values( opts.args ?? {} ).some( ( a ) => a.format === 'binary' );
 	for ( const [ key, last ] of Object.entries( opts.fields ) ) {
 		const values = opts.repeated?.[ key ] ?? [ last ];
 		const sources: string[] = [];
@@ -106,6 +172,14 @@ export function planUploads(
 				( known && key === 'file' )
 			) {
 				sources.push( value );
+			} else if (
+				! hasKnownFileField &&
+				looksLikeFile( key, value, opts.args?.[ key ] )
+			) {
+				sources.push( value );
+				if ( ! detected.includes( key ) ) {
+					detected.push( key );
+				}
 			}
 		}
 		if ( sources.length > 0 ) {
@@ -116,7 +190,7 @@ export function planUploads(
 				: last;
 		}
 	}
-	return files.length > 0 ? { textFields, files } : undefined;
+	return files.length > 0 ? { textFields, files, detected } : undefined;
 }
 
 /**
@@ -327,11 +401,13 @@ export async function uploadMultipart(
 	async function* body(): AsyncGenerator< Buffer > {
 		for ( const chunk of chunks ) {
 			if ( Buffer.isBuffer( chunk ) ) {
+				arm();
 				yield chunk;
 			} else {
 				let sent = 0;
 				for await ( const data of createReadStream( chunk.path ) ) {
 					sent += ( data as Buffer ).length;
+					arm();
 					yield data as Buffer;
 				}
 				if ( sent !== chunk.size ) {
@@ -343,10 +419,27 @@ export async function uploadMultipart(
 		}
 	}
 
+	// Idle timeout via AbortController: re-armed whenever bytes move in either
+	// direction, so a big upload that keeps progressing is never cut off.
+	const controller = new AbortController();
+	let timer: NodeJS.Timeout | undefined;
+	const arm = () => {
+		clearTimeout( timer );
+		timer = setTimeout( () => controller.abort(), timeoutMs );
+		timer.unref();
+	};
+	const timedOut = () =>
+		new CliError(
+			`The upload timed out after ${ Math.round(
+				timeoutMs / 1000
+			) }s without any activity. Use --timeout to allow longer.`
+		);
+	arm();
+
 	const startedAt = Date.now();
 	const request = ( target.protocol === 'https:' ? https : http ).request(
 		target,
-		{ method: opts.method, headers }
+		{ method: opts.method, headers, signal: controller.signal }
 	);
 	let responded = false;
 	// Persistent: a socket error after the response head arrived (server
@@ -356,22 +449,14 @@ export async function uploadMultipart(
 		( resolve, reject ) => {
 			request.once( 'response', ( res ) => {
 				responded = true;
+				arm();
 				resolve( res );
 			} );
 			request.on( 'error', ( error ) => {
 				if ( ! responded ) {
-					reject( error );
+					reject( error.name === 'AbortError' ? timedOut() : error );
 				}
 			} );
-			request.setTimeout( timeoutMs, () =>
-				request.destroy(
-					new CliError(
-						`The upload timed out after ${ Math.round(
-							timeoutMs / 1000
-						) }s without any activity. Use --timeout to allow longer.`
-					)
-				)
-			);
 		}
 	);
 	pipeline( Readable.from( body(), { objectMode: false } ), request ).catch(
@@ -398,14 +483,28 @@ export async function uploadMultipart(
 			: new CliError( `Upload failed: ${ ( error as Error ).message }` );
 	}
 
-	const text = await new Promise< string >( ( resolve ) => {
+	const text = await new Promise< string >( ( resolve, reject ) => {
 		const parts: Buffer[] = [];
-		response.on( 'data', ( part: Buffer ) => parts.push( part ) );
-		const done = () => resolve( Buffer.concat( parts ).toString() );
+		response.on( 'data', ( part: Buffer ) => {
+			arm();
+			parts.push( part );
+		} );
+		const done = () => {
+			clearTimeout( timer );
+			resolve( Buffer.concat( parts ).toString() );
+		};
 		response.on( 'end', done );
 		// A reset after the head/partial body still leaves a usable status.
-		response.on( 'error', done );
-		response.on( 'aborted', done );
+		const finish = () => {
+			if ( controller.signal.aborted ) {
+				clearTimeout( timer );
+				reject( timedOut() );
+				return;
+			}
+			done();
+		};
+		response.on( 'error', finish );
+		response.on( 'aborted', finish );
 	} );
 	const status = response.statusCode ?? 0;
 	const responseHeaders = new Headers();

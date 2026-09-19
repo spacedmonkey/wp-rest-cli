@@ -152,6 +152,18 @@ export async function runUploadCommand(
 		);
 	}
 
+	if ( opts.plan.detected.length > 0 ) {
+		console.error(
+			warn(
+				`Treating ${ opts.plan.detected
+					.map( ( f ) => `--${ f }` )
+					.join(
+						', '
+					) } as a file to upload (detected from its value). Use @@ to send a literal value instead.`
+			)
+		);
+	}
+
 	const progress = ! flags.quiet && ! flags.debug;
 	const textFields: Record< string, string > = {};
 	for ( const [ key, value ] of Object.entries( opts.textFields ) ) {

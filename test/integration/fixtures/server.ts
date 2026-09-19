@@ -337,6 +337,11 @@ export async function startFixture(): Promise< Fixture > {
 	const server = createServer( async ( req, res ) => {
 		const url = new URL( req.url ?? '/', 'http://localhost' );
 		const path = url.pathname;
+		// `?slow=<ms>` delays any response, for exercising --timeout.
+		const slowMs = Number( url.searchParams.get( 'slow' ) );
+		if ( slowMs > 0 ) {
+			await new Promise( ( resolve ) => setTimeout( resolve, slowMs ) );
+		}
 
 		if ( req.method === 'HEAD' && path === '/' ) {
 			res.writeHead( 200, {
@@ -430,6 +435,11 @@ export async function startFixture(): Promise< Fixture > {
 						],
 					},
 					'/wp/v2/attachments-custom': {
+						namespace: 'wp/v2',
+						methods: [ 'POST' ],
+						endpoints: [ { methods: [ 'POST' ] } ],
+					},
+					'/wp/v2/plain-uploads': {
 						namespace: 'wp/v2',
 						methods: [ 'POST' ],
 						endpoints: [ { methods: [ 'POST' ] } ],
@@ -794,6 +804,28 @@ export async function startFixture(): Promise< Fixture > {
 		}
 
 		if (
+			path === '/wp-json/wp/v2/plain-uploads' &&
+			req.method === 'OPTIONS'
+		) {
+			// Like a real custom route: the file arg carries no schema hint.
+			send( res, 200, {
+				namespace: 'wp/v2',
+				methods: [ 'POST' ],
+				endpoints: [
+					{
+						methods: [ 'POST' ],
+						args: {
+							attachment: { type: 'string' },
+							title: { type: 'string' },
+							link: { type: 'string', format: 'uri' },
+						},
+					},
+				],
+			} );
+			return;
+		}
+
+		if (
 			path === '/wp-json/wp/v2/attachments-custom' &&
 			req.method === 'OPTIONS'
 		) {
@@ -823,9 +855,22 @@ export async function startFixture(): Promise< Fixture > {
 
 		if (
 			( path === '/wp-json/wp/v2/media' ||
-				path === '/wp-json/wp/v2/attachments-custom' ) &&
+				path === '/wp-json/wp/v2/attachments-custom' ||
+				path === '/wp-json/wp/v2/plain-uploads' ) &&
 			req.method === 'POST'
 		) {
+			if (
+				! /multipart\/form-data/.test(
+					req.headers[ 'content-type' ] ?? ''
+				)
+			) {
+				send( res, 400, {
+					code: 'rest_upload_no_data',
+					message: 'No data supplied.',
+					data: { status: 400 },
+				} );
+				return;
+			}
 			const upload = await readMultipart( req );
 			receivedUploads.push( {
 				path,
@@ -834,7 +879,11 @@ export async function startFixture(): Promise< Fixture > {
 				files: upload.files,
 				contentLength: upload.contentLength,
 			} );
-			const expected = path.endsWith( 'attachments-custom' )
+			if ( upload.files.some( ( f ) => f.name === 'stall.png' ) ) {
+				// Sentinel: hold the response so --timeout's idle limit fires.
+				await new Promise( ( resolve ) => setTimeout( resolve, 3000 ) );
+			}
+			const expected = /attachments-custom|plain-uploads/.test( path )
 				? 'attachment'
 				: 'file';
 			const file = upload.files.find( ( f ) => f.field === expected );

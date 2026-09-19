@@ -117,6 +117,93 @@ describe( 'uploading local files', () => {
 		expect( lastUpload().files[ 0 ]?.name ).toBe( 'schema.png' );
 	} );
 
+	it( 'auto-detects an existing file path on a route with no schema hint, and says so', async () => {
+		const file = await makeFile( 'plain.pdf' );
+		// Not via `run`: that adds --quiet, which hides the notice.
+		const result = await runCli( [
+			'wp/v2',
+			'plain-uploads',
+			'create',
+			`--attachment=${ file }`,
+			'--title=plain.pdf',
+			`--url=${ fixture.baseUrl }`,
+			'--no-color',
+		] );
+		expect( result.exitCode ).toBe( 0 );
+		expect( lastUpload().files[ 0 ] ).toMatchObject( {
+			field: 'attachment',
+			name: 'plain.pdf',
+		} );
+		expect( result.stderr ).toContain( '--attachment' );
+		expect( result.stderr ).toContain( 'detected' );
+	} );
+
+	it( 'auto-detects an http(s) URL as a source', async () => {
+		const result = await run( [
+			'wp/v2',
+			'plain-uploads',
+			'create',
+			`--attachment=${ fixture.baseUrl }/downloads/cat.jpg`,
+		] );
+		expect( result.exitCode ).toBe( 0 );
+		expect( lastUpload().files[ 0 ]?.name ).toBe( 'cat.jpg' );
+	} );
+
+	it( 'does not treat a uri-format field, a missing path, or a plain word as a file', async () => {
+		await makeFile( 'README' );
+		const downloadsBefore = getDownloadRequests().length;
+		const uploadsBefore = getReceivedUploads().length;
+		const result = await run( [
+			'wp/v2',
+			'plain-uploads',
+			'create',
+			`--link=${ fixture.baseUrl }/downloads/cat.jpg`,
+			'--title=README',
+			'--attachment=./does-not-exist.pdf',
+		] );
+		// Nothing is a file, so the route rejects the non-multipart create.
+		expect( result.exitCode ).toBe( 1 );
+		expect( result.stderr ).not.toContain( 'detected' );
+		expect( getDownloadRequests() ).toHaveLength( downloadsBefore );
+		expect( getReceivedUploads() ).toHaveLength( uploadsBefore );
+	} );
+
+	it( 'never guesses prose fields: --title/--content stay text even when they name an existing file or a URL', async () => {
+		const other = await makeFile( 'title-target.pdf' );
+		const file = await makeFile( 'real.pdf' );
+		const result = await run( [
+			'wp/v2',
+			'plain-uploads',
+			'create',
+			`--attachment=${ file }`,
+			`--title=${ other }`,
+			`--content=${ fixture.baseUrl }/downloads/cat.jpg`,
+		] );
+		expect( result.exitCode ).toBe( 0 );
+		expect( lastUpload().files ).toHaveLength( 1 );
+		expect( lastUpload().fields.title ).toBe( other );
+		expect( lastUpload().fields.content ).toBe(
+			`${ fixture.baseUrl }/downloads/cat.jpg`
+		);
+	} );
+
+	it( 'does not guess other fields once the route names its file field', async () => {
+		const file = await makeFile( 'known.png' );
+		await makeFile( 'title.png' );
+		const result = await run( [
+			'wp/v2',
+			'media',
+			'create',
+			`--file=${ file }`,
+			`--title=${ path.join( dir, 'title.png' ) }`,
+		] );
+		expect( result.exitCode ).toBe( 0 );
+		expect( lastUpload().files ).toHaveLength( 1 );
+		expect( lastUpload().fields.title ).toBe(
+			path.join( dir, 'title.png' )
+		);
+	} );
+
 	it( 'leaves a bare --file as a normal string field on other routes', async () => {
 		const result = await run( [
 			'wp/v2',
@@ -126,6 +213,19 @@ describe( 'uploading local files', () => {
 			'--file=./not-a-file.jpg',
 		] );
 		expect( result.exitCode ).toBe( 0 );
+	} );
+
+	it( 'times out an upload the server never answers, per --timeout', async () => {
+		const file = await makeFile( 'stall.png' );
+		const result = await run( [
+			'wp/v2',
+			'media',
+			'create',
+			`--file=${ file }`,
+			'--timeout=500',
+		] );
+		expect( result.exitCode ).toBe( 1 );
+		expect( result.stderr ).toContain( 'timed out' );
 	} );
 
 	it( 'uploads several files, one request each, and lists their ids', async () => {

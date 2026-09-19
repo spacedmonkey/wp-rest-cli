@@ -40,12 +40,16 @@ wp config get|set|clear
 | `--fields=<a,b,c>` | Limit output to specific top-level fields. |
 | `--field=<name>` | Print a single field's raw value (supports dotted paths, e.g. `title.rendered`). |
 | `--body=<json>` | Raw JSON request body for `create`/`update`, overriding/merged under `--field=` args. |
-| `--timeout=<ms>` | Timeout for file uploads/downloads (default 300000). |
+| `--timeout=<ms>` | Timeout for every HTTP request; when given it replaces all the defaults below. Defaults: 20000 (20 s) for API calls, 8000 for site discovery and `wp auth` calls, and 300000 (5 min) for file uploads/downloads, where it is an idle timeout that resets whenever data moves. |
 | `--no-color` | Disable colored output. |
 | `--quiet` | Suppress spinners. |
 | `--debug` | Print a stack trace on unexpected (non-API) errors, and log every HTTP request/response to stderr (with the `Authorization` header redacted). |
 
 Any other `--name=value` (or bare `--name`, treated as `--name=true`) is passed straight through as a WordPress REST API field or query argument — e.g. `--per_page=5`, `--title="Hello"`, `--force`. Run `wp <namespace> <route>` first to see exactly which ones a route accepts.
+
+## TLS certificates
+
+The CLI does **not** verify HTTPS certificates, so sites with self-signed, expired or mismatched certificates (local and staging installs) work without extra flags. This applies to every request, including uploads and downloads. Because the server's identity isn't checked, avoid using it with real credentials over untrusted networks.
 
 ## Help
 

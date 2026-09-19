@@ -41,6 +41,8 @@ wp <namespace> <route> update <id> [--field=value...] [--body=<json>]
 wp <namespace> <route> delete <id> [--force]
 ```
 
+> **TLS:** HTTPS certificates are never verified, so self-signed/expired certs on local or staging sites just work. Avoid real credentials on untrusted networks.
+
 ### Global flags
 
 | Flag | Description |
@@ -54,7 +56,7 @@ wp <namespace> <route> delete <id> [--force]
 | `--fields=<a,b,c>` | Limit output to specific top-level fields. |
 | `--field=<name>` | Print a single field's raw value (supports dotted paths, e.g. `title.rendered`). |
 | `--body=<json>` | Raw JSON request body for `create`/`update`, overriding/merged under `--field=` args. |
-| `--timeout=<ms>` | Timeout for file uploads/downloads (default 300000). |
+| `--timeout=<ms>` | Timeout for every HTTP request; when given it replaces all the defaults below. Defaults: 20000 (20 s) for API calls, 8000 for site discovery and `wp auth` calls, and 300000 (5 min) for file uploads/downloads, where it is an idle timeout that resets whenever data moves. |
 | `--no-color` | Disable colored output. |
 | `--quiet` | Suppress spinners. |
 | `--debug` | Print a stack trace on unexpected (non-API) errors. |

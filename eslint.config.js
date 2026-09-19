@@ -53,6 +53,21 @@ export default [
 		},
 	},
 	{
+		// Every HTTP request goes through `timedFetch` so `--timeout` applies to it.
+		files: [ 'src/**/*.ts' ],
+		ignores: [ 'src/core/timeout.ts' ],
+		rules: {
+			'no-restricted-globals': [
+				'error',
+				{
+					name: 'fetch',
+					message:
+						'Use timedFetch() from core/timeout.ts so --timeout applies.',
+				},
+			],
+		},
+	},
+	{
 		ignores: [ 'dist/**' ],
 	},
 ];

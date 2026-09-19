@@ -2,10 +2,10 @@
 
 Any `create` (or `update`) can upload a file. The flag is **the parameter name the endpoint itself expects** — the CLI has no fixed `--file` flag. Core's media endpoint reads a parameter called `file`, so that is what you use there; a custom route that reads `attachment` takes `--attachment=...`.
 
-Mark a value as a file with a leading `@`:
+Give the parameter a **file path or an `http(s)://` URL** and the CLI uploads it — no special prefix:
 
 ```sh
---<parameter>=@<path-or-url>
+--<parameter>=<path-or-url>
 ```
 
 ## Quick start
@@ -16,17 +16,23 @@ wp wp/v2 media create --file=./cat.jpg --title="Cat" --alt_text="A cat" --url=ht
 
 Uploading needs the `upload_files` capability — use an [Application Password](authentication.md). Output follows the usual `--format` rules (`Success: Created media 123`, `--format=ids`, `--format=json`).
 
-On `wp/v2/media` (and `media/<id>/sideload`) the `@` is optional, because the CLI knows core's field. Everywhere else it is required, unless the route's schema declares the argument as `format: binary`, in which case a bare path works too.
+### How a value is recognised as a file
+
+- **Core media** (`wp/v2/media`, `media/<id>/sideload`): the `file` parameter is always a file. A missing path is an error.
+- **Routes that declare it:** an argument whose schema says `format: binary` is always a file.
+- **Everything else:** a value is treated as a file only when the route's schema declares the argument as a plain `string` (not `format: uri`, and not the `["object", "string"]` type core uses for `content`/`title`) **and** the value is an `http(s)://` URL, or looks like a path (contains a `/`, starts with `.` or `~`, or ends in an extension) and that file exists. Prose-like fields (`title`, `content`, `excerpt`, `slug`, `name`, `description`, `caption`, `alt_text`, `status`, `password`, `search`) are never guessed, and nothing is guessed when the route's schema couldn't be read. A plain word (`--slug=README`) or a path that doesn't exist stays an ordinary value. Whenever the CLI decides this from the value alone it prints a `Treating --<parameter> as a file to upload` notice to stderr — even with `--quiet`.
+- Once a route has a known file parameter (core media, or a `format: binary` argument), other fields are never guessed — `--title=cat.jpg` stays text.
+
+Prefix a value with `@` to force it to be a file (`--attachment=@./a.pdf`; a missing file is then an error), or with `@@` to send a literal string that starts with `@` (`--title=@@johndoe` sends `@johndoe`).
 
 ## Other endpoints
 
 ```sh
-wp my-plugin/v1 documents create --attachment=@./report.pdf --title="Q3"
+wp my-plugin/v1 documents create --attachment=./report.pdf --title="Q3"
 ```
 
 - The name after `--` is whatever that route's arguments call it. Run `wp <namespace> <route>` to see them.
-- To send a literal string starting with `@`, double it: `--title=@@home` sends `@home`.
-- Any value starting with `@` on `create`/`update` is treated as a file, on every route — so `--content=@johndoe` would try to read a file. Use `@@johndoe` for a literal `@johndoe`, especially when passing untrusted text from a script.
+- If a value that happens to be an existing file's path (or a URL) must be sent as text, prefix it with `@@`.
 - File fields are only valid with `create` and `update` (`update` sends a POST, and takes one file). They can't be combined with `--body`.
 
 ## Multiple files
@@ -46,7 +52,7 @@ for f in *.jpg; do wp wp/v2 media create --file="$f"; done
 ## Importing from a URL
 
 ```sh
-wp wp/v2 media create --file=@https://example.com/cat.jpg
+wp wp/v2 media create --file=https://example.com/cat.jpg
 ```
 
 The CLI downloads the file to a temporary directory, then uploads it like a local file, so any file type works. Paths and URLs can be mixed in one command.
@@ -73,7 +79,7 @@ The CLI applies no size limit of its own — files are streamed, not loaded into
 | `rest_cannot_create` | The user lacks `upload_files`. |
 | 5xx while generating sizes | Scale the image down. The CLI deletes the orphaned attachment. |
 
-`--timeout=<ms>` (default 300000) is an idle timeout for uploads and a total time limit for URL downloads; raise it for large or slow transfers. A warning is printed when uploading over plain `http://` to a non-local host.
+`--timeout=<ms>` (default 300000 for file transfers) is an idle timeout for both uploads and URL downloads: it resets whenever data moves, so a large transfer that keeps progressing is never cut off. Raise it for very slow links. A warning is printed when uploading over plain `http://` to a non-local host.
 
 ## Not supported yet
 

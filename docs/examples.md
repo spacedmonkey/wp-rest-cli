@@ -68,7 +68,7 @@ wp-rest-cli wp/v2 media create --file=./cat.jpg --title="Cat" --url=https://exam
 # Several files, print only the new ids
 wp-rest-cli wp/v2 media create --file=./a.jpg --file=./b.png --format=ids --url=https://example.com
 
-# Attach to post 42; a custom route would use its own parameter name, e.g. --attachment=@./a.pdf
+# Attach to post 42; a custom route would use its own parameter name, e.g. --attachment=./a.pdf
 wp-rest-cli wp/v2 media create --file=./cat.jpg --post=42 --url=https://example.com
 ```
 
