@@ -61,6 +61,13 @@ export interface BuildRequestOptions {
 	fields: Record< string, unknown >;
 	/** Raw JSON body override for create/update, from --body. */
 	bodyOverride?: unknown;
+	/**
+	 * `--fields` value, forwarded as the API's `_fields` so it can trim the
+	 * response server-side (output is still filtered locally too, since some
+	 * endpoints ignore it). Not sent on `delete`, whose response is wrapped
+	 * in `{deleted, previous}` and would be stripped by a top-level filter.
+	 */
+	responseFields?: string;
 }
 
 /**
@@ -95,6 +102,7 @@ export function buildVerbRequest( options: BuildRequestOptions ): VerbRequest {
 		context,
 		fields,
 		bodyOverride,
+		responseFields,
 	} = options;
 
 	if ( REQUIRES_ID.includes( verb ) && ! id ) {
@@ -115,30 +123,50 @@ export function buildVerbRequest( options: BuildRequestOptions ): VerbRequest {
 		: collectionUrl;
 	const method = METHOD_BY_VERB[ verb ];
 
+	// Top-level keys only (dotted paths are selected locally; older cores
+	// mishandle nested `_fields`), plus `id` so `--format=ids` keeps working.
+	const apiFields = responseFields
+		? [
+				...new Set( [
+					'id',
+					...responseFields
+						.split( ',' )
+						.map( ( f ) => f.trim().split( '.' )[ 0 ] )
+						.filter( Boolean ),
+				] ),
+		  ].join( ',' )
+		: undefined;
+	const withFields = ( url: string ) =>
+		apiFields ? addQueryArgs( url, { _fields: apiFields } ) : url;
+
 	switch ( verb ) {
 		case 'list':
 			return {
 				method,
-				url: addQueryArgs( collectionUrl, { context, ...fields } ),
+				url: withFields(
+					addQueryArgs( collectionUrl, { context, ...fields } )
+				),
 			};
 		case 'get':
 		case 'exists':
 			return {
 				method,
-				url: addQueryArgs( singularUrl, { context, ...fields } ),
+				url: withFields(
+					addQueryArgs( singularUrl, { context, ...fields } )
+				),
 			};
 		case 'delete':
 			return { method, url: addQueryArgs( singularUrl, fields ) };
 		case 'create':
 			return {
 				method,
-				url: collectionUrl,
+				url: withFields( collectionUrl ),
 				body: resolveBody( fields, bodyOverride ),
 			};
 		case 'update':
 			return {
 				method,
-				url: singularUrl,
+				url: withFields( singularUrl ),
 				body: resolveBody( fields, bodyOverride ),
 			};
 	}

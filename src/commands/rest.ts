@@ -1855,6 +1855,7 @@ export async function runRestCommand(
 			paramIndex,
 			context: flags.context,
 			fields: parsed.fields,
+			responseFields: flags.fields,
 		} );
 		let exists = true;
 		try {
@@ -1995,6 +1996,7 @@ export async function runRestCommand(
 				context: flags.context,
 				fields: coerceJsonFields( fields, generateArgs ),
 				bodyOverride: resolveBodyOverride( flags.body ),
+				responseFields: flags.fields,
 			} );
 			const { body } = await client.request( request.url, {
 				method: request.method,
@@ -2163,6 +2165,7 @@ export async function runRestCommand(
 		context: flags.context,
 		fields: requestFields,
 		bodyOverride: resolveBodyOverride( flags.body ),
+		responseFields: flags.fields,
 	} );
 
 	if (

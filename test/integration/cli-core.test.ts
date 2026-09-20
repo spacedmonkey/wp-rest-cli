@@ -477,6 +477,22 @@ describe( '--debug', () => {
 		expect( result.stderr ).toMatch( /Error:/ );
 	} );
 
+	it( 'forwards --fields to the API as _fields and still filters locally', async () => {
+		const result = await run( [
+			'wp/v2',
+			'widgets',
+			'list',
+			'--fields=id',
+			'--debug',
+			'--format=json',
+		] );
+		expect( result.exitCode ).toBe( 0 );
+		expect( result.stderr ).toContain( '_fields=id' );
+		expect( Object.keys( JSON.parse( result.stdout )[ 0 ] ) ).toEqual( [
+			'id',
+		] );
+	} );
+
 	it( 'redacts the Authorization header instead of logging the raw credential', async () => {
 		const result = await run( [
 			'wp/v2',
