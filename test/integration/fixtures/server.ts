@@ -14,8 +14,38 @@ export interface Fixture {
 	close: () => Promise< void >;
 }
 
-function send( res: ServerResponse, status: number, body?: unknown ): void {
-	res.writeHead( status, { 'content-type': 'application/json' } );
+/** Responses to requests carrying `?_envelope`, wrapped by {@link send} like WordPress does. */
+const enveloped = new WeakSet< ServerResponse >();
+
+function send(
+	res: ServerResponse,
+	status: number,
+	body?: unknown,
+	headers: Record< string, string > = {}
+): void {
+	if ( enveloped.has( res ) ) {
+		// Like WP_REST_Server::envelope_response: real status/headers move
+		// into the body; the HTTP response itself is a plain 200. The
+		// `x-qm-fixture` header stands in for a plugin (Query Monitor) header
+		// that only exists on the real HTTP response.
+		res.writeHead( 200, {
+			'content-type': 'application/json',
+			'x-qm-fixture': 'plugin-header',
+			'set-cookie': 'session=SECRET-COOKIE',
+		} );
+		res.end(
+			JSON.stringify( {
+				body: body ?? null,
+				status,
+				headers: { 'Content-Type': 'application/json', ...headers },
+			} )
+		);
+		return;
+	}
+	res.writeHead( status, {
+		'content-type': 'application/json',
+		...headers,
+	} );
 	res.end( body === undefined ? undefined : JSON.stringify( body ) );
 }
 
@@ -337,6 +367,9 @@ export async function startFixture(): Promise< Fixture > {
 	const server = createServer( async ( req, res ) => {
 		const url = new URL( req.url ?? '/', 'http://localhost' );
 		const path = url.pathname;
+		if ( url.searchParams.has( '_envelope' ) ) {
+			enveloped.add( res );
+		}
 		// `?slow=<ms>` delays any response, for exercising --timeout.
 		const slowMs = Number( url.searchParams.get( 'slow' ) );
 		if ( slowMs > 0 ) {
@@ -1057,7 +1090,9 @@ export async function startFixture(): Promise< Fixture > {
 		}
 
 		if ( path === '/wp-json/wp/v2/widgets' && req.method === 'GET' ) {
-			send( res, 200, [ ...widgets.values() ] );
+			send( res, 200, [ ...widgets.values() ], {
+				'X-WP-Total': String( widgets.size ),
+			} );
 			return;
 		}
 

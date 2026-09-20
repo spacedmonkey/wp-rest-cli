@@ -438,6 +438,45 @@ describe( '--debug', () => {
 		expect( () => JSON.parse( result.stdout ) ).not.toThrow();
 	} );
 
+	it( 'requests _envelope and logs its headers plus real HTTP headers, leaving stdout unchanged', async () => {
+		const plain = await run( [
+			'wp/v2',
+			'widgets',
+			'list',
+			'--format=json',
+		] );
+		const result = await run( [
+			'wp/v2',
+			'widgets',
+			'list',
+			'--debug',
+			'--format=json',
+		] );
+		expect( result.exitCode ).toBe( 0 );
+		expect( result.stderr ).toContain( '_envelope=true' );
+		expect( result.stderr ).toContain( 'X-WP-Total:' );
+		expect( result.stderr ).toContain( 'x-qm-fixture: plugin-header' );
+		expect( result.stdout ).toBe( plain.stdout );
+	} );
+
+	it( 'never logs cookie values from response headers', async () => {
+		const result = await run( [ 'wp/v2', 'widgets', 'list', '--debug' ] );
+		expect( result.stderr ).toContain( 'set-cookie: <redacted>' );
+		expect( result.stderr ).not.toContain( 'SECRET-COOKIE' );
+	} );
+
+	it( 'still reports API errors under --debug', async () => {
+		const result = await run( [
+			'wp/v2',
+			'widgets',
+			'get',
+			'99999',
+			'--debug',
+		] );
+		expect( result.exitCode ).toBe( 1 );
+		expect( result.stderr ).toMatch( /Error:/ );
+	} );
+
 	it( 'redacts the Authorization header instead of logging the raw credential', async () => {
 		const result = await run( [
 			'wp/v2',
