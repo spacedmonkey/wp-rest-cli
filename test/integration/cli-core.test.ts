@@ -148,6 +148,7 @@ it( 'creates an item and shows the resource fetched from Location, not a Created
 		'widgets',
 		'create',
 		'--title=New widget',
+		'--fields=id,title.rendered',
 	] );
 	expect( result.exitCode ).toBe( 0 );
 	expect( result.stdout ).toContain( 'New widget' );
