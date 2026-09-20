@@ -1,9 +1,15 @@
 /**
+ * WordPress dependencies
+ */
+import { addQueryArgs } from '@wordpress/url';
+
+/**
  * Internal dependencies
  */
+import type { WpApiErrorBody } from '../types.js';
 import type { AuthProvider } from './auth/types.js';
 import { debugLog, redactBody, redactHeaders } from './debug.js';
-import { parseErrorResponse } from './errors.js';
+import { CliError, parseErrorResponse, WpApiError } from './errors.js';
 import { timedFetch } from './timeout.js';
 
 /** Default timeout for an API request, in milliseconds (override with `--timeout`). */
@@ -21,6 +27,103 @@ export interface WpResponse< T = unknown > {
 	status: number;
 	headers: Headers;
 	body: T;
+}
+
+interface Envelope {
+	body: unknown;
+	status: number;
+	headers: Record< string, unknown >;
+}
+
+/**
+ * Whether a parsed response is a WordPress `_envelope` wrapper.
+ * @param value The parsed JSON response.
+ * @return True if it has the `{ body, status, headers }` shape.
+ */
+function isEnvelope( value: unknown ): value is Envelope {
+	const v = value as Envelope | undefined;
+	return (
+		!! v &&
+		typeof v === 'object' &&
+		'body' in v &&
+		typeof v.status === 'number' &&
+		v.status >= 100 &&
+		v.status <= 599 &&
+		!! v.headers &&
+		typeof v.headers === 'object'
+	);
+}
+
+/**
+ * Logs response headers (credential-bearing ones masked) to stderr.
+ * @param headers Header name/value pairs.
+ */
+function logHeaders( headers: Record< string, unknown > ): void {
+	const strings: Record< string, string > = {};
+	for ( const [ key, value ] of Object.entries( headers ) ) {
+		strings[ key ] = String( value );
+	}
+	for ( const [ key, value ] of Object.entries( redactHeaders( strings ) ) ) {
+		debugLog( `  ${ key }: ${ value }` );
+	}
+}
+
+/**
+ * Logs an envelope's headers (plus any real HTTP headers it lacks), then
+ * returns its body, or throws the same typed error a real 4xx/5xx would.
+ * @param envelope    The parsed `{ body, status, headers }` wrapper.
+ * @param httpHeaders The real HTTP response headers.
+ * @return The unwrapped response.
+ */
+async function unwrapEnvelope< T >(
+	envelope: Envelope,
+	httpHeaders: Headers
+): Promise< WpResponse< T > > {
+	const all: Record< string, unknown > = { ...envelope.headers };
+	const seen = new Set( Object.keys( all ).map( ( k ) => k.toLowerCase() ) );
+	// Real HTTP headers not in the envelope, e.g. Query Monitor's `X-QM-*`,
+	// which PHP emits outside the REST response object.
+	for ( const [ key, value ] of httpHeaders ) {
+		if ( ! seen.has( key ) && key !== 'set-cookie' ) {
+			all[ key ] = value;
+		}
+	}
+	if ( httpHeaders.getSetCookie().length ) {
+		all[ 'set-cookie' ] = '';
+	}
+	debugLog( `  envelope status: ${ envelope.status }` );
+	logHeaders( all );
+
+	const headers = new Headers();
+	for ( const [ key, value ] of Object.entries( envelope.headers ) ) {
+		try {
+			headers.set( key, String( value ) );
+		} catch {
+			// A malformed header must not hide the response itself.
+		}
+	}
+	if ( envelope.status >= 400 ) {
+		const err = envelope.body as Partial< WpApiErrorBody > | null;
+		if (
+			typeof err?.code === 'string' &&
+			typeof err.message === 'string'
+		) {
+			throw new WpApiError(
+				err as WpApiErrorBody,
+				envelope.status,
+				headers
+			);
+		}
+		throw new CliError(
+			`Request failed with status ${ envelope.status }`,
+			headers
+		);
+	}
+	return {
+		status: envelope.status,
+		headers,
+		body: ( envelope.body ?? undefined ) as T,
+	};
 }
 
 /** Thin `fetch` wrapper that attaches auth headers and turns non-2xx responses into a `WpApiError`. */
@@ -54,7 +157,12 @@ export class WpRestClient {
 		url: string,
 		options: RequestOptions = {}
 	): Promise< WpResponse< T > > {
-		const target = new URL( url );
+		// Under --debug, ask WordPress to wrap the response as
+		// `{ body, status, headers }` so its headers can be logged.
+		const envelope = this.debug && options.method !== 'HEAD';
+		const target = new URL(
+			envelope ? addQueryArgs( url, { _envelope: true } ) : url
+		);
 		if ( options.query ) {
 			for ( const [ key, value ] of Object.entries( options.query ) ) {
 				if ( value !== undefined ) {
@@ -111,6 +219,9 @@ export class WpRestClient {
 		}
 
 		if ( ! response.ok ) {
+			if ( this.debug ) {
+				logHeaders( Object.fromEntries( response.headers ) );
+			}
 			throw await parseErrorResponse( response );
 		}
 
@@ -123,11 +234,17 @@ export class WpRestClient {
 		}
 
 		const text = await response.text();
-		const parsed = text ? ( JSON.parse( text ) as T ) : ( undefined as T );
+		const parsed: unknown = text ? JSON.parse( text ) : undefined;
+		if ( envelope && isEnvelope( parsed ) ) {
+			return await unwrapEnvelope< T >( parsed, response.headers );
+		}
+		if ( envelope ) {
+			debugLog( '  (site did not honor _envelope; no headers to show)' );
+		}
 		return {
 			status: response.status,
 			headers: response.headers,
-			body: parsed,
+			body: parsed as T,
 		};
 	}
 }

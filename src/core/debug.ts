@@ -12,7 +12,7 @@ export function debugLog( line: string ): void {
 }
 
 /**
- * Masks credential-bearing header values (e.g. `Authorization: Basic xxxx`) before they're logged.
+ * Masks credential-bearing header values (`Authorization: Basic xxxx`, cookies) before they're logged.
  * @param headers Headers to redact.
  * @return A copy of `headers` with sensitive values masked.
  */
@@ -21,9 +21,19 @@ export function redactHeaders(
 ): Record< string, string > {
 	const redacted: Record< string, string > = {};
 	for ( const [ key, value ] of Object.entries( headers ) ) {
-		if ( key.toLowerCase() === 'authorization' ) {
-			const [ scheme ] = value.split( ' ' );
-			redacted[ key ] = `${ scheme } <redacted>`;
+		const name = key.toLowerCase();
+		if ( name === 'authorization' || name === 'proxy-authorization' ) {
+			// Keep the scheme (`Basic`/`Bearer`) only when there is one.
+			const [ scheme, credential ] = value.split( ' ' );
+			redacted[ key ] = credential
+				? `${ scheme } <redacted>`
+				: '<redacted>';
+		} else if (
+			[ 'cookie', 'set-cookie', 'x-wp-nonce', 'x-api-key' ].includes(
+				name
+			)
+		) {
+			redacted[ key ] = '<redacted>';
 		} else {
 			redacted[ key ] = value;
 		}

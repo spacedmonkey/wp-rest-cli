@@ -44,7 +44,7 @@ wp config get|set|clear
 | `--no-color` | Disable colored output. |
 | `--no-truncate` | Show full table cell values instead of truncating them to 50 characters. |
 | `--quiet` | Suppress spinners. |
-| `--debug` | Print a stack trace on unexpected (non-API) errors, and log every HTTP request/response to stderr (with the `Authorization` header redacted). |
+| `--debug` | Print a stack trace on unexpected (non-API) errors, and log every HTTP request/response to stderr (with the `Authorization` header redacted). API requests add `?_envelope=true` so WordPress returns its response headers (`X-WP-Total`, plugin headers such as Query Monitor's `X-QM-*`, ...), which are logged too; the body is unwrapped and output is unchanged. |
 
 Any other `--name=value` (or bare `--name`, treated as `--name=true`) is passed straight through as a WordPress REST API field or query argument — e.g. `--per_page=5`, `--title="Hello"`, `--force`. Run `wp <namespace> <route>` first to see exactly which ones a route accepts.
 
