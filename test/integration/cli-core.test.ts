@@ -1,7 +1,18 @@
 /**
  * External dependencies
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import {
+	afterAll,
+	afterEach,
+	beforeAll,
+	beforeEach,
+	describe,
+	expect,
+	it,
+} from 'vitest';
 
 /**
  * Internal dependencies
@@ -604,5 +615,62 @@ describe( '--timeout', () => {
 		expect( result.stderr ).toContain(
 			'--timeout must be a positive number'
 		);
+	} );
+} );
+
+describe( 'YAML config files', () => {
+	let dir: string;
+	const runIn = ( args: string[] ) =>
+		runCli( [ ...args, '--quiet', '--no-color' ], {
+			cwd: dir,
+			env: {
+				WP_REST_CLI_CONFIG_PATH: join( dir, 'user.yml' ),
+			},
+		} );
+
+	beforeEach( () => {
+		dir = mkdtempSync( join( tmpdir(), 'wp-rest-cli-yml-' ) );
+	} );
+	afterEach( () => rmSync( dir, { recursive: true, force: true } ) );
+
+	it( 'uses url and format from wp-rest-cli.yml with no flags', async () => {
+		writeFileSync(
+			join( dir, 'wp-rest-cli.yml' ),
+			`url: ${ fixture.baseUrl }\nformat: json\n`
+		);
+		const result = await runIn( [] );
+		expect( result.exitCode ).toBe( 0 );
+		expect( JSON.parse( result.stdout ) ).toEqual( [
+			{ namespace: 'wp/v2' },
+		] );
+	} );
+
+	it( 'lets command-line flags beat the file, and local.yml beat the project file', async () => {
+		writeFileSync(
+			join( dir, 'wp-rest-cli.yml' ),
+			`url: ${ fixture.baseUrl }\nformat: csv\n`
+		);
+		writeFileSync( join( dir, 'wp-rest-cli.local.yml' ), 'format: json\n' );
+		expect( JSON.parse( ( await runIn( [] ) ).stdout ) ).toEqual( [
+			{ namespace: 'wp/v2' },
+		] );
+		const flagged = await runIn( [ '--format=csv' ] );
+		expect( flagged.stdout ).toContain( 'namespace' );
+		expect( () => JSON.parse( flagged.stdout ) ).toThrow();
+	} );
+
+	it( 'rejects a secret in a config file', async () => {
+		writeFileSync( join( dir, 'wp-rest-cli.yml' ), 'password: hunter2\n' );
+		const result = await runIn( [ `--url=${ fixture.baseUrl }` ] );
+		expect( result.exitCode ).toBe( 1 );
+		expect( result.stderr ).toContain( '"password" is not allowed' );
+	} );
+
+	it( 'shows where wp config get values came from', async () => {
+		const file = join( dir, 'user.yml' );
+		writeFileSync( file, 'timeout: 5000\n' );
+		const result = await runIn( [ 'config', 'get' ] );
+		expect( result.stdout ).toContain( `timeout: 5000` );
+		expect( result.stdout ).toContain( `from ${ file }` );
 	} );
 } );

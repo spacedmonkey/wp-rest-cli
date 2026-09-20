@@ -45,22 +45,27 @@ wp <namespace> <route> delete <id> [--force]
 
 ### Global flags
 
-| Flag | Description |
-| --- | --- |
-| `--url=<site>` | WordPress site URL. Required unless a default is saved (`wp config set --url=`). |
-| `--username=<user>` | Also via the `WP_USERNAME` env var. |
-| `--password=<pass>` | Also via the `WP_PASSWORD` env var. A WordPress **Application Password** is strongly recommended over a real account password — see below. |
-| `--use-auth=env\|none\|application-passwords` | Pin credential resolution to exactly one source, skipping the rest of the normal fallback chain (an explicit `--username`/`--password` flag still wins). `env` requires `WP_USERNAME`/`WP_PASSWORD` to be set; `application-passwords` requires a `wp auth` credential to be stored for the site; `none` forces an anonymous request. |
-| `--context=view\|edit\|embed` | Default `view`. Run `wp <namespace> <route>` to see which values a given route actually supports. |
-| `--format=table\|json\|csv\|yaml\|ids\|count\|raw` | Default `table`. Table cells are truncated to 50 characters, and nested objects/arrays show as `<object>`/`<array>` unless named via `--fields` (e.g. `--fields=title.rendered`). |
-| `--fields=<a,b,c>` | Limit output to specific fields (table/csv also accept dotted paths like `title.rendered`). |
-| `--field=<name>` | Print a single field's raw value (supports dotted paths, e.g. `title.rendered`). |
-| `--body=<json>` | Raw JSON request body for `create`/`update`, overriding/merged under `--field=` args. |
-| `--timeout=<ms>` | Timeout for every HTTP request; when given it replaces all the defaults below. Defaults: 20000 (20 s) for API calls, 8000 for site discovery and `wp auth` calls, and 300000 (5 min) for file uploads/downloads, where it is an idle timeout that resets whenever data moves. |
-| `--no-color` | Disable colored output. |
-| `--no-truncate` | Show full table cell values instead of truncating them to 50 characters. |
-| `--quiet` | Suppress spinners. |
-| `--debug` | Print a stack trace on unexpected (non-API) errors. |
+| Flag | YAML key | Description |
+| --- | --- | --- |
+| `--url=<site>` | `url` | WordPress site URL. Required unless a default is saved (`wp config set --url=`) or set in a config file. |
+| `--username=<user>` | — | Also via the `WP_USERNAME` env var. Not allowed in config files. |
+| `--password=<pass>` | — | Also via the `WP_PASSWORD` env var. A WordPress **Application Password** is strongly recommended over a real account password — see [Authentication](#authentication). Not allowed in config files. |
+| `--client-id=<id>` / `--client-secret=<secret>` | — | OAuth2 credential, for `wp auth oauth2 login`/`add` — see [OAuth2](docs/authentication-oauth2.md). Not allowed in config files. |
+| `--token=<token>` | — | OAuth2 personal access token, for `wp auth oauth2 add`. Not allowed in config files. |
+| `--use-auth=env\|none\|application-passwords\|oauth2` | `use-auth` | Pin credential resolution to one source, skipping the rest of the fallback chain — see [Authentication](#authentication). |
+| `--context=view\|edit\|embed` | `context` | Default `view`. Run `wp <namespace> <route>` to see which values a given route actually supports. |
+| `--format=table\|json\|csv\|yaml\|ids\|count\|raw` | `format` | Default `table`. Table cells are truncated to 50 characters, and nested objects/arrays show as `<object>`/`<array>` unless named via `--fields` (e.g. `--fields=title.rendered`). |
+| `--fields=<a,b,c>` | — | Limit output to specific fields (table/csv also accept dotted paths like `title.rendered`). Per-invocation only. |
+| `--field=<name>` | — | Print a single field's raw value (supports dotted paths, e.g. `title.rendered`). Per-invocation only. |
+| `--body=<json>` | — | Raw JSON request body for `create`/`update`, overriding/merged under `--field=` args. Per-invocation only. |
+| `--timeout=<ms>` | `timeout` | Timeout for every HTTP request; when given it replaces all the defaults below. Defaults: 20000 (20 s) for API calls, 8000 for site discovery and `wp auth` calls, and 300000 (5 min) for file uploads/downloads, where it is an idle timeout that resets whenever data moves. |
+| `--no-color` | `color: false` | Disable colored output. |
+| `--no-truncate` | — | Show full table cell values instead of truncating them to 50 characters. Per-invocation only. |
+| `--quiet` | `quiet` | Suppress spinners. |
+| `--debug` | `debug` | Print a stack trace on unexpected (non-API) errors, and log every HTTP request/response to stderr (with the `Authorization` header redacted) plus the config files loaded. |
+| `-h`, `--help` | — | Show help for the given namespace/route/verb, or the top-level help. |
+
+Flags with a YAML key can be set in a [config file](docs/configuration.md#yaml-config-files); a flag on the command line always wins.
 
 Any other `--name=value` (or bare `--name`, treated as `--name=true`) is passed straight through as a WordPress REST API field or query argument — e.g. `--per_page=5`, `--title="Hello"`, `--force`. Run `wp <namespace> <route>` first to see exactly which ones a route accepts.
 

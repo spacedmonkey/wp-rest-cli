@@ -24,6 +24,7 @@ import {
 	type AuthType,
 } from './core/auth/types.js';
 import { CliError } from './core/errors.js';
+import { getFileConfig } from './core/file-config.js';
 
 /** One site's stored Application Password (or plain account password) credential. */
 export interface StoredApplicationPasswordCredential {
@@ -249,11 +250,13 @@ export function rotateEncryptionKey(): void {
 }
 
 /**
- * Reads the persisted default `--url`, if one was set via `wp config set` or `wp auth application-passwords use`.
- * @return The stored site URL, or undefined if none is set.
+ * Reads the default `--url`: a config file's `url` if one was loaded, else the
+ * one persisted via `wp config set` or `wp auth application-passwords use`.
+ * @return The default site URL, or undefined if none is set.
  */
 export function getDefaultUrl(): string | undefined {
-	return store.get( 'url' );
+	const fromFile = getFileConfig()?.values.url;
+	return typeof fromFile === 'string' ? fromFile : store.get( 'url' );
 }
 
 /**

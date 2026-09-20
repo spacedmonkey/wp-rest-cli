@@ -33,7 +33,14 @@ import {
 	OAUTH2_AUTH_TYPE,
 	type AuthType,
 } from './core/auth/types.js';
+import { debugLog } from './core/debug.js';
 import { formatErrorForDisplay, CliError, WpApiError } from './core/errors.js';
+import {
+	getFileConfig,
+	type FileConfigKey,
+	loadFileConfig,
+	userConfigPath,
+} from './core/file-config.js';
 import { setTruncateEnabled } from './core/formatter.js';
 import { setUserTimeout } from './core/timeout.js';
 import { disableTlsVerification } from './core/tls.js';
@@ -158,6 +165,39 @@ interface RawOptions {
 }
 
 /**
+ * Fills in any global flag the user didn't pass from the config files, so
+ * `toGlobalFlags` validates file values exactly like command-line ones. A flag
+ * counts as "not passed" when Commander's value source is its built-in default
+ * (or it has none) — that's how `--format=table` still beats a file's `format`.
+ * @param options Commander's raw parsed options.
+ * @return The options with file values applied where the flag wasn't passed.
+ */
+function applyFileConfig( options: RawOptions ): RawOptions {
+	const { values, files } = loadFileConfig();
+	if ( options.debug || values.debug ) {
+		debugLog( `config files: ${ files.join( ', ' ) || '(none)' }` );
+	}
+	const passed = ( name: string ) => {
+		const source = program.getOptionValueSource( name );
+		return source !== undefined && source !== 'default';
+	};
+	const merged = { ...options };
+	const set = ( name: keyof RawOptions, value: unknown ) => {
+		if ( value !== undefined && ! passed( name ) ) {
+			( merged as Record< string, unknown > )[ name ] = value;
+		}
+	};
+	set( 'context', values.context );
+	set( 'format', values.format );
+	set( 'useAuth', values[ 'use-auth' ] );
+	set( 'timeout', values.timeout?.toString() );
+	set( 'color', values.color );
+	set( 'quiet', values.quiet );
+	set( 'debug', values.debug );
+	return merged;
+}
+
+/**
  * Validates and narrows Commander's raw parsed options into typed {@link GlobalFlags}.
  * Color is on by default; `--no-color` is the only way to turn it off.
  * @param options Commander's raw parsed options.
@@ -227,6 +267,21 @@ async function handleConfigCommand(
 		case 'get': {
 			console.log( `url: ${ getDefaultUrl() ?? '(not set)' }` );
 			console.log( `username: ${ getDefaultUsername() ?? '(not set)' }` );
+			const fileConfig = getFileConfig();
+			for ( const [ key, value ] of Object.entries(
+				fileConfig?.values ?? {}
+			) ) {
+				console.log(
+					`${ key }: ${ value } ${ pc.dim(
+						`(from ${
+							fileConfig?.origins[ key as FileConfigKey ] ?? '?'
+						})`
+					) }`
+				);
+			}
+			console.log(
+				pc.dim( `user-level YAML config: ${ userConfigPath() }` )
+			);
 			console.log( pc.dim( `config file: ${ configFilePath() }` ) );
 			return 0;
 		}
@@ -396,10 +451,13 @@ straight through to the WordPress REST API and are not fixed ahead of time —
 run "wp-rest-cli <namespace> <route>" to see which ones a given route supports.
 `
 	)
-	.action( async ( args: string[], options: RawOptions ) => {
+	.action( async ( args: string[], rawOptions: RawOptions ) => {
+		let options = rawOptions;
 		setColorEnabled( options.color );
 		setTruncateEnabled( options.truncate !== false );
 		try {
+			options = applyFileConfig( rawOptions );
+			setColorEnabled( options.color );
 			if ( args[ 0 ] === 'config' ) {
 				if ( options.help ) {
 					console.log(
