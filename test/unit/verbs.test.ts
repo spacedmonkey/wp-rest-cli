@@ -12,6 +12,26 @@ import { buildVerbRequest } from '../../src/core/verbs.js';
 const apiRoot = 'https://example.com/wp-json/';
 
 describe( 'buildVerbRequest', () => {
+	it( 'forwards responseFields as _fields, except on delete', () => {
+		const base = {
+			apiRoot,
+			namespace: 'wp/v2',
+			route: 'posts',
+			id: '1',
+			context: 'view' as const,
+			fields: {},
+			responseFields: 'title.rendered, slug',
+		};
+		for ( const verb of [ 'list', 'get', 'create', 'update' ] as const ) {
+			expect( buildVerbRequest( { ...base, verb } ).url ).toContain(
+				'_fields=id%2Ctitle%2Cslug'
+			);
+		}
+		expect(
+			buildVerbRequest( { ...base, verb: 'delete' } ).url
+		).not.toContain( '_fields' );
+	} );
+
 	it( 'builds a GET request for list with query args and context', () => {
 		const req = buildVerbRequest( {
 			verb: 'list',
