@@ -371,6 +371,7 @@ async function handleList( flags: GlobalFlags ): Promise< AuthResult > {
 		fields: flags.fields,
 		field: flags.field,
 		color: flags.color,
+		truncate: false,
 	} );
 	return { output, exitCode: 0 };
 }

@@ -34,6 +34,7 @@ import {
 	type AuthType,
 } from './core/auth/types.js';
 import { formatErrorForDisplay, CliError, WpApiError } from './core/errors.js';
+import { setTruncateEnabled } from './core/formatter.js';
 import { setUserTimeout } from './core/timeout.js';
 import { disableTlsVerification } from './core/tls.js';
 import type {
@@ -83,6 +84,8 @@ const KNOWN_LONG_FLAGS = new Set( [
 	'timeout',
 	'color',
 	'no-color',
+	'truncate',
+	'no-truncate',
 	'quiet',
 	'debug',
 	'help',
@@ -148,6 +151,7 @@ interface RawOptions {
 	body?: string;
 	timeout?: string;
 	color: boolean;
+	truncate: boolean;
 	quiet?: boolean;
 	debug?: boolean;
 	help?: boolean;
@@ -348,6 +352,10 @@ program
 		'Timeout in milliseconds for every request; overrides all defaults (API calls 20000, discovery/auth 8000, file transfers 300000)'
 	)
 	.option( '--no-color', 'Disable colored output' )
+	.option(
+		'--no-truncate',
+		'Show full table cell values instead of truncating them to 50 characters'
+	)
 	.option( '--quiet', 'Suppress spinner/progress output' )
 	.option(
 		'--debug',
@@ -390,6 +398,7 @@ run "wp-rest-cli <namespace> <route>" to see which ones a given route supports.
 	)
 	.action( async ( args: string[], options: RawOptions ) => {
 		setColorEnabled( options.color );
+		setTruncateEnabled( options.truncate !== false );
 		try {
 			if ( args[ 0 ] === 'config' ) {
 				if ( options.help ) {
