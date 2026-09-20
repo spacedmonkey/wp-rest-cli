@@ -1,4 +1,9 @@
 /**
+ * WordPress dependencies
+ */
+import { addQueryArgs } from '@wordpress/url';
+
+/**
  * Internal dependencies
  */
 import { getSiteCredential, normalizeSiteUrl } from '../config.js';
@@ -19,7 +24,7 @@ import {
 	APPLICATION_PASSWORDS_AUTH_TYPE,
 	OAUTH2_AUTH_TYPE,
 } from '../core/auth/types.js';
-import { WpRestClient } from '../core/client.js';
+import { WpRestClient, type WpResponse } from '../core/client.js';
 import { resolveApiRoot } from '../core/discovery.js';
 import { CliError, WpApiError } from '../core/errors.js';
 import { formatOutput } from '../core/formatter.js';
@@ -1998,11 +2003,17 @@ export async function runRestCommand(
 				bodyOverride: resolveBodyOverride( flags.body ),
 				responseFields: flags.fields,
 			} );
-			const { body } = await client.request( request.url, {
+			const response = await client.request( request.url, {
 				method: request.method,
 				body: request.body,
 			} );
-			return body;
+			const followed = await followCreatedLocation(
+				client,
+				apiRoot,
+				response,
+				flags
+			);
+			return followed ? followed.body : response.body;
 		}
 
 		// Progress bar takes over from here — no more per-item spinner text,
@@ -2185,7 +2196,7 @@ export async function runRestCommand(
 		} );
 	}
 
-	const { body } = await withSpinner(
+	const response = await withSpinner(
 		`${ request.method } ${ parsed.namespace }/${ parsed.route }`,
 		! flags.quiet,
 		() =>
@@ -2194,9 +2205,14 @@ export async function runRestCommand(
 				body: request.body,
 			} )
 	);
+	const followed =
+		parsed.verb === 'create'
+			? await followCreatedLocation( client, apiRoot, response, flags )
+			: undefined;
+	const body = followed ? followed.body : response.body;
 
 	if (
-		parsed.verb === 'create' ||
+		( parsed.verb === 'create' && ! followed ) ||
 		parsed.verb === 'update' ||
 		parsed.verb === 'delete'
 	) {
@@ -2224,6 +2240,53 @@ export async function runRestCommand(
 		color: flags.color,
 	} );
 	return { output, exitCode: 0 };
+}
+
+/**
+ * After a `create`, follows the 201 response's same-origin `Location` header
+ * and returns that canonical resource instead of the POST body. Returns
+ * `undefined` (caller keeps the POST response) if there's no Location, it's
+ * another origin, or the GET fails.
+ * @param client   The REST client (carries auth).
+ * @param apiRoot  The site's REST API root; Location must share its origin.
+ * @param response The create request's response.
+ * @param flags    Global CLI flags.
+ * @return The fetched resource wrapped in `{ body }`, or `undefined`.
+ */
+async function followCreatedLocation(
+	client: WpRestClient,
+	apiRoot: string,
+	response: WpResponse,
+	flags: GlobalFlags
+): Promise< { body: unknown } | undefined > {
+	const location = response.headers.get( 'location' );
+	if ( response.status !== 201 || ! location ) {
+		return undefined;
+	}
+	try {
+		const target = new URL( location, apiRoot );
+		if ( target.origin !== new URL( apiRoot ).origin ) {
+			return undefined;
+		}
+		// Only the user's own --context: not every route declares `edit`.
+		const { body } = await client.request(
+			flags.context
+				? addQueryArgs( target.toString(), { context: flags.context } )
+				: target.toString()
+		);
+		return { body };
+	} catch ( error ) {
+		if ( ! flags.quiet ) {
+			// Server-controlled text: strip control chars before printing.
+			const reason = (
+				error instanceof Error ? error.message : String( error )
+			).replace( /[\u0000-\u001f\u007f]/g, ' ' );
+			process.stderr.write(
+				`Warning: created, but fetching the new item failed: ${ reason }\n`
+			);
+		}
+		return undefined;
+	}
 }
 
 /**

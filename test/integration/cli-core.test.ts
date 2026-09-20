@@ -142,7 +142,7 @@ it( 'renders a friendly error for a 404', async () => {
 	expect( result.stderr ).toContain( 'rest_widget_invalid_id' );
 } );
 
-it( 'creates an item from field=value args', async () => {
+it( 'creates an item and shows the resource fetched from Location, not a Created message', async () => {
 	const result = await run( [
 		'wp/v2',
 		'widgets',
@@ -150,7 +150,50 @@ it( 'creates an item from field=value args', async () => {
 		'--title=New widget',
 	] );
 	expect( result.exitCode ).toBe( 0 );
-	expect( result.stdout ).toContain( 'Success' );
+	expect( result.stdout ).toContain( 'New widget' );
+	expect( result.stdout ).not.toContain( 'Success' );
+} );
+
+it( 'shows the GET response (not the POST body) after a create', async () => {
+	const result = await run( [
+		'wp/v2',
+		'widgets',
+		'create',
+		'--title=Followed',
+		'--format=json',
+	] );
+	expect( result.exitCode ).toBe( 0 );
+	expect( JSON.parse( result.stdout ).posted ).toBeUndefined();
+} );
+
+it.each( [ 'no-location', 'foreign-location' ] )(
+	'falls back to the Created message when Location is missing or cross-origin (%s)',
+	async ( title ) => {
+		const result = await run( [
+			'wp/v2',
+			'widgets',
+			'create',
+			`--title=${ title }`,
+		] );
+		expect( result.exitCode ).toBe( 0 );
+		expect( result.stdout ).toContain( 'Success' );
+	}
+);
+
+it( 'falls back to the POST body with a warning when the Location GET fails', async () => {
+	// Not `run()`: that passes --quiet, which suppresses the warning.
+	const result = await runCli( [
+		'wp/v2',
+		'widgets',
+		'create',
+		'--title=bad-location',
+		'--format=json',
+		`--url=${ fixture.baseUrl }`,
+		'--no-color',
+	] );
+	expect( result.exitCode ).toBe( 0 );
+	expect( JSON.parse( result.stdout ).posted ).toBe( true );
+	expect( result.stderr ).toContain( 'fetching' );
 } );
 
 it( 'sends --content=<value> as a plain field, not the (renamed) raw-body-override flag', async () => {

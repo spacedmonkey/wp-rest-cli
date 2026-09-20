@@ -1108,7 +1108,24 @@ export async function startFixture(): Promise< Fixture > {
 				meta,
 			};
 			widgets.set( id, record );
-			send( res, 201, record );
+			// Real WP's create_item returns 201 + a Location header. The
+			// `posted` marker is only in the POST body (never stored), so
+			// tests can tell it apart from the follow-up GET's response.
+			const title = String( body.title ?? '' );
+			const widgetsUrl = `${ baseUrlHolder.value }/wp-json/wp/v2/widgets`;
+			const overrides: Record< string, string | undefined > = {
+				'no-location': undefined,
+				'foreign-location': `http://example.invalid/wp-json/wp/v2/widgets/${ id }`,
+				'bad-location': `${ widgetsUrl }/999999`,
+			};
+			const location = Object.hasOwn( overrides, title )
+				? overrides[ title ]
+				: `${ widgetsUrl }/${ id }`;
+			res.writeHead( 201, {
+				'content-type': 'application/json',
+				...( location ? { location } : {} ),
+			} );
+			res.end( JSON.stringify( { ...record, posted: true } ) );
 			return;
 		}
 
