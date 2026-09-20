@@ -36,12 +36,13 @@ wp config get|set|clear
 | `--client-id=<id>` / `--client-secret=<secret>` | OAuth2 credential, for `wp auth oauth2 login`/`add` — see [OAuth2](authentication-oauth2.md). |
 | `--use-auth=env\|none\|application-passwords\|oauth2` | Pin credential resolution to one source, skipping the rest of the fallback chain — see [Authentication](authentication.md). |
 | `--context=view\|edit\|embed` | Default `view`. Run `wp <namespace> <route>` to see which values a given route actually supports. |
-| `--format=table\|json\|csv\|yaml\|ids\|count\|raw` | Default `table`. |
-| `--fields=<a,b,c>` | Limit output to specific top-level fields. |
+| `--format=table\|json\|csv\|yaml\|ids\|count\|raw` | Default `table`. Table cells are truncated to 50 characters, and nested objects/arrays show as `<object>`/`<array>` unless named via `--fields` (e.g. `--fields=title.rendered`). |
+| `--fields=<a,b,c>` | Limit output to specific fields (table/csv also accept dotted paths like `title.rendered`). |
 | `--field=<name>` | Print a single field's raw value (supports dotted paths, e.g. `title.rendered`). |
 | `--body=<json>` | Raw JSON request body for `create`/`update`, overriding/merged under `--field=` args. |
 | `--timeout=<ms>` | Timeout for every HTTP request; when given it replaces all the defaults below. Defaults: 20000 (20 s) for API calls, 8000 for site discovery and `wp auth` calls, and 300000 (5 min) for file uploads/downloads, where it is an idle timeout that resets whenever data moves. |
 | `--no-color` | Disable colored output. |
+| `--no-truncate` | Show full table cell values instead of truncating them to 50 characters. |
 | `--quiet` | Suppress spinners. |
 | `--debug` | Print a stack trace on unexpected (non-API) errors, and log every HTTP request/response to stderr (with the `Authorization` header redacted). |
 

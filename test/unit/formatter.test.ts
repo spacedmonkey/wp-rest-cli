@@ -6,7 +6,7 @@ import { describe, expect, it } from '@jest/globals';
 /**
  * Internal dependencies
  */
-import { formatOutput } from '../../src/core/formatter.js';
+import { formatOutput, setTruncateEnabled } from '../../src/core/formatter.js';
 
 const posts = [
 	{ id: 1, title: { rendered: 'Hello' }, link: 'https://example.com/1' },
@@ -123,10 +123,70 @@ describe( 'formatOutput', () => {
 		];
 		const out = await formatOutput( rows, {
 			format: 'table',
+			fields: 'title.rendered,content.rendered',
 			color: false,
 		} );
 		expect( out ).toContain( 'Tabhere' );
-		expect( out ).toContain( 'Line1' );
-		expect( out ).toContain( 'Line2' );
+		expect( out ).toContain( '<p>Line1</p> <p>Line2</p>' );
+	} );
+
+	it( 'keeps full cells when truncation is disabled', async () => {
+		setTruncateEnabled( false );
+		try {
+			const out = await formatOutput( [ { s: 'x'.repeat( 80 ) } ], {
+				format: 'table',
+				color: false,
+			} );
+			expect( out ).toContain( 'x'.repeat( 80 ) );
+		} finally {
+			setTruncateEnabled( true );
+		}
+	} );
+
+	it( 'does not split emoji, and leaves 50-char cells alone', async () => {
+		const out = await formatOutput(
+			[ { a: '😀'.repeat( 60 ), b: 'y'.repeat( 50 ) } ],
+			{ format: 'table', color: false }
+		);
+		expect( out ).toContain( `${ '😀'.repeat( 49 ) }…` );
+		expect( out ).toContain( 'y'.repeat( 50 ) );
+	} );
+
+	it( 'shows <object> for --fields naming a nested key', async () => {
+		const out = await formatOutput( posts, {
+			format: 'table',
+			fields: 'title',
+			color: false,
+		} );
+		expect( out ).toContain( '<object>' );
+	} );
+
+	it( 'leaves a nested --fields key blank in csv', async () => {
+		const out = await formatOutput( posts, {
+			format: 'csv',
+			fields: 'title',
+			color: false,
+		} );
+		expect( out ).not.toContain( 'object' );
+	} );
+
+	it( 'skips truncation when the caller passes truncate: false', async () => {
+		const out = await formatOutput( [ { u: 'x'.repeat( 80 ) } ], {
+			format: 'table',
+			color: false,
+			truncate: false,
+		} );
+		expect( out ).toContain( 'x'.repeat( 80 ) );
+	} );
+
+	it( 'truncates long cells and shows placeholders for nested values', async () => {
+		const out = await formatOutput(
+			[ { id: 1, s: 'x'.repeat( 80 ), o: { a: 1 }, a: [ 1 ] } ],
+			{ format: 'table', color: false }
+		);
+		expect( out ).toContain( `${ 'x'.repeat( 49 ) }…` );
+		expect( out ).not.toContain( 'x'.repeat( 50 ) );
+		expect( out ).toContain( '<object>' );
+		expect( out ).toContain( '<array>' );
 	} );
 } );

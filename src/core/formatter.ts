@@ -19,6 +19,8 @@ export interface FormatOptions {
 	fields?: string;
 	field?: string;
 	color: boolean;
+	/** Set false to never truncate table cells (e.g. `auth list` URLs users copy). */
+	truncate?: boolean;
 }
 
 /**
@@ -57,11 +59,13 @@ function asArray( data: unknown ): Record< string, unknown >[] {
  * keys — used for table/csv output, whose columns must be flat.
  * @param row    The row to flatten and filter.
  * @param fields The `--fields` list, or undefined to keep every column.
+ * @param nested Fall back to the un-flattened value for a key naming a nested object (table only; csv can't hold one).
  * @return The flattened (and possibly filtered) row.
  */
 function selectFields(
 	row: Record< string, unknown >,
-	fields: string[] | undefined
+	fields: string[] | undefined,
+	nested = false
 ): Record< string, unknown > {
 	const flat = flatten<
 		Record< string, unknown >,
@@ -72,7 +76,8 @@ function selectFields(
 	}
 	const picked: Record< string, unknown > = {};
 	for ( const key of fields ) {
-		picked[ key ] = flat[ key ];
+		picked[ key ] =
+			key in flat || ! nested ? flat[ key ] : getByPath( row, key );
 	}
 	return picked;
 }
@@ -94,22 +99,47 @@ function sanitizeForTable( value: string ): string {
 		.join( '' );
 }
 
+/** Longest cell (in characters) a table shows before truncating with an ellipsis. */
+const MAX_CELL = 50;
+
+let truncateEnabled = true;
+
 /**
- * Renders a single table cell value as sanitized text.
- * @param value The raw field value.
+ * Turns table-cell truncation on/off for the process (`--no-truncate`).
+ * @param enabled Whether long cells should be truncated.
+ */
+export function setTruncateEnabled( enabled: boolean ): void {
+	truncateEnabled = enabled;
+}
+
+/**
+ * Renders a single table cell value as one sanitized, truncated line.
+ * Objects/arrays become `<object>`/`<array>` placeholders rather than JSON.
+ * @param value    The raw field value.
+ * @param truncate Whether to cut long values to `MAX_CELL` characters.
  * @return The cell's display string.
  */
-function stringifyCell( value: unknown ): string {
+function stringifyCell( value: unknown, truncate: boolean ): string {
 	if ( value === undefined ) {
 		return '';
 	}
 	if ( value === null ) {
 		return 'null';
 	}
-	if ( typeof value === 'string' ) {
-		return sanitizeForTable( value );
+	if ( Array.isArray( value ) ) {
+		return '<array>';
 	}
-	return sanitizeForTable( JSON.stringify( value ) );
+	if ( typeof value === 'object' ) {
+		return '<object>';
+	}
+	const text = sanitizeForTable( String( value ) )
+		.replace( /\s+/g, ' ' )
+		.trim();
+	// Array.from counts code points, so emoji aren't split mid-surrogate.
+	const chars = Array.from( text );
+	return truncate && truncateEnabled && chars.length > MAX_CELL
+		? `${ chars.slice( 0, MAX_CELL - 1 ).join( '' ) }…`
+		: text;
 }
 
 /**
@@ -228,8 +258,10 @@ export async function formatOutput(
 		}
 
 		case 'table': {
+			// Without --fields keep rows nested (top-level columns only) so
+			// objects show as `<object>`; --fields flattens for dotted paths.
 			const rows = asArray( data ).map( ( row ) =>
-				selectFields( row, fields )
+				fields ? selectFields( row, fields, true ) : row
 			);
 			if ( rows.length === 0 ) {
 				return options.color ? pc.dim( 'No results.' ) : 'No results.';
@@ -241,7 +273,9 @@ export async function formatOutput(
 				? columns.map( ( c ) => pc.bold( c ) )
 				: columns;
 			const body = rows.map( ( row ) =>
-				columns.map( ( c ) => stringifyCell( row[ c ] ) )
+				columns.map( ( c ) =>
+					stringifyCell( row[ c ], options.truncate !== false )
+				)
 			);
 			// WP-CLI's own tables use a plain ASCII +/-/| border with rules only
 			// around the header (not between every data row) — match that look
