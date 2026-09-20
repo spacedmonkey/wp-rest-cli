@@ -28,12 +28,13 @@ const distCliEntry = fileURLToPath(
  */
 type RunCliOptions = {
 	env?: Record< string, string | undefined >;
+	cwd?: string;
 };
 
 /**
  * Spawns the built CLI as a child process.
  * @param args    CLI arguments.
- * @param options Extra options (currently just `env`), merged over the
+ * @param options Extra options (`env`, `cwd`), merged over the
  *                shared defaults. `reject: false` is always used so a
  *                non-zero exit code is asserted on directly rather than
  *                thrown.
