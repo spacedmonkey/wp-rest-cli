@@ -960,6 +960,14 @@ export async function startFixture(): Promise< Fixture > {
 				return;
 			}
 			const id = nextMediaId++;
+			// Real WP returns a Location header; only sent on request so the
+			// other upload tests keep exercising the no-Location fallback.
+			if ( upload.fields.title === 'with-location' ) {
+				res.setHeader(
+					'location',
+					`${ baseUrlHolder.value }/wp-json/wp/v2/media/${ id }`
+				);
+			}
 			send( res, 201, {
 				id,
 				title: {
@@ -990,6 +998,16 @@ export async function startFixture(): Promise< Fixture > {
 					data: { status: 500 },
 				} );
 			}
+			return;
+		}
+
+		const mediaGetMatch = path.match( /^\/wp-json\/wp\/v2\/media\/(\d+)$/ );
+		if ( mediaGetMatch && req.method === 'GET' ) {
+			// `fetched` marks the follow-up GET, absent from the POST body.
+			send( res, 200, {
+				id: Number( mediaGetMatch[ 1 ] ),
+				fetched: true,
+			} );
 			return;
 		}
 
@@ -1108,7 +1126,24 @@ export async function startFixture(): Promise< Fixture > {
 				meta,
 			};
 			widgets.set( id, record );
-			send( res, 201, record );
+			// Real WP's create_item returns 201 + a Location header. The
+			// `posted` marker is only in the POST body (never stored), so
+			// tests can tell it apart from the follow-up GET's response.
+			const title = String( body.title ?? '' );
+			const widgetsUrl = `${ baseUrlHolder.value }/wp-json/wp/v2/widgets`;
+			const overrides: Record< string, string | undefined > = {
+				'no-location': undefined,
+				'foreign-location': `http://example.invalid/wp-json/wp/v2/widgets/${ id }`,
+				'bad-location': `${ widgetsUrl }/999999`,
+			};
+			const location = Object.hasOwn( overrides, title )
+				? overrides[ title ]
+				: `${ widgetsUrl }/${ id }`;
+			res.writeHead( 201, {
+				'content-type': 'application/json',
+				...( location ? { location } : {} ),
+			} );
+			res.end( JSON.stringify( { ...record, posted: true } ) );
 			return;
 		}
 

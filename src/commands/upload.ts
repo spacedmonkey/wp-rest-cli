@@ -4,6 +4,7 @@
 import type { WpRestClient } from '../core/client.js';
 import { downloadToTemp, isUrl } from '../core/download.js';
 import { CliError, formatErrorForDisplay } from '../core/errors.js';
+import { followCreatedLocation } from '../core/follow-location.js';
 import { formatOutput } from '../core/formatter.js';
 import {
 	expandBatches,
@@ -234,6 +235,9 @@ export async function runUploadCommand(
 		return files;
 	}
 
+	// Set once a create's Location was followed; then the item is shown, not a Success line.
+	let followedAny = false;
+
 	/**
 	 * Sends one upload. If the server created the attachment but crashed while
 	 * generating image sizes (a 5xx carrying `X-WP-Upload-Attachment-ID`), retries
@@ -253,7 +257,18 @@ export async function runUploadCommand(
 				timeoutMs: flags.timeout,
 				debug: flags.debug,
 			} );
-			return response.body;
+			// Only a create has a canonical Location to follow.
+			const followed =
+				opts.verb === 'create'
+					? await followCreatedLocation(
+							client,
+							apiRoot,
+							response,
+							flags
+					  )
+					: undefined;
+			followedAny ||= !! followed;
+			return followed ? followed.body : response.body;
 		} catch ( error ) {
 			const failure = error as { headers?: Headers; status?: number };
 			const id = failure.headers?.get( 'x-wp-upload-attachment-id' );
@@ -355,7 +370,12 @@ export async function runUploadCommand(
 	if ( created.length === 0 ) {
 		return { output: '', exitCode: 1 };
 	}
-	if ( flags.format === 'table' && ! flags.field && ! flags.fields ) {
+	if (
+		! followedAny &&
+		flags.format === 'table' &&
+		! flags.field &&
+		! flags.fields
+	) {
 		const ids = created
 			.map(
 				( item ) => ( item as { id?: unknown } | undefined )?.id ?? ''
