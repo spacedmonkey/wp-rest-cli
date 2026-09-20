@@ -1,4 +1,7 @@
 /**
+ * WordPress dependencies
+ */
+/**
  * Internal dependencies
  */
 import { getSiteCredential, normalizeSiteUrl } from '../config.js';
@@ -12,6 +15,7 @@ import {
 	type MetaVerb,
 	type ParsedMeta,
 } from './meta.js';
+import { runUploadCommand } from './upload.js';
 import { BasicAuthProvider } from '../core/auth/basic.js';
 import { OAuth2AuthProvider } from '../core/auth/oauth2.js';
 import type { AuthProvider } from '../core/auth/types.js';
@@ -22,6 +26,7 @@ import {
 import { WpRestClient } from '../core/client.js';
 import { resolveApiRoot } from '../core/discovery.js';
 import { CliError, WpApiError } from '../core/errors.js';
+import { followCreatedLocation } from '../core/follow-location.js';
 import { formatOutput } from '../core/formatter.js';
 import { generateDefaultValue } from '../core/generate-defaults.js';
 import {
@@ -47,7 +52,6 @@ import type {
 	Verb,
 } from '../types.js';
 import { withSpinner, pc, notice, createProgressBar } from '../ui.js';
-import { runUploadCommand } from './upload.js';
 
 const VERBS: Verb[] = [
 	'list',
@@ -1998,11 +2002,17 @@ export async function runRestCommand(
 				bodyOverride: resolveBodyOverride( flags.body ),
 				responseFields: flags.fields,
 			} );
-			const { body } = await client.request( request.url, {
+			const response = await client.request( request.url, {
 				method: request.method,
 				body: request.body,
 			} );
-			return body;
+			const followed = await followCreatedLocation(
+				client,
+				apiRoot,
+				response,
+				flags
+			);
+			return followed ? followed.body : response.body;
 		}
 
 		// Progress bar takes over from here — no more per-item spinner text,
@@ -2185,7 +2195,7 @@ export async function runRestCommand(
 		} );
 	}
 
-	const { body } = await withSpinner(
+	const response = await withSpinner(
 		`${ request.method } ${ parsed.namespace }/${ parsed.route }`,
 		! flags.quiet,
 		() =>
@@ -2194,9 +2204,14 @@ export async function runRestCommand(
 				body: request.body,
 			} )
 	);
+	const followed =
+		parsed.verb === 'create'
+			? await followCreatedLocation( client, apiRoot, response, flags )
+			: undefined;
+	const body = followed ? followed.body : response.body;
 
 	if (
-		parsed.verb === 'create' ||
+		( parsed.verb === 'create' && ! followed ) ||
 		parsed.verb === 'update' ||
 		parsed.verb === 'delete'
 	) {

@@ -86,6 +86,22 @@ describe( 'uploading local files', () => {
 		expect( upload.fields ).toEqual( { title: 'Cat', alt_text: 'A cat' } );
 	} );
 
+	it( 'shows the resource fetched from Location after an upload', async () => {
+		const file = await makeFile( 'follow.jpg' );
+		const result = await run( [
+			'wp/v2',
+			'media',
+			'create',
+			`--file=${ file }`,
+			'--title=with-location',
+			'--format=json',
+		] );
+		expect( result.exitCode ).toBe( 0 );
+		expect( JSON.parse( result.stdout ) ).toMatchObject( {
+			fetched: true,
+		} );
+	} );
+
 	it( 'uses @ on any field name, and an @@ prefix sends a literal @', async () => {
 		const file = await makeFile( 'doc.pdf' );
 		const result = await run( [
