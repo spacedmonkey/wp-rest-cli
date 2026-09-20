@@ -960,6 +960,14 @@ export async function startFixture(): Promise< Fixture > {
 				return;
 			}
 			const id = nextMediaId++;
+			// Real WP returns a Location header; only sent on request so the
+			// other upload tests keep exercising the no-Location fallback.
+			if ( upload.fields.title === 'with-location' ) {
+				res.setHeader(
+					'location',
+					`${ baseUrlHolder.value }/wp-json/wp/v2/media/${ id }`
+				);
+			}
 			send( res, 201, {
 				id,
 				title: {
@@ -990,6 +998,16 @@ export async function startFixture(): Promise< Fixture > {
 					data: { status: 500 },
 				} );
 			}
+			return;
+		}
+
+		const mediaGetMatch = path.match( /^\/wp-json\/wp\/v2\/media\/(\d+)$/ );
+		if ( mediaGetMatch && req.method === 'GET' ) {
+			// `fetched` marks the follow-up GET, absent from the POST body.
+			send( res, 200, {
+				id: Number( mediaGetMatch[ 1 ] ),
+				fetched: true,
+			} );
 			return;
 		}
 
