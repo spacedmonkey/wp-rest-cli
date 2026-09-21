@@ -891,7 +891,8 @@ function withRequiredLists( endpoints: RouteEndpoint[] ): RouteEndpoint[] {
  * `{route, verbs}` listing in the requested `--format` — the table form used
  * for a route's own nested-children note, and for any non-`table` format of
  * the top-level bare listing (see `renderChildListWpCli` for the WP-CLI-style
- * page `table` format uses there instead).
+ * page `table` format uses there instead). In agent mode the rows are the
+ * structured `{route, verbs[], has_children}` form (`buildChildObjects`).
  * @param index     The site's root REST API index.
  * @param namespace The namespace the children belong to.
  * @param children  The child segments to render, from `routeChildren`.
@@ -1206,7 +1207,11 @@ async function getRouteSchema(
 		( await withSpinner( 'Fetching API index', showSpinner, () =>
 			fetchIndex( client, apiRoot )
 		) );
-	assertNamespace( resolvedIndex, namespace );
+	// Agent mode only: a site may serve a namespace its index omits, and human
+	// defaults must keep working there; agents get the clearer error instead.
+	if ( agentMode() ) {
+		assertNamespace( resolvedIndex, namespace );
+	}
 	const info = resolveRouteInfo( resolvedIndex, namespace, route );
 	const verbs = supportedVerbsForRoute( resolvedIndex, info.path );
 	if ( info.requiresParam ) {

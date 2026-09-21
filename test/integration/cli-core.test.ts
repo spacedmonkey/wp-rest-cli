@@ -943,8 +943,11 @@ describe( 'agent-friendly JSON output', () => {
 		);
 	} );
 
-	it( 'fails with No such namespace for an unknown namespace plus a verb', async () => {
-		const result = await run( [ 'nons/v1', 'widgets', 'list' ] );
+	it( 'agent mode: fails with No such namespace for an unknown namespace plus a verb', async () => {
+		const result = await runCli(
+			[ 'nons/v1', 'widgets', 'list', `--url=${ fixture.baseUrl }` ],
+			{ env: { WP_REST_CLI_AGENT: '1' } }
+		);
 		expect( result.exitCode ).toBe( 1 );
 		expect( result.stderr ).toContain( 'No such namespace' );
 	} );
