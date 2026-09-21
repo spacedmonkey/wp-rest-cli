@@ -22,6 +22,8 @@ Any value except empty, `0`, `false`, `no` or `off` enables it. Unset, the CLI b
 | Errors | `Error: ...` text | JSON on stderr: `{"error":{"message","code","status","params","hint"}}` |
 | Unknown `--name=value` | Silently sent to the API | Warning on stderr, with a suggestion (`--per-page` → `--per_page`) |
 
+JSON is the default because it is the only format that is lossless for every command's output (nested objects, single items, schemas, errors). For a long, flat list, `--format=csv --fields=...` is roughly half the size; and `--fields` trimming matters far more than the format.
+
 Data always goes to stdout and notices to stderr, so `2>/dev/null` gives clean data.
 
 ## Works in any mode

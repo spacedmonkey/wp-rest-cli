@@ -53,6 +53,7 @@ Tips for fewer calls:
 
 - Read the schema once (`help <ns> <route> <verb> --format=json` is scoped to that verb's HTTP method) instead of trial and error.
 - Trim output with `--fields=id,title.rendered` (dotted paths keep their nesting in JSON).
+- For a long flat list, `--format=csv --fields=id,date,slug` is about half the size of JSON (nested values become dotted columns like `title.rendered`; use JSON when you need nesting). Trimming with `--fields` matters far more than the format: a full posts page is ~49 KB, the same page with 4 fields ~0.3 KB.
 - Heed stderr warnings: a `Warning: ...` means an arg was ignored, so the result may not be what you asked for.
 - Check `hint` in JSON errors before retrying.
 
