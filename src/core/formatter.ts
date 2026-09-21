@@ -12,7 +12,7 @@ import { stringify as stringifyYaml } from 'yaml';
  */
 import { CliError } from './errors.js';
 import type { OutputFormat } from '../types.js';
-import { pc } from '../ui.js';
+import { agentMode, pc } from '../ui.js';
 
 export interface FormatOptions {
 	format: OutputFormat;
@@ -186,6 +186,28 @@ function pickTopLevel(
 }
 
 /**
+ * Removes HAL noise (`_links`, `_embedded`) from a response, recursively.
+ * Agent mode only, and only when `--fields` isn't naming keys explicitly.
+ * @param value Any parsed response value.
+ * @return `value` without `_links`/`_embedded` keys.
+ */
+function stripLinks( value: unknown ): unknown {
+	if ( Array.isArray( value ) ) {
+		return value.map( stripLinks );
+	}
+	if ( value && typeof value === 'object' ) {
+		return Object.fromEntries(
+			Object.entries( value )
+				.filter(
+					( [ key ] ) => key !== '_links' && key !== '_embedded'
+				)
+				.map( ( [ key, item ] ) => [ key, stripLinks( item ) ] )
+		);
+	}
+	return value;
+}
+
+/**
  * Applies --fields to json/yaml/raw output while preserving the original array-vs-object shape.
  * @param data   The response body (an array, an object, or a scalar).
  * @param fields The `--fields` list, or undefined to leave `data` untouched.
@@ -196,7 +218,7 @@ function applyTopLevelFields(
 	fields: string[] | undefined
 ): unknown {
 	if ( ! fields ) {
-		return data;
+		return agentMode() ? stripLinks( data ) : data;
 	}
 	if ( Array.isArray( data ) ) {
 		return data.map( ( row ) =>
@@ -237,7 +259,7 @@ export async function formatOutput(
 		const result = Array.isArray( data ) ? values : values[ 0 ];
 		return typeof result === 'string'
 			? result
-			: JSON.stringify( result, null, 2 );
+			: JSON.stringify( result, null, agentMode() ? undefined : 2 );
 	}
 
 	switch ( options.format ) {
@@ -245,7 +267,7 @@ export async function formatOutput(
 			return JSON.stringify(
 				applyTopLevelFields( data, fields ),
 				null,
-				2
+				agentMode() ? undefined : 2
 			);
 
 		case 'yaml':

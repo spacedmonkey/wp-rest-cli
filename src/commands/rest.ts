@@ -41,7 +41,11 @@ import {
 } from '../core/indexer.js';
 import { introspectRoute, supportedContexts } from '../core/introspect.js';
 import { planUploads } from '../core/upload.js';
-import { coerceJsonFields, validateFieldTypes } from '../core/validate.js';
+import {
+	coerceJsonFields,
+	unknownFieldWarnings,
+	validateFieldTypes,
+} from '../core/validate.js';
 import { buildVerbRequest, isKeyedRoute } from '../core/verbs.js';
 import type {
 	EndpointArgSchema,
@@ -51,7 +55,13 @@ import type {
 	RouteSchema,
 	Verb,
 } from '../types.js';
-import { withSpinner, pc, notice, createProgressBar } from '../ui.js';
+import {
+	agentMode,
+	withSpinner,
+	pc,
+	notice,
+	createProgressBar,
+} from '../ui.js';
 
 const VERBS: Verb[] = [
 	'list',
@@ -1245,6 +1255,16 @@ async function validateVerbFields(
 	// fields need a synthesized value) — see the generate branch below.
 	const checkRequired = verb !== 'update' && enforceRequired;
 	validateFieldTypes( fields, endpoint?.args, checkRequired );
+	// `update` borrows create's schema, so it would false-positive on
+	// item-only args. Warnings ignore --quiet on purpose: they flag likely typos.
+	if ( agentMode() && verb !== 'update' ) {
+		for ( const warning of unknownFieldWarnings(
+			fields,
+			endpoint?.args
+		) ) {
+			notice( warning, true );
+		}
+	}
 	return endpoint?.args;
 }
 

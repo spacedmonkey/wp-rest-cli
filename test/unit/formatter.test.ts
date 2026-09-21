@@ -1,7 +1,7 @@
 /**
  * External dependencies
  */
-import { describe, expect, it } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
 
 /**
  * Internal dependencies
@@ -213,5 +213,64 @@ describe( 'formatOutput', () => {
 		expect( out ).not.toContain( 'x'.repeat( 50 ) );
 		expect( out ).toContain( '<object>' );
 		expect( out ).toContain( '<array>' );
+	} );
+} );
+
+describe( 'formatOutput in agent mode', () => {
+	beforeEach( () => {
+		process.env.WP_REST_CLI_AGENT = '1';
+	} );
+	afterEach( () => {
+		delete process.env.WP_REST_CLI_AGENT;
+	} );
+
+	it( 'prints compact json without _links/_embedded', async () => {
+		const out = await formatOutput(
+			[
+				{
+					id: 1,
+					_links: { self: [] },
+					_embedded: { a: [ { _links: 1, id: 2 } ] },
+				},
+			],
+			{ format: 'json', color: false }
+		);
+		expect( out ).toBe( '[{"id":1}]' );
+	} );
+
+	it( 'keeps _links when --fields names it', async () => {
+		const out = await formatOutput(
+			{ id: 1, _links: { self: [] } },
+			{
+				format: 'json',
+				fields: 'id,_links',
+				color: false,
+			}
+		);
+		expect( out ).toBe( '{"id":1,"_links":{"self":[]}}' );
+	} );
+
+	it.each( [ 'FALSE', ' 0 ', 'off', 'No' ] )(
+		'treats %p as agent mode off',
+		async ( value ) => {
+			process.env.WP_REST_CLI_AGENT = value;
+			const out = await formatOutput(
+				{ id: 1 },
+				{ format: 'json', color: false }
+			);
+			expect( out ).toContain( '\n' );
+		}
+	);
+
+	it( 'prints an object-valued --field compactly', async () => {
+		const out = await formatOutput(
+			{ id: 1, title: { rendered: 'Hi' } },
+			{
+				format: 'json',
+				field: 'title',
+				color: false,
+			}
+		);
+		expect( out ).toBe( '{"rendered":"Hi"}' );
 	} );
 } );

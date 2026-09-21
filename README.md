@@ -71,7 +71,7 @@ Any other `--name=value` (or bare `--name`, treated as `--name=true`) is passed 
 
 ## Using with AI agents
 
-See [AGENTS.md](AGENTS.md) for a short guide: discovery loop, headless auth, JSON output and error shape.
+Set `WP_REST_CLI_AGENT=1` for machine-friendly output: JSON by default (compact, `_links`/`_embedded` stripped), no colour or spinners, JSON errors, and warnings for unknown flags. Nothing changes for interactive use. See [docs/agent-mode.md](docs/agent-mode.md) and [AGENTS.md](AGENTS.md) (written for the agent itself).
 
 ## Authentication
 

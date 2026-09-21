@@ -55,7 +55,7 @@ import type {
 	GlobalFlags,
 	OutputFormat,
 } from './types.js';
-import { colorByDefault, pc, setColorEnabled } from './ui.js';
+import { agentMode, colorByDefault, pc, setColorEnabled } from './ui.js';
 
 const CONTEXTS: Context[] = [ 'view', 'edit', 'embed' ];
 const FORMATS: OutputFormat[] = [
@@ -193,7 +193,7 @@ function applyFileConfig( options: RawOptions ): RawOptions {
 		}
 	};
 	set( 'context', values.context );
-	set( 'format', values.format );
+	set( 'format', values.format ?? ( agentMode() ? 'json' : undefined ) );
 	set( 'useAuth', values[ 'use-auth' ] );
 	set( 'timeout', values.timeout?.toString() );
 	set( 'color', values.color );
@@ -204,7 +204,7 @@ function applyFileConfig( options: RawOptions ): RawOptions {
 
 /**
  * Validates and narrows Commander's raw parsed options into typed {@link GlobalFlags}.
- * Color is on only for a TTY without `NO_COLOR`; `--no-color` always turns it off.
+ * Color is on unless `--no-color`, `NO_COLOR` or agent mode (`WP_REST_CLI_AGENT`) turns it off.
  * @param options Commander's raw parsed options.
  * @return The validated global flags.
  */

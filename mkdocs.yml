@@ -18,6 +18,7 @@ nav:
   - Configuration: configuration.md
   - Meta commands: meta-commands.md
   - Uploading files: uploading-files.md
+  - Agent mode: agent-mode.md
   - Examples: examples.md
   - Contributing: contributing.md
 

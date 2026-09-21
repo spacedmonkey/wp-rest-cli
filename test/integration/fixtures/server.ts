@@ -1115,7 +1115,8 @@ export async function startFixture(): Promise< Fixture > {
 		if ( path === '/wp-json/wp/v2/widgets' && req.method === 'GET' ) {
 			send( res, 200, [ ...widgets.values() ], {
 				'X-WP-Total': String( widgets.size ),
-				'X-WP-TotalPages': String( widgets.size ),
+				// Always claim a second page so the pagination hint is testable.
+				'X-WP-TotalPages': String( Math.max( 2, widgets.size ) ),
 			} );
 			return;
 		}

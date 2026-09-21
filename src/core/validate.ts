@@ -142,3 +142,65 @@ export function coerceJsonFields(
 	}
 	return result;
 }
+
+/**
+ * Levenshtein distance between two short strings.
+ * @param a First string.
+ * @param b Second string.
+ * @return The minimum number of single-character edits turning `a` into `b`.
+ */
+function editDistance( a: string, b: string ): number {
+	let previous = Array.from( { length: b.length + 1 }, ( _, i ) => i );
+	for ( let i = 1; i <= a.length; i++ ) {
+		const current = [ i ];
+		for ( let j = 1; j <= b.length; j++ ) {
+			current[ j ] = Math.min(
+				( previous[ j ] as number ) + 1,
+				( current[ j - 1 ] as number ) + 1,
+				( previous[ j - 1 ] as number ) +
+					( a[ i - 1 ] === b[ j - 1 ] ? 0 : 1 )
+			);
+		}
+		previous = current;
+	}
+	return previous[ b.length ] as number;
+}
+
+/**
+ * Warnings for `field=value` names the route's live schema doesn't declare
+ * (typos like `--per-page` are otherwise forwarded to the API and ignored).
+ * Names starting with `_` (e.g. `_embed`) are WordPress-wide and never flagged.
+ * @param fields Parsed `field=value` arguments.
+ * @param args   The endpoint's declared args, if known.
+ * @return One human-readable warning per unknown field, with a suggestion when close.
+ */
+export function unknownFieldWarnings(
+	fields: Record< string, unknown >,
+	args: Record< string, EndpointArgSchema > | undefined
+): string[] {
+	if ( ! args ) {
+		return [];
+	}
+	const known = Object.keys( args );
+	return Object.keys( fields )
+		.filter(
+			( name ) =>
+				! name.startsWith( '_' ) && ! Object.hasOwn( args, name )
+		)
+		.map( ( name ) => {
+			const limit = Math.max( 1, Math.floor( name.length / 3 ) );
+			const guess = known
+				.map( ( arg ) => ( {
+					arg,
+					distance:
+						arg === name.replace( /-/g, '_' )
+							? 0
+							: editDistance( arg, name ),
+				} ) )
+				.filter( ( { distance } ) => distance <= limit )
+				.sort( ( a, b ) => a.distance - b.distance )[ 0 ]?.arg;
+			return `Warning: --${ name } is not a declared arg of this route${
+				guess ? `; did you mean --${ guess }?` : ''
+			}`;
+		} );
+}

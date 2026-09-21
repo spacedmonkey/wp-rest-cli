@@ -12,21 +12,29 @@ import picocolors from 'picocolors';
 let pc = picocolors.createColors( true );
 
 /**
- * Whether output is going somewhere a human reads it (a TTY or `FORCE_COLOR`, and `NO_COLOR` unset).
- * @return True when colorized output is appropriate by default.
+ * Whether agent mode is on (`WP_REST_CLI_AGENT=1`): plain, machine-friendly
+ * output with no spinners or colour, JSON by default. Humans never see this.
+ * @return True when the env var is set to anything but empty/`0`/`false`/`no`/`off`.
  */
-export function colorByDefault(): boolean {
-	if ( process.env.NO_COLOR ) {
-		return false;
-	}
-	return (
-		Boolean( process.env.FORCE_COLOR ) || Boolean( process.stdout.isTTY )
+export function agentMode(): boolean {
+	const value = process.env.WP_REST_CLI_AGENT;
+	return ! [ '', '0', 'false', 'no', 'off' ].includes(
+		( value ?? '' ).trim().toLowerCase()
 	);
 }
 
 /**
+ * Whether colorized output is wanted by default: on (even when piped, as
+ * always) unless `NO_COLOR` is set or agent mode is on.
+ * @return True when colorized output is appropriate by default.
+ */
+export function colorByDefault(): boolean {
+	return ! process.env.NO_COLOR && ! agentMode();
+}
+
+/**
  * Enables or disables color for every `pc.*` call in the app, overriding
- * picocolors' own detection, so the resolved `--no-color`/TTY/`NO_COLOR`
+ * picocolors' own detection, so the resolved `--no-color`/`NO_COLOR`/agent-mode
  * decision (see `colorByDefault`) is the only thing that controls color.
  * @param enabled Whether colorized output should be emitted.
  */
@@ -35,18 +43,17 @@ export function setColorEnabled( enabled: boolean ): void {
 }
 
 /**
- * Starts a terminal spinner, unless spinners are disabled (e.g. non-TTY output).
+ * Starts a terminal spinner, unless spinners are disabled (`--quiet` or agent mode).
  * @param text    Label shown next to the spinner.
  * @param enabled Whether spinners are enabled for this invocation.
  * @return The running spinner, or undefined when disabled.
  */
 export function spinner( text: string, enabled: boolean ): Ora | undefined {
-	// `ora` still prints static (ANSI-coloured) lines when it isn't enabled, so
-	// skip it entirely off a TTY rather than just disabling it.
-	if ( ! enabled || ! process.stderr.isTTY ) {
+	if ( ! enabled || agentMode() ) {
 		return undefined;
 	}
-	return ora( { text } ).start();
+	// isEnabled is forced on: humans keep spinners even when piped (as always).
+	return ora( { text, isEnabled: true } ).start();
 }
 
 /**
@@ -88,7 +95,7 @@ export function notice( message: string, enabled: boolean ): void {
 	if ( ! enabled ) {
 		return;
 	}
-	if ( ! process.stderr.isTTY ) {
+	if ( agentMode() ) {
 		process.stderr.write( `${ message }\n` );
 		return;
 	}

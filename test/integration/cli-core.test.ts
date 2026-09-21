@@ -622,17 +622,18 @@ describe( 'partial credentials', () => {
 } );
 
 describe( '--no-color', () => {
-	// execa's stdio is always a pipe, never a TTY - so color is off by default.
+	// execa's stdio is always a pipe, never a TTY - color is on by
+	// default regardless, so these don't need to fake a TTY to assert on.
 	function runRaw( args: string[] ) {
 		return runCli( [ ...args, `--url=${ fixture.baseUrl }`, '--quiet' ], {
 			env: { FORCE_COLOR: undefined, NO_COLOR: undefined },
 		} );
 	}
 
-	it( 'does not colorize when piped', async () => {
+	it( 'colorizes by default, even when piped', async () => {
 		const result = await runRaw( [ 'config', 'get' ] );
 		expect( result.exitCode ).toBe( 0 );
-		expect( result.stdout ).not.toMatch( /\x1b\[/ );
+		expect( result.stdout ).toMatch( /\x1b\[/ );
 	} );
 
 	it( '--no-color disables color', async () => {
@@ -814,15 +815,63 @@ describe( 'agent-friendly JSON output', () => {
 		expect( result.stderr ).toContain( 'No such route' );
 	} );
 
-	it( 'prints no spinner or ANSI on stderr when piped, without --quiet', async () => {
+	it( 'agent mode: no spinner/ANSI, JSON by default and JSON errors', async () => {
+		const env = { WP_REST_CLI_AGENT: '1' };
+		const ok = await runCli(
+			[ 'wp/v2', 'widgets', 'list', `--url=${ fixture.baseUrl }` ],
+			{ env }
+		);
+		expect( ok.exitCode ).toBe( 0 );
+		expect( ok.stderr ).not.toMatch( /\x1b\[|Discovering REST API/ );
+		expect( Array.isArray( JSON.parse( ok.stdout ) ) ).toBe( true );
+		const bad = await runCli(
+			[
+				'wp/v2',
+				'widgets',
+				'get',
+				'999999',
+				`--url=${ fixture.baseUrl }`,
+			],
+			{ env }
+		);
+		expect( bad.exitCode ).toBe( 1 );
+		expect( JSON.parse( bad.stderr ).error.status ).toBe( 404 );
+	} );
+
+	it( 'agent mode: compact JSON and unknown-flag warning on stderr', async () => {
+		const result = await runCli(
+			[
+				'wp/v2',
+				'widgets',
+				'list',
+				'--per-page=1',
+				`--url=${ fixture.baseUrl }`,
+			],
+			{ env: { WP_REST_CLI_AGENT: '1' } }
+		);
+		expect( result.exitCode ).toBe( 0 );
+		expect( result.stdout ).not.toContain( '\n' );
+		expect( result.stderr ).toContain( '--per-page is not a declared arg' );
+	} );
+
+	it( 'human mode does not warn about unknown flags', async () => {
+		const result = await run( [
+			'wp/v2',
+			'widgets',
+			'list',
+			'--per-page=1',
+		] );
+		expect( result.stderr ).not.toContain( 'not a declared arg' );
+	} );
+
+	it( 'default (human) mode still shows progress lines on stderr', async () => {
 		const result = await runCli( [
 			'wp/v2',
 			'widgets',
 			'list',
 			`--url=${ fixture.baseUrl }`,
 		] );
-		expect( result.exitCode ).toBe( 0 );
-		expect( result.stderr ).not.toMatch( /\x1b\[|Discovering REST API/ );
+		expect( result.stderr ).toContain( 'Discovering REST API' );
 	} );
 
 	it( '--format=count reports the site total from X-WP-Total', async () => {
@@ -837,13 +886,16 @@ describe( 'agent-friendly JSON output', () => {
 	} );
 
 	it( 'hints at more pages on stderr when X-WP-TotalPages > 1', async () => {
-		const result = await runCli( [
-			'wp/v2',
-			'widgets',
-			'list',
-			'--per_page=1',
-			`--url=${ fixture.baseUrl }`,
-		] );
+		const result = await runCli(
+			[
+				'wp/v2',
+				'widgets',
+				'list',
+				'--per_page=1',
+				`--url=${ fixture.baseUrl }`,
+			],
+			{ env: { WP_REST_CLI_AGENT: '1' } }
+		);
 		expect( result.stderr ).toMatch( /Page 1 of \d+ \(\d+ total\)/ );
 	} );
 

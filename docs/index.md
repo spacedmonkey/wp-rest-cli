@@ -38,6 +38,7 @@ See [Installation](installation.md) for development setup, [Usage](usage.md) for
 - **CRUD verbs** — `list`/`get`/`create`/`update`/`delete`/`exists`/`generate`, mirroring WP-CLI's own resource commands but generically, for any namespace (core or plugin).
 - **Meta commands** — `wp <namespace> <route> meta <add|update|get|list|delete|patch|pluck|clean-duplicates>`, mapped onto the REST API's `meta` object field.
 - **Output formats** — `table` (default), `json`, `csv`, `yaml`, `ids`, `count`, `raw`, with `--fields=`/`--field=` selection.
+- **Agent mode** — `WP_REST_CLI_AGENT=1` gives AI agents and scripts plain, compact JSON output, JSON errors and unknown-flag warnings, with no change for interactive use. See [Agent mode](agent-mode.md).
 - **Authentication** — HTTP Basic Auth via WordPress core Application Passwords, or `--username`/`--password` / `WP_USERNAME`/`WP_PASSWORD`.
 
 ## Project links
