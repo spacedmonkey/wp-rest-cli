@@ -19,7 +19,8 @@ Any value except empty, `0`, `false`, `no` or `off` enables it. Unset, the CLI b
 | `_links` / `_embedded` | Kept | Removed from json/yaml/raw output (kept if you name them in `--fields`) |
 | Colour | On | Off |
 | Spinners | On | Off; notices are plain lines on stderr |
-| Errors | `Error: ...` text | JSON on stderr: `{"error":{"message","code","status","params","hint"}}` |
+| Route discovery JSON | Raw OPTIONS response (`wp <ns> <route>`); `verbs` as a `"list, get, (subcommand)"` string | Same object as `help` (no bulky item `schema`; `endpoints[].required`, `children[]`); `verbs` as an array plus `has_children` |
+| Errors | `Error: ...` text | JSON on stderr, for every error (including a bad `--format`): `{"error":{"message","code","status","params","hint"}}` |
 | Unknown `--name=value` | Silently sent to the API | Warning on stderr, with a suggestion (`--per-page` → `--per_page`) |
 
 JSON is the default because it is the only format that is lossless for every command's output (nested objects, single items, schemas, errors). For a long, flat list, `--format=csv --fields=...` is roughly half the size; and `--fields` trimming matters far more than the format.
@@ -32,8 +33,10 @@ These help agents but are available to everyone:
 
 - `wp help <namespace> <route> [<verb>] --format=json` — structured schema (args, types, enums), scoped to the verb's HTTP method.
 - `--format=json` prints errors as JSON.
+- `help ... --format=json` includes each endpoint's `required` arg names and the route's nested `children`.
+- `--fields=id,_embedded` also asks WordPress for `_links` (needed for `--_embed` to work).
 - `list --format=count` prints the site total (from `X-WP-Total`); when more pages exist, stderr says `Page 1 of N (T total)`.
-- An unknown namespace or route exits `1` with `No such namespace` / `No such route`.
+- An unknown namespace (with or without a verb) or route exits `1` with `No such namespace` / `No such route`.
 - `--fields=id,title.rendered` keeps nesting in JSON/YAML.
 - `types`, `taxonomies` and `statuses` list one row per entry.
 

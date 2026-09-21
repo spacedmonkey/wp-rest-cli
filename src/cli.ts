@@ -104,6 +104,19 @@ const KNOWN_LONG_FLAGS = new Set( [
 ] );
 
 /**
+ * Renders an error for stderr: JSON in agent mode or under `--format=json`
+ * (even if that `--format` value is what failed validation), else plain text.
+ * @param error  The caught value, of any shape.
+ * @param format The raw `--format` option, if given.
+ * @return The text to print.
+ */
+function errorText( error: unknown, format: string | undefined ): string {
+	return agentMode() || format === 'json'
+		? formatErrorForJson( error )
+		: formatErrorForDisplay( error );
+}
+
+/**
  * Rewrites any `--name=value`/`--flag` not in {@link KNOWN_LONG_FLAGS} into a
  * bare `name=value`/`name=true` positional token, so Commander doesn't reject
  * dynamic WordPress field/query args as unknown options.
@@ -293,10 +306,11 @@ async function handleConfigCommand(
 		case 'set': {
 			if ( ! options.url && ! options.username ) {
 				console.error(
-					formatErrorForDisplay(
+					errorText(
 						new CliError(
 							'config set requires --url and/or --username.'
-						)
+						),
+						options.format
 					)
 				);
 				return 1;
@@ -319,10 +333,11 @@ async function handleConfigCommand(
 		}
 		default: {
 			console.error(
-				formatErrorForDisplay(
+				errorText(
 					new CliError(
 						'Usage: wp config <get|set|clear|rotate-key> [--url=] [--username=]'
-					)
+					),
+					options.format
 				)
 			);
 			return 1;
@@ -546,11 +561,7 @@ run "wp-rest-cli <namespace> <route>" to see which ones a given route supports.
 			console.log( output );
 			process.exitCode = exitCode;
 		} catch ( error ) {
-			console.error(
-				options.format === 'json'
-					? formatErrorForJson( error )
-					: formatErrorForDisplay( error )
-			);
+			console.error( errorText( error, options.format ) );
 			if (
 				options.debug &&
 				error instanceof Error &&

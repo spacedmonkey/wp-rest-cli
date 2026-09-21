@@ -153,4 +153,19 @@ describe( 'buildVerbRequest', () => {
 			'https://example.com/wp-json/wp/v2/posts/42?force=true'
 		);
 	} );
+
+	it( 'also forwards _links when _embedded is requested', () => {
+		const { url } = buildVerbRequest( {
+			apiRoot,
+			namespace: 'wp/v2',
+			route: 'posts',
+			verb: 'list',
+			context: 'view' as const,
+			fields: {},
+			responseFields: 'id,_embedded',
+		} );
+		expect( decodeURIComponent( url ) ).toContain(
+			'_fields=id,_links,_embedded'
+		);
+	} );
 } );

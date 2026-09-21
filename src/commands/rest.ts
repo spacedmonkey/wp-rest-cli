@@ -805,6 +805,88 @@ function buildChildRows(
 }
 
 /**
+ * Structured form of a route's child segments, for `--format=json` output:
+ * `verbs` as a real array plus a `has_children` flag, instead of
+ * {@link buildChildRows}' `"list, get, (subcommand)"` display string.
+ * @param index     The site's root REST API index.
+ * @param namespace The namespace the children belong to.
+ * @param children  The child segments to describe (from `routeChildren`).
+ * @return One `{route, verbs, has_children}` object per child.
+ */
+function buildChildObjects(
+	index: IndexResponse,
+	namespace: string,
+	children: RouteChildSegment[]
+): { route: string; verbs: string[]; has_children: boolean }[] {
+	return children.map( ( child ) => {
+		if ( child.isMeta ) {
+			return { route: child.segment, verbs: [], has_children: true };
+		}
+		const info = resolveRouteInfo( index, namespace, child.route );
+		return {
+			route: child.segment,
+			verbs: supportedVerbsForRoute( index, info.path ),
+			has_children: child.hasChildren,
+		};
+	} );
+}
+
+/**
+ * The structured (`--format=json`/`yaml`) description of a route: its verbs,
+ * endpoints (each with a `required` list of arg names) and nested children.
+ * Deliberately omits the item response `schema` an OPTIONS response also
+ * carries — it is large and not needed to call the route.
+ * @param index         The site's root REST API index.
+ * @param namespace     The route's namespace.
+ * @param route         The route name.
+ * @param schema        The route's introspected schema.
+ * @param requiresParam Whether the route only exists in parameterised form.
+ * @param verbs         The verbs this route supports.
+ * @param children      The route's child segments, from `routeChildren`.
+ * @param paramName     The route's own URL parameter name, if any.
+ * @return A plain object ready for `formatOutput`.
+ */
+function routeHelpObject(
+	index: IndexResponse,
+	namespace: string,
+	route: string,
+	schema: RouteSchema,
+	requiresParam: boolean,
+	verbs: Verb[],
+	children: RouteChildSegment[],
+	paramName?: string
+): Record< string, unknown > {
+	const endpoints = schema.endpoints ?? [];
+	return {
+		namespace,
+		route,
+		requiresParam,
+		paramName,
+		verbs,
+		endpoints: withRequiredLists( endpoints ),
+		children: buildChildObjects(
+			index,
+			namespace,
+			withMetaChild( children, route, endpoints )
+		),
+	};
+}
+
+/**
+ * Adds a `required` array (names of required args) to each endpoint.
+ * @param endpoints The endpoints to annotate.
+ * @return Copies of `endpoints`, each with a `required` list.
+ */
+function withRequiredLists( endpoints: RouteEndpoint[] ): RouteEndpoint[] {
+	return endpoints.map( ( endpoint ) => ( {
+		...endpoint,
+		required: Object.entries( endpoint.args ?? {} )
+			.filter( ( [ , arg ] ) => arg?.required )
+			.map( ( [ name ] ) => name ),
+	} ) );
+}
+
+/**
  * Renders a route's (or the namespace root's) child segments as a plain
  * `{route, verbs}` listing in the requested `--format` — the table form used
  * for a route's own nested-children note, and for any non-`table` format of
@@ -822,7 +904,9 @@ async function renderRouteChildren(
 	children: RouteChildSegment[],
 	flags: GlobalFlags
 ): Promise< string > {
-	const rows = buildChildRows( index, namespace, children );
+	const rows = agentMode()
+		? buildChildObjects( index, namespace, children )
+		: buildChildRows( index, namespace, children );
 	return formatOutput( rows, {
 		format: flags.format,
 		fields: flags.fields,
@@ -1075,6 +1159,21 @@ function printVerbHelp(
 }
 
 /**
+ * Throws a clear error when a namespace isn't registered on the site.
+ * @param index     The site's root REST API index.
+ * @param namespace The namespace to check.
+ */
+function assertNamespace( index: IndexResponse, namespace: string ): void {
+	if ( ! index.namespaces.includes( namespace ) ) {
+		throw new CliError(
+			`No such namespace "${ namespace }". Available: ${ index.namespaces.join(
+				', '
+			) }.`
+		);
+	}
+}
+
+/**
  * Fetches a route's schema for introspection/help. A route that only exists
  * in parameterised form (see `resolveRouteInfo`) can't be reached with a live
  * OPTIONS request on its bare path — that path never matches the route's
@@ -1107,6 +1206,7 @@ async function getRouteSchema(
 		( await withSpinner( 'Fetching API index', showSpinner, () =>
 			fetchIndex( client, apiRoot )
 		) );
+	assertNamespace( resolvedIndex, namespace );
 	const info = resolveRouteInfo( resolvedIndex, namespace, route );
 	const verbs = supportedVerbsForRoute( resolvedIndex, info.path );
 	if ( info.requiresParam ) {
@@ -1706,13 +1806,7 @@ export async function runRestCommand(
 			! flags.quiet,
 			() => fetchIndex( client, apiRoot )
 		);
-		if ( ! index.namespaces.includes( parsed.namespace ) ) {
-			throw new CliError(
-				`No such namespace "${
-					parsed.namespace
-				}". Available: ${ index.namespaces.join( ', ' ) }.`
-			);
-		}
+		assertNamespace( index, parsed.namespace );
 		const children = routeChildren( index, parsed.namespace, '' );
 		if ( flags.format === 'table' ) {
 			const rows = buildChildRows( index, parsed.namespace, children );
@@ -1827,12 +1921,28 @@ export async function runRestCommand(
 				index
 			);
 		if ( flags.format !== 'table' ) {
-			const output = await formatOutput( schema, {
-				format: flags.format,
-				fields: flags.fields,
-				field: flags.field,
-				color: flags.color,
-			} );
+			// Agent mode: same compact, children-aware object as `help`, minus the
+			// bulky item `schema`; everyone else keeps the raw OPTIONS response.
+			const output = await formatOutput(
+				agentMode()
+					? routeHelpObject(
+							index,
+							parsed.namespace,
+							parsed.route,
+							schema,
+							requiresParam,
+							verbs,
+							children,
+							paramName
+					  )
+					: schema,
+				{
+					format: flags.format,
+					fields: flags.fields,
+					field: flags.field,
+					color: flags.color,
+				}
+			);
 			return { output, exitCode: 0 };
 		}
 		return {
@@ -2443,14 +2553,16 @@ export async function runHelpCommand(
 		if ( flags.format !== 'table' ) {
 			return {
 				output: await formatOutput(
-					{
-						namespace: parsed.namespace,
-						route: parsed.route,
+					routeHelpObject(
+						index,
+						parsed.namespace,
+						parsed.route,
+						schema,
 						requiresParam,
-						paramName,
 						verbs,
-						endpoints: schema.endpoints ?? [],
-					},
+						children,
+						paramName
+					),
 					{
 						format: flags.format === 'yaml' ? 'yaml' : 'json',
 						color: false,
@@ -2507,12 +2619,16 @@ export async function runHelpCommand(
 					verb: parsed.verb,
 					paramName,
 					verbs,
-					endpoints: ( schema.endpoints ?? [] ).filter(
-						( e ) =>
-							! COLLECTION_VERB_METHOD[ parsed.verb ] ||
-							e.methods.includes(
-								COLLECTION_VERB_METHOD[ parsed.verb ] as string
-							)
+					endpoints: withRequiredLists(
+						( schema.endpoints ?? [] ).filter(
+							( e ) =>
+								! COLLECTION_VERB_METHOD[ parsed.verb ] ||
+								e.methods.includes(
+									COLLECTION_VERB_METHOD[
+										parsed.verb
+									] as string
+								)
+						)
 					),
 				},
 				{

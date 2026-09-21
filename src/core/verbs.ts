@@ -142,6 +142,10 @@ export function buildVerbRequest( options: BuildRequestOptions ): VerbRequest {
 		? [
 				...new Set( [
 					'id',
+					// WordPress only embeds when `_links` is also requested.
+					...( responseFields.includes( '_embedded' )
+						? [ '_links' ]
+						: [] ),
 					...responseFields
 						.split( ',' )
 						.map( ( f ) => f.trim().split( '.' )[ 0 ] )

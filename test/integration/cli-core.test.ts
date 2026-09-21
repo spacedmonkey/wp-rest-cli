@@ -925,4 +925,73 @@ describe( 'agent-friendly JSON output', () => {
 		const rows = JSON.parse( result.stdout );
 		expect( rows[ 0 ] ).not.toHaveProperty( 'nonexistent' );
 	} );
+
+	it( 'agent mode: an invalid --format still yields a JSON error', async () => {
+		const result = await runCli(
+			[
+				'wp/v2',
+				'widgets',
+				'list',
+				'--format=bogus',
+				`--url=${ fixture.baseUrl }`,
+			],
+			{ env: { WP_REST_CLI_AGENT: '1' } }
+		);
+		expect( result.exitCode ).toBe( 1 );
+		expect( JSON.parse( result.stderr ).error.message ).toContain(
+			'--format must be one of'
+		);
+	} );
+
+	it( 'fails with No such namespace for an unknown namespace plus a verb', async () => {
+		const result = await run( [ 'nons/v1', 'widgets', 'list' ] );
+		expect( result.exitCode ).toBe( 1 );
+		expect( result.stderr ).toContain( 'No such namespace' );
+	} );
+
+	it( 'help JSON has required lists and children', async () => {
+		const result = await run( [
+			'help',
+			'wp/v2',
+			'widgets',
+			'--format=json',
+		] );
+		const help = JSON.parse( result.stdout );
+		expect( Array.isArray( help.children ) ).toBe( true );
+		expect(
+			help.children.map( ( c: { route: string } ) => c.route )
+		).toContain( 'meta' );
+		for ( const endpoint of help.endpoints ) {
+			expect( Array.isArray( endpoint.required ) ).toBe( true );
+		}
+	} );
+
+	it( 'agent mode: bare route JSON drops the bulky schema; human mode keeps it', async () => {
+		const agent = await runCli(
+			[ 'wp/v2', 'widgets', `--url=${ fixture.baseUrl }` ],
+			{ env: { WP_REST_CLI_AGENT: '1' } }
+		);
+		const agentJson = JSON.parse( agent.stdout );
+		expect( agentJson ).not.toHaveProperty( 'schema' );
+		expect( agentJson ).toHaveProperty( 'children' );
+		const human = await run( [ 'wp/v2', 'widgets', '--format=json' ] );
+		expect( JSON.parse( human.stdout ) ).not.toHaveProperty( 'children' );
+	} );
+
+	it( 'agent mode: namespace listing has array verbs and has_children', async () => {
+		const agent = await runCli( [ 'wp/v2', `--url=${ fixture.baseUrl }` ], {
+			env: { WP_REST_CLI_AGENT: '1' },
+		} );
+		const rows = JSON.parse( agent.stdout );
+		const widgets = rows.find(
+			( r: { route: string } ) => r.route === 'widgets'
+		);
+		expect( Array.isArray( widgets.verbs ) ).toBe( true );
+		expect( typeof widgets.has_children ).toBe( 'boolean' );
+		const human = await run( [ 'wp/v2', '--format=json' ] );
+		const humanWidgets = JSON.parse( human.stdout ).find(
+			( r: { route: string } ) => r.route === 'widgets'
+		);
+		expect( typeof humanWidgets.verbs ).toBe( 'string' );
+	} );
 } );
