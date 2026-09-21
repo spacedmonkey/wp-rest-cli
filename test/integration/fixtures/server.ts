@@ -522,6 +522,11 @@ export async function startFixture(): Promise< Fixture > {
 						methods: [ 'GET' ],
 						endpoints: [ { methods: [ 'GET' ] } ],
 					},
+					'/wp/v2/taxonomies': {
+						namespace: 'wp/v2',
+						methods: [ 'GET' ],
+						endpoints: [ { methods: [ 'GET' ] } ],
+					},
 					// Modelled on WP_REST_Global_Styles_Controller: no bare collection
 					// route exists here at all, only this parameterised one.
 					'/wp/v2/global-styles/themes/(?P<stylesheet>%s)': {
@@ -1110,6 +1115,7 @@ export async function startFixture(): Promise< Fixture > {
 		if ( path === '/wp-json/wp/v2/widgets' && req.method === 'GET' ) {
 			send( res, 200, [ ...widgets.values() ], {
 				'X-WP-Total': String( widgets.size ),
+				'X-WP-TotalPages': String( widgets.size ),
 			} );
 			return;
 		}
@@ -1579,6 +1585,34 @@ export async function startFixture(): Promise< Fixture > {
 				methods: [ 'GET' ],
 				endpoints: [ { methods: [ 'GET' ] } ],
 			} );
+			return;
+		}
+
+		if (
+			path === '/wp-json/wp/v2/taxonomies' &&
+			req.method === 'OPTIONS'
+		) {
+			send( res, 200, {
+				namespace: 'wp/v2',
+				methods: [ 'GET' ],
+				endpoints: [ { methods: [ 'GET' ] } ],
+			} );
+			return;
+		}
+
+		// Slug-keyed object, like real WordPress; `_fields` filters the slugs
+		// themselves away, so a forwarded `_fields` yields `{}`.
+		if ( path === '/wp-json/wp/v2/taxonomies' && req.method === 'GET' ) {
+			send(
+				res,
+				200,
+				url.searchParams.has( '_fields' )
+					? {}
+					: {
+							category: { name: 'Categories', slug: 'category' },
+							post_tag: { name: 'Tags', slug: 'post_tag' },
+					  }
+			);
 			return;
 		}
 

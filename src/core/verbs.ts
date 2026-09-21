@@ -70,6 +70,19 @@ export interface BuildRequestOptions {
 	responseFields?: string;
 }
 
+/** Routes whose collection response is an object keyed by slug, not a list. */
+const KEYED_ROUTES = [ 'types', 'taxonomies', 'statuses' ];
+
+/**
+ * Whether a route's collection response is an object keyed by slug (WordPress's
+ * `types`/`taxonomies`/`statuses`). `_fields` would filter those slugs away.
+ * @param route The namespace-relative route.
+ * @return True for a slug-keyed collection route.
+ */
+export function isKeyedRoute( route: string ): boolean {
+	return KEYED_ROUTES.includes( route );
+}
+
 /**
  * Splices an id into a route's segments at `paramIndex`, defaulting to the
  * end of the route when `paramIndex` isn't given.
@@ -137,7 +150,9 @@ export function buildVerbRequest( options: BuildRequestOptions ): VerbRequest {
 		  ].join( ',' )
 		: undefined;
 	const withFields = ( url: string ) =>
-		apiFields ? addQueryArgs( url, { _fields: apiFields } ) : url;
+		apiFields && ! ( verb === 'list' && isKeyedRoute( route ) )
+			? addQueryArgs( url, { _fields: apiFields } )
+			: url;
 
 	switch ( verb ) {
 		case 'list':

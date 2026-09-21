@@ -69,6 +69,10 @@ Flags with a YAML key can be set in a [config file](docs/configuration.md#yaml-c
 
 Any other `--name=value` (or bare `--name`, treated as `--name=true`) is passed straight through as a WordPress REST API field or query argument — e.g. `--per_page=5`, `--title="Hello"`, `--force`. Run `wp <namespace> <route>` first to see exactly which ones a route accepts.
 
+## Using with AI agents
+
+See [AGENTS.md](AGENTS.md) for a short guide: discovery loop, headless auth, JSON output and error shape.
+
 ## Authentication
 
 Use a WordPress core **Application Password** (Users → Profile → Application Passwords, built into WordPress since 5.6), not your real account password:

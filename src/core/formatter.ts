@@ -142,6 +142,9 @@ function stringifyCell( value: unknown, truncate: boolean ): string {
 		: text;
 }
 
+/** Path segments never followed when rebuilding a nested `--fields` pick. */
+const UNSAFE_KEYS = [ '__proto__', 'constructor', 'prototype' ];
+
 /**
  * Picks top-level keys only, preserving nested structure (unlike selectFields' dot-flattening used for table/csv columns).
  * @param row    The row to filter.
@@ -154,7 +157,30 @@ function pickTopLevel(
 ): Record< string, unknown > {
 	const picked: Record< string, unknown > = {};
 	for ( const key of fields ) {
-		picked[ key ] = row[ key ];
+		// A literal key (even one containing dots, like a meta key) wins.
+		if ( UNSAFE_KEYS.includes( key ) ) {
+			continue;
+		}
+		if ( Object.hasOwn( row, key ) || ! key.includes( '.' ) ) {
+			picked[ key ] = row[ key ];
+			continue;
+		}
+		const parts = key.split( '.' );
+		if ( parts.some( ( part ) => UNSAFE_KEYS.includes( part ) ) ) {
+			continue;
+		}
+		const value = getByPath( row, key );
+		if ( value === undefined ) {
+			continue;
+		}
+		// Dotted path: keep the nesting (`title.rendered` -> {title:{rendered}}).
+		let target = picked;
+		for ( const part of parts.slice( 0, -1 ) ) {
+			const next = target[ part ];
+			target[ part ] = next && typeof next === 'object' ? next : {};
+			target = target[ part ] as Record< string, unknown >;
+		}
+		target[ parts[ parts.length - 1 ] as string ] = value;
 	}
 	return picked;
 }

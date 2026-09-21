@@ -42,7 +42,7 @@ import {
 import { introspectRoute, supportedContexts } from '../core/introspect.js';
 import { planUploads } from '../core/upload.js';
 import { coerceJsonFields, validateFieldTypes } from '../core/validate.js';
-import { buildVerbRequest } from '../core/verbs.js';
+import { buildVerbRequest, isKeyedRoute } from '../core/verbs.js';
 import type {
 	EndpointArgSchema,
 	GlobalFlags,
@@ -1686,6 +1686,13 @@ export async function runRestCommand(
 			! flags.quiet,
 			() => fetchIndex( client, apiRoot )
 		);
+		if ( ! index.namespaces.includes( parsed.namespace ) ) {
+			throw new CliError(
+				`No such namespace "${
+					parsed.namespace
+				}". Available: ${ index.namespaces.join( ', ' ) }.`
+			);
+		}
 		const children = routeChildren( index, parsed.namespace, '' );
 		if ( flags.format === 'table' ) {
 			const rows = buildChildRows( index, parsed.namespace, children );
@@ -1782,6 +1789,13 @@ export async function runRestCommand(
 				color: flags.color,
 			} );
 			return { output, exitCode: 0 };
+		}
+		if ( ! isRealRoute( index, parsed.namespace, parsed.route ) ) {
+			throw new CliError(
+				`No such route "${ parsed.namespace }/${ displayRoute(
+					parsed.route
+				) }". Run "wp-rest-cli ${ parsed.namespace }" to list routes.`
+			);
 		}
 		const { schema, requiresParam, paramName, verbs } =
 			await getRouteSchema(
@@ -2232,7 +2246,45 @@ export async function runRestCommand(
 		}
 	}
 
-	const output = await formatOutput( body, {
+	// Slug-keyed collections (types/taxonomies/statuses) are one object; show
+	// one row per entry so `--fields`/`--format=ids` work like on any list.
+	const rows =
+		parsed.verb === 'list' &&
+		isKeyedRoute( parsed.route ) &&
+		body &&
+		typeof body === 'object' &&
+		! Array.isArray( body )
+			? Object.values( body )
+			: body;
+
+	// WordPress reports the collection total in headers; surface it so callers
+	// know when a page is partial, and so `--format=count` means "how many".
+	const totalHeader =
+		parsed.verb === 'list' ? response.headers.get( 'x-wp-total' ) : null;
+	const total = totalHeader === null ? NaN : Number( totalHeader );
+	const totalPagesHeader =
+		parsed.verb === 'list'
+			? response.headers.get( 'x-wp-totalpages' )
+			: null;
+	const totalPages =
+		totalPagesHeader === null ? NaN : Number( totalPagesHeader );
+	if ( totalPages > 1 ) {
+		notice(
+			`Page ${ parsed.fields.page ?? 1 } of ${ totalPages }${
+				Number.isFinite( total ) ? ` (${ total } total)` : ''
+			}. Use --page=<n> for more.`,
+			! flags.quiet
+		);
+	}
+	if (
+		flags.format === 'count' &&
+		! flags.field &&
+		Number.isFinite( total )
+	) {
+		return { output: String( total ), exitCode: 0 };
+	}
+
+	const output = await formatOutput( rows, {
 		format: flags.format,
 		fields: flags.fields,
 		field: flags.field,
@@ -2368,6 +2420,25 @@ export async function runHelpCommand(
 				! flags.quiet,
 				index
 			);
+		if ( flags.format !== 'table' ) {
+			return {
+				output: await formatOutput(
+					{
+						namespace: parsed.namespace,
+						route: parsed.route,
+						requiresParam,
+						paramName,
+						verbs,
+						endpoints: schema.endpoints ?? [],
+					},
+					{
+						format: flags.format === 'yaml' ? 'yaml' : 'json',
+						color: false,
+					}
+				),
+				exitCode: 0,
+			};
+		}
 		return {
 			output:
 				( style === 'wpcli'
@@ -2407,6 +2478,31 @@ export async function runHelpCommand(
 		parsed.route,
 		! flags.quiet
 	);
+	if ( flags.format !== 'table' ) {
+		return {
+			output: await formatOutput(
+				{
+					namespace: parsed.namespace,
+					route: parsed.route,
+					verb: parsed.verb,
+					paramName,
+					verbs,
+					endpoints: ( schema.endpoints ?? [] ).filter(
+						( e ) =>
+							! COLLECTION_VERB_METHOD[ parsed.verb ] ||
+							e.methods.includes(
+								COLLECTION_VERB_METHOD[ parsed.verb ] as string
+							)
+					),
+				},
+				{
+					format: flags.format === 'yaml' ? 'yaml' : 'json',
+					color: false,
+				}
+			),
+			exitCode: 0,
+		};
+	}
 	return {
 		output:
 			style === 'wpcli'

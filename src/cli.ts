@@ -34,7 +34,12 @@ import {
 	type AuthType,
 } from './core/auth/types.js';
 import { debugLog } from './core/debug.js';
-import { formatErrorForDisplay, CliError, WpApiError } from './core/errors.js';
+import {
+	formatErrorForDisplay,
+	formatErrorForJson,
+	CliError,
+	WpApiError,
+} from './core/errors.js';
 import {
 	getFileConfig,
 	type FileConfigKey,
@@ -50,7 +55,7 @@ import type {
 	GlobalFlags,
 	OutputFormat,
 } from './types.js';
-import { pc, setColorEnabled } from './ui.js';
+import { colorByDefault, pc, setColorEnabled } from './ui.js';
 
 const CONTEXTS: Context[] = [ 'view', 'edit', 'embed' ];
 const FORMATS: OutputFormat[] = [
@@ -199,7 +204,7 @@ function applyFileConfig( options: RawOptions ): RawOptions {
 
 /**
  * Validates and narrows Commander's raw parsed options into typed {@link GlobalFlags}.
- * Color is on by default; `--no-color` is the only way to turn it off.
+ * Color is on only for a TTY without `NO_COLOR`; `--no-color` always turns it off.
  * @param options Commander's raw parsed options.
  * @return The validated global flags.
  */
@@ -245,7 +250,7 @@ function toGlobalFlags( options: RawOptions ): GlobalFlags {
 		field: options.field,
 		body: options.body,
 		timeout,
-		color: options.color,
+		color: options.color && colorByDefault(),
 		quiet: Boolean( options.quiet ),
 		debug: Boolean( options.debug ),
 	};
@@ -453,11 +458,11 @@ run "wp-rest-cli <namespace> <route>" to see which ones a given route supports.
 	)
 	.action( async ( args: string[], rawOptions: RawOptions ) => {
 		let options = rawOptions;
-		setColorEnabled( options.color );
+		setColorEnabled( options.color && colorByDefault() );
 		setTruncateEnabled( options.truncate !== false );
 		try {
 			options = applyFileConfig( rawOptions );
-			setColorEnabled( options.color );
+			setColorEnabled( options.color && colorByDefault() );
 			if ( args[ 0 ] === 'config' ) {
 				if ( options.help ) {
 					console.log(
@@ -541,7 +546,11 @@ run "wp-rest-cli <namespace> <route>" to see which ones a given route supports.
 			console.log( output );
 			process.exitCode = exitCode;
 		} catch ( error ) {
-			console.error( formatErrorForDisplay( error ) );
+			console.error(
+				options.format === 'json'
+					? formatErrorForJson( error )
+					: formatErrorForDisplay( error )
+			);
 			if (
 				options.debug &&
 				error instanceof Error &&

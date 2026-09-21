@@ -14,6 +14,31 @@ const posts = [
 ];
 
 describe( 'formatOutput', () => {
+	it( 'keeps nested structure for dotted --fields in json', async () => {
+		const out = await formatOutput( posts, {
+			format: 'json',
+			fields: 'id,title.rendered',
+			color: false,
+		} );
+		expect( JSON.parse( out ) ).toEqual( [
+			{ id: 1, title: { rendered: 'Hello' } },
+			{ id: 2, title: { rendered: 'World' } },
+		] );
+	} );
+
+	it( 'prefers a literal dotted key and omits a missing dotted path', async () => {
+		const out = await formatOutput(
+			{ 'foo.bar': 1, id: 2 },
+			{
+				format: 'json',
+				fields: 'foo.bar,nope.x,__proto__.polluted',
+				color: false,
+			}
+		);
+		expect( JSON.parse( out ) ).toEqual( { 'foo.bar': 1 } );
+		expect( ( {} as Record< string, unknown > ).polluted ).toBeUndefined();
+	} );
+
 	it( 'renders json, preserving nested objects', async () => {
 		const out = await formatOutput( posts[ 0 ], {
 			format: 'json',

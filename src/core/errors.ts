@@ -61,6 +61,34 @@ const UPLOAD_ERROR_HINTS: Record< string, string > = {
 	rest_cannot_create: 'Uploading requires the upload_files capability.',
 };
 
+/** Hints for common auth/routing/validation errors, keyed by WordPress error code. */
+const GENERAL_ERROR_HINTS: Record< string, string > = {
+	rest_forbidden:
+		'Not allowed: check credentials (see `wp auth ... status`) and that the user has the needed capability.',
+	rest_no_route:
+		'No such route: run `wp <namespace>` to list routes and `wp help <namespace> <route>` for its verbs.',
+	rest_forbidden_context:
+		'This --context (e.g. edit) needs a real authenticated user; a client_credentials token acts as user 0. Try --context=view.',
+	rest_post_invalid_id: 'No item has that id; run `list` to find valid ids.',
+	rest_invalid_param:
+		'A field value is invalid: run `wp help <namespace> <route> <verb>` for the accepted fields and types.',
+};
+
+/**
+ * Looks up a hint for a WordPress error code.
+ * @param code The WordPress REST error code.
+ * @return The hint text, if one is known.
+ */
+function hintFor( code: string ): string | undefined {
+	return (
+		UPLOAD_ERROR_HINTS[ code ] ??
+		GENERAL_ERROR_HINTS[ code ] ??
+		( code.startsWith( 'rest_cannot_' )
+			? 'The authenticated user lacks the capability for this action (or no credentials were sent).'
+			: undefined )
+	);
+}
+
 /**
  * Strips markup from an HTML error page (e.g. an nginx/Apache error) so the
  * text of a non-JSON error body is readable.
@@ -120,10 +148,13 @@ export async function parseErrorResponse(
  */
 export function formatErrorForDisplay( error: unknown ): string {
 	if ( error instanceof WpApiError ) {
-		const hint = UPLOAD_ERROR_HINTS[ error.code ];
+		const hint = hintFor( error.code );
+		const params = Object.entries( error.params ?? {} )
+			.map( ( [ name, message ] ) => `\n  ${ name }: ${ message }` )
+			.join( '' );
 		return `Error: ${ error.message } (${ error.code }, status ${
 			error.status
-		})${ hint ? `\n${ hint }` : '' }`;
+		})${ params }${ hint ? `\n${ hint }` : '' }`;
 	}
 	if ( error instanceof CliError ) {
 		return `Error: ${ error.message }`;
@@ -132,4 +163,25 @@ export function formatErrorForDisplay( error: unknown ): string {
 		return `Error: ${ error.message }`;
 	}
 	return `Error: ${ String( error ) }`;
+}
+
+/**
+ * Renders a caught error as a single JSON object, for `--format=json`.
+ * @param error The caught value, of any shape.
+ * @return JSON text: `{error: {message, code?, status?, params?, hint?}}`.
+ */
+export function formatErrorForJson( error: unknown ): string {
+	const message = error instanceof Error ? error.message : String( error );
+	if ( error instanceof WpApiError ) {
+		return JSON.stringify( {
+			error: {
+				message,
+				code: error.code,
+				status: error.status,
+				params: error.params,
+				hint: hintFor( error.code ),
+			},
+		} );
+	}
+	return JSON.stringify( { error: { message } } );
 }

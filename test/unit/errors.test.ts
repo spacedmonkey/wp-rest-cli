@@ -9,6 +9,7 @@ import { describe, expect, it } from '@jest/globals';
 import {
 	parseErrorResponse,
 	formatErrorForDisplay,
+	formatErrorForJson,
 	WpApiError,
 	CliError,
 } from '../../src/core/errors.js';
@@ -90,7 +91,7 @@ describe( 'formatErrorForDisplay', () => {
 			401
 		);
 		expect( formatErrorForDisplay( error ) ).toBe(
-			'Error: Not allowed. (rest_forbidden, status 401)'
+			'Error: Not allowed. (rest_forbidden, status 401)\nNot allowed: check credentials (see `wp auth ... status`) and that the user has the needed capability.'
 		);
 	} );
 
@@ -98,5 +99,31 @@ describe( 'formatErrorForDisplay', () => {
 		expect(
 			formatErrorForDisplay( new CliError( 'Missing --url.' ) )
 		).toBe( 'Error: Missing --url.' );
+	} );
+} );
+
+describe( 'formatErrorForJson', () => {
+	it( 'includes code, status and a hint for a WpApiError', () => {
+		const error = new WpApiError(
+			{
+				code: 'rest_forbidden',
+				message: 'Not allowed.',
+				data: { status: 401 },
+			},
+			401
+		);
+		const parsed = JSON.parse( formatErrorForJson( error ) );
+		expect( parsed.error ).toMatchObject( {
+			code: 'rest_forbidden',
+			status: 401,
+			message: 'Not allowed.',
+		} );
+		expect( parsed.error.hint ).toEqual( expect.any( String ) );
+	} );
+
+	it( 'carries only a message for a local error', () => {
+		expect(
+			JSON.parse( formatErrorForJson( new CliError( 'bad' ) ) )
+		).toEqual( { error: { message: 'bad' } } );
 	} );
 } );

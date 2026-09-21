@@ -622,18 +622,17 @@ describe( 'partial credentials', () => {
 } );
 
 describe( '--no-color', () => {
-	// execa's stdio is always a pipe, never a TTY - color is on by
-	// default regardless, so these don't need to fake a TTY to assert on.
+	// execa's stdio is always a pipe, never a TTY - so color is off by default.
 	function runRaw( args: string[] ) {
 		return runCli( [ ...args, `--url=${ fixture.baseUrl }`, '--quiet' ], {
 			env: { FORCE_COLOR: undefined, NO_COLOR: undefined },
 		} );
 	}
 
-	it( 'colorizes by default, even when piped', async () => {
+	it( 'does not colorize when piped', async () => {
 		const result = await runRaw( [ 'config', 'get' ] );
 		expect( result.exitCode ).toBe( 0 );
-		expect( result.stdout ).toMatch( /\x1b\[/ );
+		expect( result.stdout ).not.toMatch( /\x1b\[/ );
 	} );
 
 	it( '--no-color disables color', async () => {
@@ -732,5 +731,146 @@ describe( 'YAML config files', () => {
 		const result = await runIn( [ 'config', 'get' ] );
 		expect( result.stdout ).toContain( `timeout: 5000` );
 		expect( result.stdout ).toContain( `from ${ file }` );
+	} );
+} );
+
+describe( 'agent-friendly JSON output', () => {
+	it( 'emits route help as JSON with --format=json', async () => {
+		const result = await run( [
+			'help',
+			'wp/v2',
+			'widgets',
+			'--format=json',
+		] );
+		expect( result.exitCode ).toBe( 0 );
+		const parsed = JSON.parse( result.stdout );
+		expect( parsed.route ).toBe( 'widgets' );
+		expect( Array.isArray( parsed.endpoints ) ).toBe( true );
+	} );
+
+	it( 'emits verb help as JSON with --format=json', async () => {
+		const result = await run( [
+			'help',
+			'wp/v2',
+			'widgets',
+			'create',
+			'--format=json',
+		] );
+		expect( result.exitCode ).toBe( 0 );
+		expect( JSON.parse( result.stdout ).verb ).toBe( 'create' );
+	} );
+
+	it( 'emits errors as JSON on stderr with --format=json', async () => {
+		const result = await run( [
+			'wp/v2',
+			'widgets',
+			'get',
+			'999999',
+			'--format=json',
+		] );
+		expect( result.exitCode ).toBe( 1 );
+		expect( JSON.parse( result.stderr ).error.status ).toBe( 404 );
+	} );
+
+	it( 'lists a slug-keyed collection as rows, honouring --fields', async () => {
+		const result = await run( [
+			'wp/v2',
+			'taxonomies',
+			'list',
+			'--fields=slug,name',
+			'--format=json',
+		] );
+		expect( result.exitCode ).toBe( 0 );
+		expect( JSON.parse( result.stdout ) ).toEqual( [
+			{ slug: 'category', name: 'Categories' },
+			{ slug: 'post_tag', name: 'Tags' },
+		] );
+	} );
+
+	it( 'keeps dotted --fields paths in json output', async () => {
+		const result = await run( [
+			'wp/v2',
+			'widgets',
+			'list',
+			'--fields=id,title.rendered',
+			'--format=json',
+		] );
+		expect( result.exitCode ).toBe( 0 );
+		const rows = JSON.parse( result.stdout );
+		expect( rows.length ).toBeGreaterThan( 0 );
+		expect( rows[ 0 ].title.rendered ).toEqual( expect.any( String ) );
+		expect( rows[ 0 ] ).not.toHaveProperty( 'link' );
+	} );
+
+	it( 'fails for an unknown namespace', async () => {
+		const result = await run( [ 'nonsense/v1' ] );
+		expect( result.exitCode ).toBe( 1 );
+		expect( result.stderr ).toContain( 'No such namespace' );
+	} );
+
+	it( 'fails for an unknown route', async () => {
+		const result = await run( [ 'wp/v2', 'nothing' ] );
+		expect( result.exitCode ).toBe( 1 );
+		expect( result.stderr ).toContain( 'No such route' );
+	} );
+
+	it( 'prints no spinner or ANSI on stderr when piped, without --quiet', async () => {
+		const result = await runCli( [
+			'wp/v2',
+			'widgets',
+			'list',
+			`--url=${ fixture.baseUrl }`,
+		] );
+		expect( result.exitCode ).toBe( 0 );
+		expect( result.stderr ).not.toMatch( /\x1b\[|Discovering REST API/ );
+	} );
+
+	it( '--format=count reports the site total from X-WP-Total', async () => {
+		const result = await run( [
+			'wp/v2',
+			'widgets',
+			'list',
+			'--format=count',
+		] );
+		expect( result.exitCode ).toBe( 0 );
+		expect( Number( result.stdout ) ).toBeGreaterThan( 0 );
+	} );
+
+	it( 'hints at more pages on stderr when X-WP-TotalPages > 1', async () => {
+		const result = await runCli( [
+			'wp/v2',
+			'widgets',
+			'list',
+			'--per_page=1',
+			`--url=${ fixture.baseUrl }`,
+		] );
+		expect( result.stderr ).toMatch( /Page 1 of \d+ \(\d+ total\)/ );
+	} );
+
+	it( 'scopes verb help JSON to that verb’s HTTP method', async () => {
+		const result = await run( [
+			'help',
+			'wp/v2',
+			'widgets',
+			'create',
+			'--format=json',
+		] );
+		const { endpoints } = JSON.parse( result.stdout );
+		expect( endpoints.length ).toBeGreaterThan( 0 );
+		for ( const endpoint of endpoints ) {
+			expect( endpoint.methods ).toContain( 'POST' );
+		}
+	} );
+
+	it( 'omits a dotted --fields path that does not exist', async () => {
+		const result = await run( [
+			'wp/v2',
+			'widgets',
+			'list',
+			'--fields=id,nonexistent.x',
+			'--format=json',
+		] );
+		const rows = JSON.parse( result.stdout );
+		expect( rows[ 0 ] ).not.toHaveProperty( 'nonexistent' );
 	} );
 } );

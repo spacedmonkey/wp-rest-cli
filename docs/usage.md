@@ -42,7 +42,7 @@ wp config get|set|clear
 | `--field=<name>` | — | Print a single field's raw value (supports dotted paths, e.g. `title.rendered`). Per-invocation only. |
 | `--body=<json>` | — | Raw JSON request body for `create`/`update`, overriding/merged under `--field=` args. Per-invocation only. |
 | `--timeout=<ms>` | `timeout` | Timeout for every HTTP request; when given it replaces all the defaults below. Defaults: 20000 (20 s) for API calls, 8000 for site discovery and `wp auth` calls, and 300000 (5 min) for file uploads/downloads, where it is an idle timeout that resets whenever data moves. |
-| `--no-color` | `color: false` | Disable colored output. |
+| `--no-color` | `color: false` | Disable colored output. Color and spinners are also off automatically when output is piped (not a TTY) or `NO_COLOR` is set. |
 | `--no-truncate` | — | Show full table cell values instead of truncating them to 50 characters. Per-invocation only. |
 | `--quiet` | `quiet` | Suppress spinners. |
 | `--debug` | `debug` | Print a stack trace on unexpected (non-API) errors, and log every HTTP request/response to stderr (with the `Authorization` header redacted) plus the config files loaded. API requests add `?_envelope=true` so WordPress returns its response headers (`X-WP-Total`, plugin headers such as Query Monitor's `X-QM-*`, ...), which are logged too; the body is unwrapped and output is unchanged. |

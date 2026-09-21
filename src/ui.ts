@@ -12,9 +12,22 @@ import picocolors from 'picocolors';
 let pc = picocolors.createColors( true );
 
 /**
+ * Whether output is going somewhere a human reads it (a TTY or `FORCE_COLOR`, and `NO_COLOR` unset).
+ * @return True when colorized output is appropriate by default.
+ */
+export function colorByDefault(): boolean {
+	if ( process.env.NO_COLOR ) {
+		return false;
+	}
+	return (
+		Boolean( process.env.FORCE_COLOR ) || Boolean( process.stdout.isTTY )
+	);
+}
+
+/**
  * Enables or disables color for every `pc.*` call in the app, overriding
- * picocolors' own TTY-based auto-detection so `--no-color` is the only thing
- * that turns color off (it's on by default even when output is piped).
+ * picocolors' own detection, so the resolved `--no-color`/TTY/`NO_COLOR`
+ * decision (see `colorByDefault`) is the only thing that controls color.
  * @param enabled Whether colorized output should be emitted.
  */
 export function setColorEnabled( enabled: boolean ): void {
@@ -28,10 +41,12 @@ export function setColorEnabled( enabled: boolean ): void {
  * @return The running spinner, or undefined when disabled.
  */
 export function spinner( text: string, enabled: boolean ): Ora | undefined {
-	if ( ! enabled ) {
+	// `ora` still prints static (ANSI-coloured) lines when it isn't enabled, so
+	// skip it entirely off a TTY rather than just disabling it.
+	if ( ! enabled || ! process.stderr.isTTY ) {
 		return undefined;
 	}
-	return ora( { text, isEnabled: true } ).start();
+	return ora( { text } ).start();
 }
 
 /**
@@ -71,6 +86,10 @@ export async function withSpinner< T >(
  */
 export function notice( message: string, enabled: boolean ): void {
 	if ( ! enabled ) {
+		return;
+	}
+	if ( ! process.stderr.isTTY ) {
+		process.stderr.write( `${ message }\n` );
 		return;
 	}
 	ora().info( message );
