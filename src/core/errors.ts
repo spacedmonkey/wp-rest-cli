@@ -58,7 +58,6 @@ const UPLOAD_ERROR_HINTS: Record< string, string > = {
 	rest_upload_user_quota_exceeded: 'This user has exceeded the upload quota.',
 	rest_upload_image_type_not_supported:
 		'The server cannot process this image type.',
-	rest_cannot_create: 'Uploading requires the upload_files capability.',
 };
 
 /** Hints for common auth/routing/validation errors, keyed by WordPress error code. */
