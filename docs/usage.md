@@ -23,6 +23,7 @@ wp config get|set|clear
 -   `list`/`create`/`generate` don't take an `<id>` — everything after the verb is treated as `field=value` pairs.
 -   `get`/`update`/`delete`/`exists` require an `<id>` as the first token after the verb.
 -   `exists` reuses `get`'s request shape but reports success/failure instead of printing the resource: exit code `0` if the id exists, `1` if it doesn't (a `404`).
+-   Any failure — a bad flag, a live API error, a network problem — prints `Error: ...` (or, under `--format=json`/[agent mode](agent-mode.md), a JSON `{"error":{...}}` object) to **stderr** and exits `1`; stdout is left untouched. Success exits `0`.
 -   `generate` isn't a single HTTP request — it loops `create` `--count` times, reusing the same fields for each item.
 -   A route registered under nested literal path segments (e.g. a theme's `global-styles/themes/(?P<stylesheet>%s)`) is addressed as separate words, the same way WP-CLI addresses nested commands — e.g. `wp wp/v2 global-styles themes get <stylesheet>`.
 
