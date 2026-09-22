@@ -997,4 +997,50 @@ describe( 'agent-friendly JSON output', () => {
 		);
 		expect( typeof humanWidgets.verbs ).toBe( 'string' );
 	} );
+
+	it.each( [ 'AI_AGENT', 'CLAUDECODE', 'CODEX_CI', 'COPILOT_AGENT' ] )(
+		'auto-detects agent mode from %s alone',
+		async ( marker ) => {
+			const result = await runCli(
+				[ 'wp/v2', 'widgets', 'list', `--url=${ fixture.baseUrl }` ],
+				{ env: { [ marker ]: '1' } }
+			);
+			expect( result.exitCode ).toBe( 0 );
+			expect( result.stdout ).not.toContain( '\n' );
+			expect( result.stderr ).not.toMatch(
+				/\x1b\[|Discovering REST API/
+			);
+		}
+	);
+
+	it( 'stays in human mode with no agent markers', async () => {
+		const result = await runCli( [
+			'wp/v2',
+			'widgets',
+			`--url=${ fixture.baseUrl }`,
+		] );
+		expect( result.stderr ).toContain( 'Discovering REST API' );
+	} );
+
+	it( 'WP_REST_CLI_AGENT=0 overrides a detected marker', async () => {
+		const result = await runCli(
+			[ 'wp/v2', 'widgets', `--url=${ fixture.baseUrl }` ],
+			{ env: { CLAUDECODE: '1', WP_REST_CLI_AGENT: '0' } }
+		);
+		expect( result.stderr ).toContain( 'Discovering REST API' );
+	} );
+
+	it( '--debug reports why agent mode is on', async () => {
+		const result = await runCli(
+			[
+				'wp/v2',
+				'widgets',
+				'list',
+				'--debug',
+				`--url=${ fixture.baseUrl }`,
+			],
+			{ env: { AI_AGENT: '1' } }
+		);
+		expect( result.stderr ).toContain( 'agent mode: on (AI_AGENT)' );
+	} );
 } );

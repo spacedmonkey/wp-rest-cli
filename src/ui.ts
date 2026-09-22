@@ -11,16 +11,63 @@ import picocolors from 'picocolors';
 // own TTY-based auto-detection everywhere at once via this live binding.
 let pc = picocolors.createColors( true );
 
+/** Env values that mean "off" (for `WP_REST_CLI_AGENT`, `AI_AGENT`, ...). */
+const FALSY_ENV = [ '', '0', 'false', 'no', 'off' ];
+
 /**
- * Whether agent mode is on (`WP_REST_CLI_AGENT=1`): plain, machine-friendly
- * output with no spinners or colour, JSON by default. Humans never see this.
- * @return True when the env var is set to anything but empty/`0`/`false`/`no`/`off`.
+ * Env vars that AI coding agents export in the shells they launch. Only names
+ * that a human would not normally set themselves: user config/credentials such
+ * as `COPILOT_MODEL`/`COPILOT_GITHUB_TOKEN` and editor markers set in human
+ * terminals (Cursor) are deliberately absent. Codex/Copilot names come from
+ * third-party lists — verify against the real tools before adding more.
+ */
+const AGENT_ENV_MARKERS = [
+	'CLAUDECODE',
+	'CODEX_CI',
+	'CODEX_SANDBOX',
+	'CODEX_THREAD_ID',
+	'COPILOT_AGENT',
+	'COPILOT_ALLOW_ALL',
+];
+
+/**
+ * Whether an env var is set to something other than a "false" value.
+ * @param name The environment variable name.
+ * @return True when set and not empty/`0`/`false`/`no`/`off`.
+ */
+function envOn( name: string ): boolean {
+	return ! FALSY_ENV.includes(
+		( process.env[ name ] ?? '' ).trim().toLowerCase()
+	);
+}
+
+/**
+ * Which env var turned agent mode on, or undefined when it is off. An
+ * explicit `WP_REST_CLI_AGENT` always wins (a false value is the human
+ * escape hatch); otherwise `AI_AGENT` or a known agent marker enables it.
+ * @return The triggering variable's name, or undefined when agent mode is off.
+ */
+export function agentModeReason(): string | undefined {
+	if ( process.env.WP_REST_CLI_AGENT !== undefined ) {
+		return envOn( 'WP_REST_CLI_AGENT' ) ? 'WP_REST_CLI_AGENT' : undefined;
+	}
+	// AI_AGENT is the cross-tool convention: a falsy value is an explicit
+	// opt-out too, same as WP_REST_CLI_AGENT — it doesn't fall through to a
+	// more specific marker like CLAUDECODE.
+	if ( process.env.AI_AGENT !== undefined ) {
+		return envOn( 'AI_AGENT' ) ? 'AI_AGENT' : undefined;
+	}
+	return AGENT_ENV_MARKERS.find( envOn );
+}
+
+/**
+ * Whether agent mode is on — set `WP_REST_CLI_AGENT=1`, or it is detected from
+ * an AI agent's environment (see {@link agentModeReason}): plain,
+ * machine-friendly output with no spinners or colour, JSON by default.
+ * @return True when agent mode is on.
  */
 export function agentMode(): boolean {
-	const value = process.env.WP_REST_CLI_AGENT;
-	return ! [ '', '0', 'false', 'no', 'off' ].includes(
-		( value ?? '' ).trim().toLowerCase()
-	);
+	return agentModeReason() !== undefined;
 }
 
 /**
@@ -155,6 +202,25 @@ export function createProgressBar(
 ): ProgressBar {
 	if ( ! enabled || total <= 0 ) {
 		return NULL_PROGRESS_BAR;
+	}
+	if ( agentMode() ) {
+		// No animated bar: cli-progress redraws with \r and hides the cursor
+		// via raw ANSI, which is exactly the noise agent mode exists to avoid.
+		// One plain start line, tick()'s existing `log()` calls still report
+		// per-item messages as-is, and one plain finish line with the count.
+		let done = 0;
+		notice( message, true );
+		return {
+			tick( by = 1 ) {
+				done += by;
+			},
+			log( logMessage: string ) {
+				notice( logMessage, true );
+			},
+			finish() {
+				notice( `${ message }: done (${ done }/${ total }).`, true );
+			},
+		};
 	}
 	const bar = new cliProgress.SingleBar(
 		{

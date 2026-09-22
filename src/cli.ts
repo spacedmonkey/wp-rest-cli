@@ -55,7 +55,13 @@ import type {
 	GlobalFlags,
 	OutputFormat,
 } from './types.js';
-import { agentMode, colorByDefault, pc, setColorEnabled } from './ui.js';
+import {
+	agentMode,
+	agentModeReason,
+	colorByDefault,
+	pc,
+	setColorEnabled,
+} from './ui.js';
 
 const CONTEXTS: Context[] = [ 'view', 'edit', 'embed' ];
 const FORMATS: OutputFormat[] = [
@@ -194,6 +200,8 @@ function applyFileConfig( options: RawOptions ): RawOptions {
 	const { values, files } = loadFileConfig();
 	if ( options.debug || values.debug ) {
 		debugLog( `config files: ${ files.join( ', ' ) || '(none)' }` );
+		const reason = agentModeReason();
+		debugLog( `agent mode: ${ reason ? `on (${ reason })` : 'off' }` );
 	}
 	const passed = ( name: string ) => {
 		const source = program.getOptionValueSource( name );
