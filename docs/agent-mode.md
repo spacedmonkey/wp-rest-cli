@@ -9,6 +9,8 @@ Detected automatically from your environment — no setup needed inside:
 -   Claude Code (`CLAUDECODE`)
 -   OpenAI Codex (`CODEX_CI`, `CODEX_SANDBOX`, `CODEX_THREAD_ID`)
 -   GitHub Copilot's agent tooling (`COPILOT_AGENT`, `COPILOT_ALLOW_ALL`)
+-   Cline (`CLINE_ACTIVE`)
+-   Cursor's agent/CLI terminal (`CURSOR_AGENT`)
 -   Any tool following the cross-tool `AI_AGENT` convention
 
 Not detected (e.g. a custom script, or a tool not listed above)? Set it by hand:

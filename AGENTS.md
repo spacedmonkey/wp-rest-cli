@@ -4,7 +4,7 @@
 
 ## 1. Agent mode
 
-Usually **automatic**: detected from your environment (Claude Code, OpenAI Codex, GitHub Copilot, or the cross-tool `AI_AGENT` convention). If your tool isn't detected, set it by hand:
+Usually **automatic**: detected from your environment (Claude Code, OpenAI Codex, GitHub Copilot, Cline, Cursor, or the cross-tool `AI_AGENT` convention). If your tool isn't detected, set it by hand:
 
 ```sh
 export WP_REST_CLI_AGENT=1

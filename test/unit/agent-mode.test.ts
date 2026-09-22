@@ -17,6 +17,8 @@ const MARKERS = [
 	'CODEX_THREAD_ID',
 	'COPILOT_AGENT',
 	'COPILOT_ALLOW_ALL',
+	'CLINE_ACTIVE',
+	'CURSOR_AGENT',
 ];
 
 describe( 'agentMode auto-detection', () => {
@@ -39,6 +41,8 @@ describe( 'agentMode auto-detection', () => {
 		'CODEX_THREAD_ID',
 		'COPILOT_AGENT',
 		'COPILOT_ALLOW_ALL',
+		'CLINE_ACTIVE',
+		'CURSOR_AGENT',
 	] )( 'turns on from %s alone', ( name ) => {
 		process.env[ name ] = '1';
 		expect( agentMode() ).toBe( true );

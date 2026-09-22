@@ -42,6 +42,8 @@ const AGENT_ENV_SCRUB: Record< string, undefined > = Object.fromEntries(
 		'CODEX_THREAD_ID',
 		'COPILOT_AGENT',
 		'COPILOT_ALLOW_ALL',
+		'CLINE_ACTIVE',
+		'CURSOR_AGENT',
 	].map( ( name ) => [ name, undefined ] )
 );
 

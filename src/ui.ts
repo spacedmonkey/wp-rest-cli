@@ -15,11 +15,13 @@ let pc = picocolors.createColors( true );
 const FALSY_ENV = [ '', '0', 'false', 'no', 'off' ];
 
 /**
- * Env vars that AI coding agents export in the shells they launch. Only names
- * that a human would not normally set themselves: user config/credentials such
- * as `COPILOT_MODEL`/`COPILOT_GITHUB_TOKEN` and editor markers set in human
- * terminals (Cursor) are deliberately absent. Codex/Copilot names come from
- * third-party lists — verify against the real tools before adding more.
+ * Env vars that AI coding agents export in the shells they launch. Only
+ * markers documented (or, for Codex/Copilot, widely reported) as identifying
+ * an agent-controlled terminal — never user config/credentials a human could
+ * set themselves, like `COPILOT_MODEL`/`COPILOT_GITHUB_TOKEN` or an API key.
+ * `CURSOR_AGENT` is also set in a human typing in Cursor's own terminal, not
+ * just an autonomous run — same trade-off as `CLAUDECODE`/`WP_REST_CLI_AGENT=0`
+ * exists to opt back out of it.
  */
 const AGENT_ENV_MARKERS = [
 	'CLAUDECODE',
@@ -28,6 +30,8 @@ const AGENT_ENV_MARKERS = [
 	'CODEX_THREAD_ID',
 	'COPILOT_AGENT',
 	'COPILOT_ALLOW_ALL',
+	'CLINE_ACTIVE',
+	'CURSOR_AGENT',
 ];
 
 /**

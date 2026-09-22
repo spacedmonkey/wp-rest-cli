@@ -13,6 +13,8 @@ for ( const name of [
 	'CODEX_THREAD_ID',
 	'COPILOT_AGENT',
 	'COPILOT_ALLOW_ALL',
+	'CLINE_ACTIVE',
+	'CURSOR_AGENT',
 ] ) {
 	delete process.env[ name ];
 }

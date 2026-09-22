@@ -998,20 +998,22 @@ describe( 'agent-friendly JSON output', () => {
 		expect( typeof humanWidgets.verbs ).toBe( 'string' );
 	} );
 
-	it.each( [ 'AI_AGENT', 'CLAUDECODE', 'CODEX_CI', 'COPILOT_AGENT' ] )(
-		'auto-detects agent mode from %s alone',
-		async ( marker ) => {
-			const result = await runCli(
-				[ 'wp/v2', 'widgets', 'list', `--url=${ fixture.baseUrl }` ],
-				{ env: { [ marker ]: '1' } }
-			);
-			expect( result.exitCode ).toBe( 0 );
-			expect( result.stdout ).not.toContain( '\n' );
-			expect( result.stderr ).not.toMatch(
-				/\x1b\[|Discovering REST API/
-			);
-		}
-	);
+	it.each( [
+		'AI_AGENT',
+		'CLAUDECODE',
+		'CODEX_CI',
+		'COPILOT_AGENT',
+		'CLINE_ACTIVE',
+		'CURSOR_AGENT',
+	] )( 'auto-detects agent mode from %s alone', async ( marker ) => {
+		const result = await runCli(
+			[ 'wp/v2', 'widgets', 'list', `--url=${ fixture.baseUrl }` ],
+			{ env: { [ marker ]: '1' } }
+		);
+		expect( result.exitCode ).toBe( 0 );
+		expect( result.stdout ).not.toContain( '\n' );
+		expect( result.stderr ).not.toMatch( /\x1b\[|Discovering REST API/ );
+	} );
 
 	it( 'stays in human mode with no agent markers', async () => {
 		const result = await runCli( [
