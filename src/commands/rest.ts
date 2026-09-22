@@ -2459,6 +2459,7 @@ export async function runHelpCommand(
 			! flags.quiet,
 			() => fetchIndex( client, apiRoot )
 		);
+		assertNamespace( index, parsed.namespace );
 		const children = routeChildren( index, parsed.namespace, '' );
 		if ( flags.format === 'table' ) {
 			const rows = buildChildRows( index, parsed.namespace, children );

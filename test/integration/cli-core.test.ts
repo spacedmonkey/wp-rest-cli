@@ -809,6 +809,12 @@ describe( 'agent-friendly JSON output', () => {
 		expect( result.stderr ).toContain( 'No such namespace' );
 	} );
 
+	it( 'fails for an unknown namespace via wp help', async () => {
+		const result = await run( [ 'help', 'nonsense/v1' ] );
+		expect( result.exitCode ).toBe( 1 );
+		expect( result.stderr ).toContain( 'No such namespace' );
+	} );
+
 	it( 'fails for an unknown route', async () => {
 		const result = await run( [ 'wp/v2', 'nothing' ] );
 		expect( result.exitCode ).toBe( 1 );
