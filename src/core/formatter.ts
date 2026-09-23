@@ -12,7 +12,7 @@ import { stringify as stringifyYaml } from 'yaml';
  */
 import { CliError } from './errors.js';
 import type { OutputFormat } from '../types.js';
-import { pc } from '../ui.js';
+import { agentMode, pc } from '../ui.js';
 
 export interface FormatOptions {
 	format: OutputFormat;
@@ -142,6 +142,9 @@ function stringifyCell( value: unknown, truncate: boolean ): string {
 		: text;
 }
 
+/** Path segments never followed when rebuilding a nested `--fields` pick. */
+const UNSAFE_KEYS = [ '__proto__', 'constructor', 'prototype' ];
+
 /**
  * Picks top-level keys only, preserving nested structure (unlike selectFields' dot-flattening used for table/csv columns).
  * @param row    The row to filter.
@@ -154,9 +157,54 @@ function pickTopLevel(
 ): Record< string, unknown > {
 	const picked: Record< string, unknown > = {};
 	for ( const key of fields ) {
-		picked[ key ] = row[ key ];
+		// A literal key (even one containing dots, like a meta key) wins.
+		if ( UNSAFE_KEYS.includes( key ) ) {
+			continue;
+		}
+		if ( Object.hasOwn( row, key ) || ! key.includes( '.' ) ) {
+			picked[ key ] = row[ key ];
+			continue;
+		}
+		const parts = key.split( '.' );
+		if ( parts.some( ( part ) => UNSAFE_KEYS.includes( part ) ) ) {
+			continue;
+		}
+		const value = getByPath( row, key );
+		if ( value === undefined ) {
+			continue;
+		}
+		// Dotted path: keep the nesting (`title.rendered` -> {title:{rendered}}).
+		let target = picked;
+		for ( const part of parts.slice( 0, -1 ) ) {
+			const next = target[ part ];
+			target[ part ] = next && typeof next === 'object' ? next : {};
+			target = target[ part ] as Record< string, unknown >;
+		}
+		target[ parts[ parts.length - 1 ] as string ] = value;
 	}
 	return picked;
+}
+
+/**
+ * Removes HAL noise (`_links`, `_embedded`) from a response, recursively.
+ * Agent mode only, and only when `--fields` isn't naming keys explicitly.
+ * @param value Any parsed response value.
+ * @return `value` without `_links`/`_embedded` keys.
+ */
+function stripLinks( value: unknown ): unknown {
+	if ( Array.isArray( value ) ) {
+		return value.map( stripLinks );
+	}
+	if ( value && typeof value === 'object' ) {
+		return Object.fromEntries(
+			Object.entries( value )
+				.filter(
+					( [ key ] ) => key !== '_links' && key !== '_embedded'
+				)
+				.map( ( [ key, item ] ) => [ key, stripLinks( item ) ] )
+		);
+	}
+	return value;
 }
 
 /**
@@ -170,7 +218,7 @@ function applyTopLevelFields(
 	fields: string[] | undefined
 ): unknown {
 	if ( ! fields ) {
-		return data;
+		return agentMode() ? stripLinks( data ) : data;
 	}
 	if ( Array.isArray( data ) ) {
 		return data.map( ( row ) =>
@@ -211,7 +259,7 @@ export async function formatOutput(
 		const result = Array.isArray( data ) ? values : values[ 0 ];
 		return typeof result === 'string'
 			? result
-			: JSON.stringify( result, null, 2 );
+			: JSON.stringify( result, null, agentMode() ? undefined : 2 );
 	}
 
 	switch ( options.format ) {
@@ -219,7 +267,7 @@ export async function formatOutput(
 			return JSON.stringify(
 				applyTopLevelFields( data, fields ),
 				null,
-				2
+				agentMode() ? undefined : 2
 			);
 
 		case 'yaml':

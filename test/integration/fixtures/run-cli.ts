@@ -31,6 +31,22 @@ type RunCliOptions = {
 	cwd?: string;
 };
 
+/** Every env var that can switch agent mode on, unset for the child. */
+const AGENT_ENV_SCRUB: Record< string, undefined > = Object.fromEntries(
+	[
+		'WP_REST_CLI_AGENT',
+		'AI_AGENT',
+		'CLAUDECODE',
+		'CODEX_CI',
+		'CODEX_SANDBOX',
+		'CODEX_THREAD_ID',
+		'COPILOT_AGENT',
+		'COPILOT_ALLOW_ALL',
+		'CLINE_ACTIVE',
+		'CURSOR_AGENT',
+	].map( ( name ) => [ name, undefined ] )
+);
+
 /**
  * Spawns the built CLI as a child process.
  * @param args    CLI arguments.
@@ -44,5 +60,8 @@ export function runCli( args: string[], options: RunCliOptions = {} ) {
 	return execa( 'node', [ distCliEntry, ...args ], {
 		reject: false,
 		...options,
+		// The suite itself may run inside an AI agent's shell, so scrub every
+		// agent marker: tests opt in explicitly (e.g. `WP_REST_CLI_AGENT: '1'`).
+		env: { ...AGENT_ENV_SCRUB, ...options.env },
 	} );
 }

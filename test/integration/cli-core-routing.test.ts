@@ -695,4 +695,22 @@ describe( 'generate', () => {
 			created.every( ( g ) => g.sidebar === 'wp_inactive_widgets' )
 		).toBe( true );
 	} );
+
+	it( 'agent mode: no animated bar (no ANSI, no carriage returns) on stderr', async () => {
+		const result = await runCli(
+			[
+				'wp/v2',
+				'widgets',
+				'generate',
+				'--count=3',
+				'--title=Bulk widget',
+				`--url=${ fixture.baseUrl }`,
+			],
+			{ env: { WP_REST_CLI_AGENT: '1' } }
+		);
+		expect( result.exitCode ).toBe( 0 );
+		expect( result.stderr ).not.toMatch( /\x1b\[|\r/ );
+		expect( result.stderr ).toContain( 'Generating wp/v2/widgets' );
+		expect( result.stderr ).toContain( 'done (3/3)' );
+	} );
 } );

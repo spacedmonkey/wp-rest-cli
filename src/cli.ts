@@ -34,7 +34,12 @@ import {
 	type AuthType,
 } from './core/auth/types.js';
 import { debugLog } from './core/debug.js';
-import { formatErrorForDisplay, CliError, WpApiError } from './core/errors.js';
+import {
+	formatErrorForDisplay,
+	formatErrorForJson,
+	CliError,
+	WpApiError,
+} from './core/errors.js';
 import {
 	getFileConfig,
 	type FileConfigKey,
@@ -50,7 +55,13 @@ import type {
 	GlobalFlags,
 	OutputFormat,
 } from './types.js';
-import { pc, setColorEnabled } from './ui.js';
+import {
+	agentMode,
+	agentModeReason,
+	colorByDefault,
+	pc,
+	setColorEnabled,
+} from './ui.js';
 
 const CONTEXTS: Context[] = [ 'view', 'edit', 'embed' ];
 const FORMATS: OutputFormat[] = [
@@ -97,6 +108,19 @@ const KNOWN_LONG_FLAGS = new Set( [
 	'debug',
 	'help',
 ] );
+
+/**
+ * Renders an error for stderr: JSON in agent mode or under `--format=json`
+ * (even if that `--format` value is what failed validation), else plain text.
+ * @param error  The caught value, of any shape.
+ * @param format The raw `--format` option, if given.
+ * @return The text to print.
+ */
+function errorText( error: unknown, format: string | undefined ): string {
+	return agentMode() || format === 'json'
+		? formatErrorForJson( error )
+		: formatErrorForDisplay( error );
+}
 
 /**
  * Rewrites any `--name=value`/`--flag` not in {@link KNOWN_LONG_FLAGS} into a
@@ -176,6 +200,8 @@ function applyFileConfig( options: RawOptions ): RawOptions {
 	const { values, files } = loadFileConfig();
 	if ( options.debug || values.debug ) {
 		debugLog( `config files: ${ files.join( ', ' ) || '(none)' }` );
+		const reason = agentModeReason();
+		debugLog( `agent mode: ${ reason ? `on (${ reason })` : 'off' }` );
 	}
 	const passed = ( name: string ) => {
 		const source = program.getOptionValueSource( name );
@@ -188,7 +214,7 @@ function applyFileConfig( options: RawOptions ): RawOptions {
 		}
 	};
 	set( 'context', values.context );
-	set( 'format', values.format );
+	set( 'format', values.format ?? ( agentMode() ? 'json' : undefined ) );
 	set( 'useAuth', values[ 'use-auth' ] );
 	set( 'timeout', values.timeout?.toString() );
 	set( 'color', values.color );
@@ -199,7 +225,7 @@ function applyFileConfig( options: RawOptions ): RawOptions {
 
 /**
  * Validates and narrows Commander's raw parsed options into typed {@link GlobalFlags}.
- * Color is on by default; `--no-color` is the only way to turn it off.
+ * Color is on unless `--no-color`, `NO_COLOR` or agent mode (`WP_REST_CLI_AGENT`) turns it off.
  * @param options Commander's raw parsed options.
  * @return The validated global flags.
  */
@@ -245,7 +271,7 @@ function toGlobalFlags( options: RawOptions ): GlobalFlags {
 		field: options.field,
 		body: options.body,
 		timeout,
-		color: options.color,
+		color: options.color && colorByDefault(),
 		quiet: Boolean( options.quiet ),
 		debug: Boolean( options.debug ),
 	};
@@ -288,10 +314,11 @@ async function handleConfigCommand(
 		case 'set': {
 			if ( ! options.url && ! options.username ) {
 				console.error(
-					formatErrorForDisplay(
+					errorText(
 						new CliError(
 							'config set requires --url and/or --username.'
-						)
+						),
+						options.format
 					)
 				);
 				return 1;
@@ -314,10 +341,11 @@ async function handleConfigCommand(
 		}
 		default: {
 			console.error(
-				formatErrorForDisplay(
+				errorText(
 					new CliError(
 						'Usage: wp config <get|set|clear|rotate-key> [--url=] [--username=]'
-					)
+					),
+					options.format
 				)
 			);
 			return 1;
@@ -453,11 +481,11 @@ run "wp-rest-cli <namespace> <route>" to see which ones a given route supports.
 	)
 	.action( async ( args: string[], rawOptions: RawOptions ) => {
 		let options = rawOptions;
-		setColorEnabled( options.color );
+		setColorEnabled( options.color && colorByDefault() );
 		setTruncateEnabled( options.truncate !== false );
 		try {
 			options = applyFileConfig( rawOptions );
-			setColorEnabled( options.color );
+			setColorEnabled( options.color && colorByDefault() );
 			if ( args[ 0 ] === 'config' ) {
 				if ( options.help ) {
 					console.log(
@@ -541,7 +569,7 @@ run "wp-rest-cli <namespace> <route>" to see which ones a given route supports.
 			console.log( output );
 			process.exitCode = exitCode;
 		} catch ( error ) {
-			console.error( formatErrorForDisplay( error ) );
+			console.error( errorText( error, options.format ) );
 			if (
 				options.debug &&
 				error instanceof Error &&

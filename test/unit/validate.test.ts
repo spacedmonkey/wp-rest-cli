@@ -8,6 +8,7 @@ import { describe, expect, it } from '@jest/globals';
  */
 import { CliError } from '../../src/core/errors.js';
 import {
+	unknownFieldWarnings,
 	coerceJsonFields,
 	validateFieldTypes,
 } from '../../src/core/validate.js';
@@ -187,5 +188,41 @@ describe( 'coerceJsonFields', () => {
 				args
 			)
 		).toEqual( { unknown_field: 'whatever', untyped: 'whatever' } );
+	} );
+} );
+
+const warnArgs = { per_page: { type: 'integer' }, search: { type: 'string' } };
+
+describe( 'unknownFieldWarnings', () => {
+	it( 'suggests the underscore spelling for a hyphenated typo', () => {
+		expect( unknownFieldWarnings( { 'per-page': '1' }, warnArgs ) ).toEqual(
+			[
+				'Warning: --per-page is not a declared arg of this route; did you mean --per_page?',
+			]
+		);
+	} );
+
+	it( 'ignores declared args, underscore-prefixed names and unknown schemas', () => {
+		expect(
+			unknownFieldWarnings( { search: 'x', _embed: 'true' }, warnArgs )
+		).toEqual( [] );
+		expect( unknownFieldWarnings( { bogus: '1' }, undefined ) ).toEqual(
+			[]
+		);
+	} );
+
+	it( 'warns without a suggestion when nothing is close', () => {
+		expect( unknownFieldWarnings( { zzzzzzzz: '1' }, warnArgs ) ).toEqual( [
+			'Warning: --zzzzzzzz is not a declared arg of this route',
+		] );
+	} );
+
+	it( 'does not suggest for short names or count prototype keys as declared', () => {
+		expect(
+			unknownFieldWarnings( { x: '1' }, { id: { type: 'integer' } } )
+		).toEqual( [ 'Warning: --x is not a declared arg of this route' ] );
+		expect(
+			unknownFieldWarnings( { constructor: '1' }, warnArgs )
+		).toHaveLength( 1 );
 	} );
 } );

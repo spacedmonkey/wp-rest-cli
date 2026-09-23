@@ -9,7 +9,10 @@
 		"wp-cli",
 		"rest-api",
 		"cli",
-		"wp-json"
+		"wp-json",
+		"ai",
+		"agent",
+		"llm"
 	],
 	"homepage": "https://github.com/spacedmonkey/wp-rest-cli#readme",
 	"repository": {
@@ -23,7 +26,8 @@
 		"node": ">=20"
 	},
 	"files": [
-		"dist"
+		"dist",
+		"AGENTS.md"
 	],
 	"type": "module",
 	"bin": {

@@ -11,10 +11,82 @@ import picocolors from 'picocolors';
 // own TTY-based auto-detection everywhere at once via this live binding.
 let pc = picocolors.createColors( true );
 
+/** Env values that mean "off" (for `WP_REST_CLI_AGENT`, `AI_AGENT`, ...). */
+const FALSY_ENV = [ '', '0', 'false', 'no', 'off' ];
+
+/**
+ * Env vars that AI coding agents export in the shells they launch. Only
+ * markers documented (or, for Codex/Copilot, widely reported) as identifying
+ * an agent-controlled terminal — never user config/credentials a human could
+ * set themselves, like `COPILOT_MODEL`/`COPILOT_GITHUB_TOKEN` or an API key.
+ * `CURSOR_AGENT` is also set in a human typing in Cursor's own terminal, not
+ * just an autonomous run — same trade-off as `CLAUDECODE`/`WP_REST_CLI_AGENT=0`
+ * exists to opt back out of it.
+ */
+const AGENT_ENV_MARKERS = [
+	'CLAUDECODE',
+	'CODEX_CI',
+	'CODEX_SANDBOX',
+	'CODEX_THREAD_ID',
+	'COPILOT_AGENT',
+	'COPILOT_ALLOW_ALL',
+	'CLINE_ACTIVE',
+	'CURSOR_AGENT',
+];
+
+/**
+ * Whether an env var is set to something other than a "false" value.
+ * @param name The environment variable name.
+ * @return True when set and not empty/`0`/`false`/`no`/`off`.
+ */
+function envOn( name: string ): boolean {
+	return ! FALSY_ENV.includes(
+		( process.env[ name ] ?? '' ).trim().toLowerCase()
+	);
+}
+
+/**
+ * Which env var turned agent mode on, or undefined when it is off. An
+ * explicit `WP_REST_CLI_AGENT` always wins (a false value is the human
+ * escape hatch); otherwise `AI_AGENT` or a known agent marker enables it.
+ * @return The triggering variable's name, or undefined when agent mode is off.
+ */
+export function agentModeReason(): string | undefined {
+	if ( process.env.WP_REST_CLI_AGENT !== undefined ) {
+		return envOn( 'WP_REST_CLI_AGENT' ) ? 'WP_REST_CLI_AGENT' : undefined;
+	}
+	// AI_AGENT is the cross-tool convention: a falsy value is an explicit
+	// opt-out too, same as WP_REST_CLI_AGENT — it doesn't fall through to a
+	// more specific marker like CLAUDECODE.
+	if ( process.env.AI_AGENT !== undefined ) {
+		return envOn( 'AI_AGENT' ) ? 'AI_AGENT' : undefined;
+	}
+	return AGENT_ENV_MARKERS.find( envOn );
+}
+
+/**
+ * Whether agent mode is on — set `WP_REST_CLI_AGENT=1`, or it is detected from
+ * an AI agent's environment (see {@link agentModeReason}): plain,
+ * machine-friendly output with no spinners or colour, JSON by default.
+ * @return True when agent mode is on.
+ */
+export function agentMode(): boolean {
+	return agentModeReason() !== undefined;
+}
+
+/**
+ * Whether colorized output is wanted by default: on (even when piped, as
+ * always) unless `NO_COLOR` is set or agent mode is on.
+ * @return True when colorized output is appropriate by default.
+ */
+export function colorByDefault(): boolean {
+	return ! process.env.NO_COLOR && ! agentMode();
+}
+
 /**
  * Enables or disables color for every `pc.*` call in the app, overriding
- * picocolors' own TTY-based auto-detection so `--no-color` is the only thing
- * that turns color off (it's on by default even when output is piped).
+ * picocolors' own detection, so the resolved `--no-color`/`NO_COLOR`/agent-mode
+ * decision (see `colorByDefault`) is the only thing that controls color.
  * @param enabled Whether colorized output should be emitted.
  */
 export function setColorEnabled( enabled: boolean ): void {
@@ -22,15 +94,16 @@ export function setColorEnabled( enabled: boolean ): void {
 }
 
 /**
- * Starts a terminal spinner, unless spinners are disabled (e.g. non-TTY output).
+ * Starts a terminal spinner, unless spinners are disabled (`--quiet` or agent mode).
  * @param text    Label shown next to the spinner.
  * @param enabled Whether spinners are enabled for this invocation.
  * @return The running spinner, or undefined when disabled.
  */
 export function spinner( text: string, enabled: boolean ): Ora | undefined {
-	if ( ! enabled ) {
+	if ( ! enabled || agentMode() ) {
 		return undefined;
 	}
+	// isEnabled is forced on: humans keep spinners even when piped (as always).
 	return ora( { text, isEnabled: true } ).start();
 }
 
@@ -71,6 +144,10 @@ export async function withSpinner< T >(
  */
 export function notice( message: string, enabled: boolean ): void {
 	if ( ! enabled ) {
+		return;
+	}
+	if ( agentMode() ) {
+		process.stderr.write( `${ message }\n` );
 		return;
 	}
 	ora().info( message );
@@ -129,6 +206,25 @@ export function createProgressBar(
 ): ProgressBar {
 	if ( ! enabled || total <= 0 ) {
 		return NULL_PROGRESS_BAR;
+	}
+	if ( agentMode() ) {
+		// No animated bar: cli-progress redraws with \r and hides the cursor
+		// via raw ANSI, which is exactly the noise agent mode exists to avoid.
+		// One plain start line, tick()'s existing `log()` calls still report
+		// per-item messages as-is, and one plain finish line with the count.
+		let done = 0;
+		notice( message, true );
+		return {
+			tick( by = 1 ) {
+				done += by;
+			},
+			log( logMessage: string ) {
+				notice( logMessage, true );
+			},
+			finish() {
+				notice( `${ message }: done (${ done }/${ total }).`, true );
+			},
+		};
 	}
 	const bar = new cliProgress.SingleBar(
 		{

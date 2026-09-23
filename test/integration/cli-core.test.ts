@@ -734,3 +734,321 @@ describe( 'YAML config files', () => {
 		expect( result.stdout ).toContain( `from ${ file }` );
 	} );
 } );
+
+describe( 'agent-friendly JSON output', () => {
+	it( 'emits route help as JSON with --format=json', async () => {
+		const result = await run( [
+			'help',
+			'wp/v2',
+			'widgets',
+			'--format=json',
+		] );
+		expect( result.exitCode ).toBe( 0 );
+		const parsed = JSON.parse( result.stdout );
+		expect( parsed.route ).toBe( 'widgets' );
+		expect( Array.isArray( parsed.endpoints ) ).toBe( true );
+	} );
+
+	it( 'emits verb help as JSON with --format=json', async () => {
+		const result = await run( [
+			'help',
+			'wp/v2',
+			'widgets',
+			'create',
+			'--format=json',
+		] );
+		expect( result.exitCode ).toBe( 0 );
+		expect( JSON.parse( result.stdout ).verb ).toBe( 'create' );
+	} );
+
+	it( 'emits errors as JSON on stderr with --format=json', async () => {
+		const result = await run( [
+			'wp/v2',
+			'widgets',
+			'get',
+			'999999',
+			'--format=json',
+		] );
+		expect( result.exitCode ).toBe( 1 );
+		expect( JSON.parse( result.stderr ).error.status ).toBe( 404 );
+	} );
+
+	it( 'lists a slug-keyed collection as rows, honouring --fields', async () => {
+		const result = await run( [
+			'wp/v2',
+			'taxonomies',
+			'list',
+			'--fields=slug,name',
+			'--format=json',
+		] );
+		expect( result.exitCode ).toBe( 0 );
+		expect( JSON.parse( result.stdout ) ).toEqual( [
+			{ slug: 'category', name: 'Categories' },
+			{ slug: 'post_tag', name: 'Tags' },
+		] );
+	} );
+
+	it( 'keeps dotted --fields paths in json output', async () => {
+		const result = await run( [
+			'wp/v2',
+			'widgets',
+			'list',
+			'--fields=id,title.rendered',
+			'--format=json',
+		] );
+		expect( result.exitCode ).toBe( 0 );
+		const rows = JSON.parse( result.stdout );
+		expect( rows.length ).toBeGreaterThan( 0 );
+		expect( rows[ 0 ].title.rendered ).toEqual( expect.any( String ) );
+		expect( rows[ 0 ] ).not.toHaveProperty( 'link' );
+	} );
+
+	it( 'fails for an unknown namespace', async () => {
+		const result = await run( [ 'nonsense/v1' ] );
+		expect( result.exitCode ).toBe( 1 );
+		expect( result.stderr ).toContain( 'No such namespace' );
+	} );
+
+	it( 'fails for an unknown namespace via wp help', async () => {
+		const result = await run( [ 'help', 'nonsense/v1' ] );
+		expect( result.exitCode ).toBe( 1 );
+		expect( result.stderr ).toContain( 'No such namespace' );
+	} );
+
+	it( 'fails for an unknown route', async () => {
+		const result = await run( [ 'wp/v2', 'nothing' ] );
+		expect( result.exitCode ).toBe( 1 );
+		expect( result.stderr ).toContain( 'No such route' );
+	} );
+
+	it( 'agent mode: no spinner/ANSI, JSON by default and JSON errors', async () => {
+		const env = { WP_REST_CLI_AGENT: '1' };
+		const ok = await runCli(
+			[ 'wp/v2', 'widgets', 'list', `--url=${ fixture.baseUrl }` ],
+			{ env }
+		);
+		expect( ok.exitCode ).toBe( 0 );
+		expect( ok.stderr ).not.toMatch( /\x1b\[|Discovering REST API/ );
+		expect( Array.isArray( JSON.parse( ok.stdout ) ) ).toBe( true );
+		const bad = await runCli(
+			[
+				'wp/v2',
+				'widgets',
+				'get',
+				'999999',
+				`--url=${ fixture.baseUrl }`,
+			],
+			{ env }
+		);
+		expect( bad.exitCode ).toBe( 1 );
+		expect( JSON.parse( bad.stderr ).error.status ).toBe( 404 );
+	} );
+
+	it( 'agent mode: compact JSON and unknown-flag warning on stderr', async () => {
+		const result = await runCli(
+			[
+				'wp/v2',
+				'widgets',
+				'list',
+				'--per-page=1',
+				`--url=${ fixture.baseUrl }`,
+			],
+			{ env: { WP_REST_CLI_AGENT: '1' } }
+		);
+		expect( result.exitCode ).toBe( 0 );
+		expect( result.stdout ).not.toContain( '\n' );
+		expect( result.stderr ).toContain( '--per-page is not a declared arg' );
+	} );
+
+	it( 'human mode does not warn about unknown flags', async () => {
+		const result = await run( [
+			'wp/v2',
+			'widgets',
+			'list',
+			'--per-page=1',
+		] );
+		expect( result.stderr ).not.toContain( 'not a declared arg' );
+	} );
+
+	it( 'default (human) mode still shows progress lines on stderr', async () => {
+		const result = await runCli( [
+			'wp/v2',
+			'widgets',
+			'list',
+			`--url=${ fixture.baseUrl }`,
+		] );
+		expect( result.stderr ).toContain( 'Discovering REST API' );
+	} );
+
+	it( '--format=count reports the site total from X-WP-Total', async () => {
+		const result = await run( [
+			'wp/v2',
+			'widgets',
+			'list',
+			'--format=count',
+		] );
+		expect( result.exitCode ).toBe( 0 );
+		expect( Number( result.stdout ) ).toBeGreaterThan( 0 );
+	} );
+
+	it( 'hints at more pages on stderr when X-WP-TotalPages > 1', async () => {
+		const result = await runCli(
+			[
+				'wp/v2',
+				'widgets',
+				'list',
+				'--per_page=1',
+				`--url=${ fixture.baseUrl }`,
+			],
+			{ env: { WP_REST_CLI_AGENT: '1' } }
+		);
+		expect( result.stderr ).toMatch( /Page 1 of \d+ \(\d+ total\)/ );
+	} );
+
+	it( 'scopes verb help JSON to that verb’s HTTP method', async () => {
+		const result = await run( [
+			'help',
+			'wp/v2',
+			'widgets',
+			'create',
+			'--format=json',
+		] );
+		const { endpoints } = JSON.parse( result.stdout );
+		expect( endpoints.length ).toBeGreaterThan( 0 );
+		for ( const endpoint of endpoints ) {
+			expect( endpoint.methods ).toContain( 'POST' );
+		}
+	} );
+
+	it( 'omits a dotted --fields path that does not exist', async () => {
+		const result = await run( [
+			'wp/v2',
+			'widgets',
+			'list',
+			'--fields=id,nonexistent.x',
+			'--format=json',
+		] );
+		const rows = JSON.parse( result.stdout );
+		expect( rows[ 0 ] ).not.toHaveProperty( 'nonexistent' );
+	} );
+
+	it( 'agent mode: an invalid --format still yields a JSON error', async () => {
+		const result = await runCli(
+			[
+				'wp/v2',
+				'widgets',
+				'list',
+				'--format=bogus',
+				`--url=${ fixture.baseUrl }`,
+			],
+			{ env: { WP_REST_CLI_AGENT: '1' } }
+		);
+		expect( result.exitCode ).toBe( 1 );
+		expect( JSON.parse( result.stderr ).error.message ).toContain(
+			'--format must be one of'
+		);
+	} );
+
+	it( 'agent mode: fails with No such namespace for an unknown namespace plus a verb', async () => {
+		const result = await runCli(
+			[ 'nons/v1', 'widgets', 'list', `--url=${ fixture.baseUrl }` ],
+			{ env: { WP_REST_CLI_AGENT: '1' } }
+		);
+		expect( result.exitCode ).toBe( 1 );
+		expect( result.stderr ).toContain( 'No such namespace' );
+	} );
+
+	it( 'help JSON has required lists and children', async () => {
+		const result = await run( [
+			'help',
+			'wp/v2',
+			'widgets',
+			'--format=json',
+		] );
+		const help = JSON.parse( result.stdout );
+		expect( Array.isArray( help.children ) ).toBe( true );
+		expect(
+			help.children.map( ( c: { route: string } ) => c.route )
+		).toContain( 'meta' );
+		for ( const endpoint of help.endpoints ) {
+			expect( Array.isArray( endpoint.required ) ).toBe( true );
+		}
+	} );
+
+	it( 'agent mode: bare route JSON drops the bulky schema; human mode keeps it', async () => {
+		const agent = await runCli(
+			[ 'wp/v2', 'widgets', `--url=${ fixture.baseUrl }` ],
+			{ env: { WP_REST_CLI_AGENT: '1' } }
+		);
+		const agentJson = JSON.parse( agent.stdout );
+		expect( agentJson ).not.toHaveProperty( 'schema' );
+		expect( agentJson ).toHaveProperty( 'children' );
+		const human = await run( [ 'wp/v2', 'widgets', '--format=json' ] );
+		expect( JSON.parse( human.stdout ) ).not.toHaveProperty( 'children' );
+	} );
+
+	it( 'agent mode: namespace listing has array verbs and has_children', async () => {
+		const agent = await runCli( [ 'wp/v2', `--url=${ fixture.baseUrl }` ], {
+			env: { WP_REST_CLI_AGENT: '1' },
+		} );
+		const rows = JSON.parse( agent.stdout );
+		const widgets = rows.find(
+			( r: { route: string } ) => r.route === 'widgets'
+		);
+		expect( Array.isArray( widgets.verbs ) ).toBe( true );
+		expect( typeof widgets.has_children ).toBe( 'boolean' );
+		const human = await run( [ 'wp/v2', '--format=json' ] );
+		const humanWidgets = JSON.parse( human.stdout ).find(
+			( r: { route: string } ) => r.route === 'widgets'
+		);
+		expect( typeof humanWidgets.verbs ).toBe( 'string' );
+	} );
+
+	it.each( [
+		'AI_AGENT',
+		'CLAUDECODE',
+		'CODEX_CI',
+		'COPILOT_AGENT',
+		'CLINE_ACTIVE',
+		'CURSOR_AGENT',
+	] )( 'auto-detects agent mode from %s alone', async ( marker ) => {
+		const result = await runCli(
+			[ 'wp/v2', 'widgets', 'list', `--url=${ fixture.baseUrl }` ],
+			{ env: { [ marker ]: '1' } }
+		);
+		expect( result.exitCode ).toBe( 0 );
+		expect( result.stdout ).not.toContain( '\n' );
+		expect( result.stderr ).not.toMatch( /\x1b\[|Discovering REST API/ );
+	} );
+
+	it( 'stays in human mode with no agent markers', async () => {
+		const result = await runCli( [
+			'wp/v2',
+			'widgets',
+			`--url=${ fixture.baseUrl }`,
+		] );
+		expect( result.stderr ).toContain( 'Discovering REST API' );
+	} );
+
+	it( 'WP_REST_CLI_AGENT=0 overrides a detected marker', async () => {
+		const result = await runCli(
+			[ 'wp/v2', 'widgets', `--url=${ fixture.baseUrl }` ],
+			{ env: { CLAUDECODE: '1', WP_REST_CLI_AGENT: '0' } }
+		);
+		expect( result.stderr ).toContain( 'Discovering REST API' );
+	} );
+
+	it( '--debug reports why agent mode is on', async () => {
+		const result = await runCli(
+			[
+				'wp/v2',
+				'widgets',
+				'list',
+				'--debug',
+				`--url=${ fixture.baseUrl }`,
+			],
+			{ env: { AI_AGENT: '1' } }
+		);
+		expect( result.stderr ).toContain( 'agent mode: on (AI_AGENT)' );
+	} );
+} );
