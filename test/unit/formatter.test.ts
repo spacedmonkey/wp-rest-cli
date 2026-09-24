@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
 /**
  * Internal dependencies
  */
-import { formatOutput, setTruncateEnabled } from '../../src/core/formatter.js';
+import { formatOutput, setTruncateLength } from '../../src/core/formatter.js';
 
 const posts = [
 	{ id: 1, title: { rendered: 'Hello' }, link: 'https://example.com/1' },
@@ -155,8 +155,8 @@ describe( 'formatOutput', () => {
 		expect( out ).toContain( '<p>Line1</p> <p>Line2</p>' );
 	} );
 
-	it( 'keeps full cells when truncation is disabled', async () => {
-		setTruncateEnabled( false );
+	it( 'keeps full cells when truncation length is 0', async () => {
+		setTruncateLength( 0 );
 		try {
 			const out = await formatOutput( [ { s: 'x'.repeat( 80 ) } ], {
 				format: 'table',
@@ -164,7 +164,21 @@ describe( 'formatOutput', () => {
 			} );
 			expect( out ).toContain( 'x'.repeat( 80 ) );
 		} finally {
-			setTruncateEnabled( true );
+			setTruncateLength( 50 );
+		}
+	} );
+
+	it( 'honours a custom truncation length', async () => {
+		setTruncateLength( 10 );
+		try {
+			const out = await formatOutput( [ { s: 'x'.repeat( 80 ) } ], {
+				format: 'table',
+				color: false,
+			} );
+			expect( out ).toContain( `${ 'x'.repeat( 9 ) }…` );
+			expect( out ).not.toContain( 'x'.repeat( 10 ) );
+		} finally {
+			setTruncateLength( 50 );
 		}
 	} );
 
@@ -177,13 +191,13 @@ describe( 'formatOutput', () => {
 		expect( out ).toContain( 'y'.repeat( 50 ) );
 	} );
 
-	it( 'shows <object> for --fields naming a nested key', async () => {
+	it( 'shows the JSON for --fields naming a nested key', async () => {
 		const out = await formatOutput( posts, {
 			format: 'table',
 			fields: 'title',
 			color: false,
 		} );
-		expect( out ).toContain( '<object>' );
+		expect( out ).toContain( '{"rendered":"Hello"}' );
 	} );
 
 	it( 'leaves a nested --fields key blank in csv', async () => {
@@ -204,15 +218,59 @@ describe( 'formatOutput', () => {
 		expect( out ).toContain( 'x'.repeat( 80 ) );
 	} );
 
-	it( 'truncates long cells and shows placeholders for nested values', async () => {
+	it( 'truncates long cells and shows the JSON for short nested values', async () => {
 		const out = await formatOutput(
 			[ { id: 1, s: 'x'.repeat( 80 ), o: { a: 1 }, a: [ 1 ] } ],
 			{ format: 'table', color: false }
 		);
 		expect( out ).toContain( `${ 'x'.repeat( 49 ) }…` );
 		expect( out ).not.toContain( 'x'.repeat( 50 ) );
-		expect( out ).toContain( '<object>' );
-		expect( out ).toContain( '<array>' );
+		expect( out ).toContain( '{"a":1}' );
+		expect( out ).toContain( '[1]' );
+	} );
+
+	it( 'truncates a long object/array cell to 50 chars ending in ...}/...]', async () => {
+		const out = await formatOutput(
+			[
+				{
+					o: { key: 'x'.repeat( 60 ) },
+					a: Array.from( { length: 30 }, ( _, i ) => i ),
+				},
+			],
+			{ format: 'table', color: false }
+		);
+		const objectJson = JSON.stringify( { key: 'x'.repeat( 60 ) } );
+		const arrayJson = JSON.stringify(
+			Array.from( { length: 30 }, ( _, i ) => i )
+		);
+		expect( out ).not.toContain( objectJson );
+		expect( out ).not.toContain( arrayJson );
+		expect( out ).toContain( `${ objectJson.slice( 0, 46 ) }...}` );
+		expect( out ).toContain( `${ arrayJson.slice( 0, 46 ) }...]` );
+	} );
+
+	it( 'shows the full object/array when truncation is disabled', async () => {
+		const value = { key: 'x'.repeat( 60 ) };
+		const out = await formatOutput( [ { o: value } ], {
+			format: 'table',
+			color: false,
+			truncate: false,
+		} );
+		expect( out ).toContain( JSON.stringify( value ) );
+	} );
+
+	it( 'shows the full object/array under --truncate-length=0', async () => {
+		const value = { key: 'x'.repeat( 60 ) };
+		try {
+			setTruncateLength( 0 );
+			const out = await formatOutput( [ { o: value } ], {
+				format: 'table',
+				color: false,
+			} );
+			expect( out ).toContain( JSON.stringify( value ) );
+		} finally {
+			setTruncateLength( 50 );
+		}
 	} );
 } );
 
