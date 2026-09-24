@@ -11,7 +11,7 @@ Give the parameter a **file path or an `http(s)://` URL** and the CLI uploads it
 ## Quick start
 
 ```sh
-wp wp/v2 media create --file=./cat.jpg --title="Cat" --alt_text="A cat" --url=https://example.com
+wrapido wp/v2 media create --file=./cat.jpg --title="Cat" --alt_text="A cat" --url=https://example.com
 ```
 
 Uploading needs the `upload_files` capability — use an [Application Password](authentication.md). Output follows the usual `--format` rules (`Success: Created media 123`, `--format=ids`, `--format=json`).
@@ -28,10 +28,10 @@ Prefix a value with `@` to force it to be a file (`--attachment=@./a.pdf`; a mis
 ## Other endpoints
 
 ```sh
-wp my-plugin/v1 documents create --attachment=./report.pdf --title="Q3"
+wrapido my-plugin/v1 documents create --attachment=./report.pdf --title="Q3"
 ```
 
--   The name after `--` is whatever that route's arguments call it. Run `wp <namespace> <route>` to see them.
+-   The name after `--` is whatever that route's arguments call it. Run `wrapido <namespace> <route>` to see them.
 -   If a value that happens to be an existing file's path (or a URL) must be sent as text, prefix it with `@@`.
 -   File fields are only valid with `create` and `update` (`update` sends a POST, and takes one file). They can't be combined with `--body`.
 
@@ -40,19 +40,19 @@ wp my-plugin/v1 documents create --attachment=./report.pdf --title="Q3"
 Repeat the parameter; each file becomes its own request:
 
 ```sh
-wp wp/v2 media create --file=./a.jpg --file=./b.png --title="Gallery" --format=ids
+wrapido wp/v2 media create --file=./a.jpg --file=./b.png --title="Gallery" --format=ids
 ```
 
 Results are reported per file. If some fail, the successes are still printed, failures go to stderr as `path: message`, a `Warning: 1 of 2 failed` line is shown, and the exit code is `1`. `--quiet` hides progress, not errors. The CLI does no globbing itself; use your shell:
 
 ```sh
-for f in *.jpg; do wp wp/v2 media create --file="$f"; done
+for f in *.jpg; do wrapido wp/v2 media create --file="$f"; done
 ```
 
 ## Importing from a URL
 
 ```sh
-wp wp/v2 media create --file=https://example.com/cat.jpg
+wrapido wp/v2 media create --file=https://example.com/cat.jpg
 ```
 
 The CLI downloads the file to a temporary directory, then uploads it like a local file, so any file type works. Paths and URLs can be mixed in one command.

@@ -1,4 +1,4 @@
-# Contributing to wp-rest-cli
+# Contributing to wrapido
 
 Thanks for considering a contribution. This project is a plain Node/TypeScript CLI with no PHP or WordPress
 install required to work on it - everything runs against a local fixture HTTP server or, if you want to,

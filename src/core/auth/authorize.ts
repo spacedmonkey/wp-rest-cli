@@ -77,8 +77,8 @@ export function canSiteUseApplicationPasswords( apiRoot: string ): boolean {
 
 /**
  * The specific reason a site can't run the Application Password
- * authorization flow, so `wp auth application-passwords login` can point the
- * user at a working fallback (`wp auth application-passwords add`) instead of
+ * authorization flow, so `wrapido auth application-passwords login` can point the
+ * user at a working fallback (`wrapido auth application-passwords add`) instead of
  * a generic "not supported" message.
  * @param apiRoot The resolved REST API root the site doesn't advertise
  *                Application Passwords support at.
@@ -90,12 +90,12 @@ function buildUnsupportedError( apiRoot: string ): CliError {
 		return new CliError(
 			'This site does not advertise Application Passwords support. WordPress disables ' +
 				'Application Passwords over plain HTTP (except on localhost) — use an https:// URL, ' +
-				`or store a regular account password instead with: wp auth ${ APPLICATION_PASSWORDS_AUTH_TYPE } add <url> --username=<u> --password=<p>`
+				`or store a regular account password instead with: wrapido auth ${ APPLICATION_PASSWORDS_AUTH_TYPE } add <url> --username=<u> --password=<p>`
 		);
 	}
 	return new CliError(
 		'This site does not support Application Passwords (requires WordPress 5.6+ with the ' +
-			`feature enabled). Use: wp auth ${ APPLICATION_PASSWORDS_AUTH_TYPE } add <url> --username=<u> --password=<p>`
+			`feature enabled). Use: wrapido auth ${ APPLICATION_PASSWORDS_AUTH_TYPE } add <url> --username=<u> --password=<p>`
 	);
 }
 
@@ -130,7 +130,7 @@ function startCallbackServer( timeoutMs: number ): Promise< {
 					shutdown();
 					rejectResult(
 						new CliError(
-							`Timed out waiting for authorization in the browser. Run "wp auth ${ APPLICATION_PASSWORDS_AUTH_TYPE } login <url>" again.`
+							`Timed out waiting for authorization in the browser. Run "wrapido auth ${ APPLICATION_PASSWORDS_AUTH_TYPE } login <url>" again.`
 						)
 					);
 				}, timeoutMs );
@@ -231,7 +231,7 @@ export async function runAuthorizationFlow(
 	);
 
 	print(
-		`Open this URL in your browser to authorize wp-rest-cli:\n\n  ${ authorizeUrl }\n\nWaiting for authorization...`
+		`Open this URL in your browser to authorize wrapido:\n\n  ${ authorizeUrl }\n\nWaiting for authorization...`
 	);
 
 	return result;

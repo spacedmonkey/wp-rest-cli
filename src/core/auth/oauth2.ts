@@ -19,14 +19,14 @@ import type { AuthProvider } from './types.js';
 
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
 
-/** The fixed local port `wp auth oauth2 login`'s callback server binds to by default. */
+/** The fixed local port `wrapido auth oauth2 login`'s callback server binds to by default. */
 export const DEFAULT_OAUTH2_CALLBACK_PORT = 8787;
 
-/** The fixed local path `wp auth oauth2 login`'s callback server listens on by default. */
+/** The fixed local path `wrapido auth oauth2 login`'s callback server listens on by default. */
 export const DEFAULT_OAUTH2_CALLBACK_PATH = '/callback';
 
 /**
- * Builds the default local redirect URI `wp auth oauth2 login` registers
+ * Builds the default local redirect URI `wrapido auth oauth2 login` registers
  * with, and listens on, unless overridden via `redirect-uri=`/`port=`. Unlike
  * Application Passwords' browser flow (`core/auth/authorize.ts`), this can't
  * use an OS-assigned ephemeral port: the WP-API/OAuth2 plugin matches a
@@ -83,7 +83,7 @@ export async function assertOAuth2Supported(
 	if ( ! endpoints ) {
 		throw new CliError(
 			"This site doesn't advertise OAuth2 support — the WP-API/OAuth2 plugin may not be " +
-				'installed or active. Use "wp auth application-passwords login" instead, or check ' +
+				'installed or active. Use "wrapido auth application-passwords login" instead, or check ' +
 				'with the site administrator.'
 		);
 	}
@@ -147,7 +147,7 @@ function startOAuth2CallbackServer(
 				rejectReady(
 					new CliError(
 						`Port ${ port } is already in use — pass a different "port=" or ` +
-							'"redirect-uri=" field to "wp auth oauth2 login".'
+							'"redirect-uri=" field to "wrapido auth oauth2 login".'
 					)
 				);
 				return;
@@ -169,7 +169,7 @@ function startOAuth2CallbackServer(
 						server.close();
 						rejectResult(
 							new CliError(
-								'Timed out waiting for authorization in the browser. Run "wp auth oauth2 login <url>" again.'
+								'Timed out waiting for authorization in the browser. Run "wrapido auth oauth2 login <url>" again.'
 							)
 						);
 					}, timeoutMs );
@@ -286,7 +286,7 @@ export async function runOAuth2AuthorizationCodeFlow(
 		throw new CliError(
 			"This site's OAuth2 support doesn't advertise an authorization endpoint, so the browser " +
 				'login flow is unavailable. If the Application has the client_credentials grant ' +
-				'enabled, use "wp auth oauth2 add" instead.'
+				'enabled, use "wrapido auth oauth2 add" instead.'
 		);
 	}
 
@@ -306,7 +306,7 @@ export async function runOAuth2AuthorizationCodeFlow(
 	authorizeUrl.searchParams.set( 'state', state );
 
 	print(
-		`Open this URL in your browser to authorize wp-rest-cli:\n\n  ${ authorizeUrl.toString() }\n\nWaiting for authorization...`
+		`Open this URL in your browser to authorize wrapido:\n\n  ${ authorizeUrl.toString() }\n\nWaiting for authorization...`
 	);
 
 	const code = await result;

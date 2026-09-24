@@ -399,7 +399,7 @@ export async function startFixture(): Promise< Fixture > {
 
 		// A second, otherwise-identical site index, addressed as
 		// `${baseUrl}/no-app-passwords`, that omits the `authentication` field
-		// entirely — for exercising `wp auth application-passwords login`
+		// entirely — for exercising `wrapido auth application-passwords login`
 		// against a site that doesn't support Application Passwords at all
 		// (as opposed to the
 		// main fixture above, which always advertises support).
@@ -622,7 +622,7 @@ export async function startFixture(): Promise< Fixture > {
 					},
 					// Modelled on WP_REST_Revisions_Controller: the URL parameter sits
 					// in the *middle* of the path (a parent post id), not at the end —
-					// addressed as `wp wp/v2 posts revisions get <parent>`.
+					// addressed as `wrapido wp/v2 posts revisions get <parent>`.
 					'/wp/v2/posts/(?P<parent>[\\d]+)/revisions': {
 						namespace: 'wp/v2',
 						methods: [ 'GET' ],
@@ -644,7 +644,7 @@ export async function startFixture(): Promise< Fixture > {
 					},
 					// Modelled on WP_REST_Revisions_Controller's single-revision
 					// endpoint: TWO URL parameters (parent post id, then revision id) —
-					// addressed as `wp wp/v2 posts revisions <parent> <id>` (no verb;
+					// addressed as `wrapido wp/v2 posts revisions <parent> <id>` (no verb;
 					// this is the multi-parameter case, unlike every single-parameter
 					// route above which needs get/exists).
 					'/wp/v2/posts/(?P<parent>[\\d]+)/revisions/(?P<id>[\\d]+)':
@@ -1892,7 +1892,7 @@ export async function startFixture(): Promise< Fixture > {
 		//
 		// Models WordPress's real endpoint, which returns details of whichever
 		// Application Password is authenticating the current request — used by
-		// `wp auth application-passwords login`/`wp auth application-passwords
+		// `wrapido auth application-passwords login`/`wrapido auth application-passwords
 		// remove` to capture a credential's uuid.
 		if (
 			path ===
@@ -1922,7 +1922,7 @@ export async function startFixture(): Promise< Fixture > {
 			send( res, 200, {
 				uuid: `uuid-${ auth.username }`,
 				app_id: null,
-				name: 'wp-rest-cli',
+				name: 'wrapido',
 				created: 1700000000,
 				last_used: null,
 				last_ip: null,
@@ -1931,13 +1931,13 @@ export async function startFixture(): Promise< Fixture > {
 		}
 
 		// Models the generic "am I authenticated at all" check
-		// `wp auth application-passwords add`'s validation falls back to when
+		// `wrapido auth application-passwords add`'s validation falls back to when
 		// introspection above doesn't apply. Also accepts a Bearer token
-		// issued by the OAuth2 token endpoint above, for `wp auth oauth2
+		// issued by the OAuth2 token endpoint above, for `wrapido auth oauth2
 		// add`'s own best-effort verification step — authenticating as user
 		// id 0, modelling a client_credentials token's lack of real user
 		// context. A recognized personal token (see `KNOWN_PERSONAL_TOKEN`)
-		// authenticates as a real user instead, so `wp auth oauth2 add
+		// authenticates as a real user instead, so `wrapido auth oauth2 add
 		// --token=`'s verification step can tell the two apart.
 		if ( path === '/wp-json/wp/v2/users/me' && req.method === 'GET' ) {
 			const authHeader = req.headers.authorization;

@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a problem with wp-rest-cli
+description: Report a problem with wrapido
 title: "[Bug]: "
 labels:
   - bug
@@ -13,10 +13,10 @@ body:
     id: command
     attributes:
       label: Command run
-      description: The exact `wp-rest-cli` (or `npm run wp -- ...`) command that triggered the problem.
+      description: The exact `wrapido` (or `npm run wp -- ...`) command that triggered the problem.
       render: sh
       placeholder: |
-        wp-rest-cli wp/v2 posts list --url=https://example.com --per_page=5
+        wrapido wp/v2 posts list --url=https://example.com --per_page=5
     validations:
       required: true
 
@@ -40,8 +40,8 @@ body:
   - type: input
     id: cli-version
     attributes:
-      label: wp-rest-cli version
-      description: Output of `wp-rest-cli --version` (or the npm package version you installed).
+      label: wrapido version
+      description: Output of `wrapido --version` (or the npm package version you installed).
       placeholder: "0.1.0"
     validations:
       required: true

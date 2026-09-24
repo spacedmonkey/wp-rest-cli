@@ -151,7 +151,7 @@ function collectRepeated(
  * WP_REST_Global_Styles_Controller's `global-styles/themes/(?P<stylesheet>%s)`)
  * be addressed the same way WP-CLI addresses nested commands — as separate
  * words — rather than requiring one pre-joined "global-styles/themes" token:
- *   wp-rest-cli wp/v2 global-styles themes get <stylesheet>
+ *   wrapido wp/v2 global-styles themes get <stylesheet>
  * A token that reaches this loop can't yet be distinguished from a genuine
  * (if unusual) route segment, so an unrecognised verb is no longer rejected
  * up front here — it's folded into the route and left to fail naturally
@@ -267,7 +267,7 @@ export type ParsedHelp =
 
 /**
  * Which help renderer `runHelpCommand` should use: `'usage'` is the existing
- * dense, schema-driven `usage: ... \n   or: ...` block (`wp help ...` and bare
+ * dense, schema-driven `usage: ... \n   or: ...` block (`wrapido help ...` and bare
  * introspection); `'wpcli'` is the NAME/DESCRIPTION/SYNOPSIS/SUBCOMMANDS or
  * NAME/DESCRIPTION/SYNOPSIS/OPTIONS/EXAMPLES page real WP-CLI prints for
  * `--help`, used only when a command is run with a trailing `--help` flag.
@@ -275,7 +275,7 @@ export type ParsedHelp =
 export type HelpStyle = 'usage' | 'wpcli';
 
 /**
- * Parses `wp help [<namespace> [<route...> [<verb>]]]`'s arguments into a
+ * Parses `wrapido help [<namespace> [<route...> [<verb>]]]`'s arguments into a
  * typed {@link ParsedHelp}, mirroring {@link parseCommandArgs}'s shapes but
  * never expecting an `<id>` or `field=value` pairs, since help never performs
  * a request.
@@ -286,7 +286,7 @@ export function parseHelpArgs( args: string[] ): ParsedHelp {
 	const [ namespace, ...tail ] = args;
 	if ( ! namespace ) {
 		throw new CliError(
-			'Usage: wp-rest-cli help [<namespace> [<route...> [<verb>]]]'
+			'Usage: wrapido help [<namespace> [<route...> [<verb>]]]'
 		);
 	}
 
@@ -367,8 +367,8 @@ function providerFromPair(
 /**
  * Builds an auth provider, in this precedence order: `--username`/
  * `--password` flags, then `WP_USERNAME`/`WP_PASSWORD` env vars, then a
- * credential previously saved for `siteUrl` via `wp auth <type> login`/`wp
- * auth <type> add`. Application Passwords work over plain Basic Auth (see
+ * credential previously saved for `siteUrl` via `wrapido auth <type> login`/
+ * `wrapido auth <type> add`. Application Passwords work over plain Basic Auth (see
  * `BasicAuthProvider`); OAuth2 credentials use a bearer token (see
  * `OAuth2AuthProvider`).
  *
@@ -384,9 +384,9 @@ function providerFromPair(
  * chain below it), erroring if that source has nothing available rather than
  * silently falling through to the next one — an escape hatch for when, say,
  * `WP_USERNAME`/`WP_PASSWORD` are set in the shell for some unrelated purpose
- * and would otherwise silently shadow a stored `wp auth` credential on every
+ * and would otherwise silently shadow a stored `wrapido auth` credential on every
  * invocation, with no per-command indication that's happening. The
- * non-`env`/`none` values name a `wp auth` type (see `AuthSource`) rather
+ * non-`env`/`none` values name a `wrapido auth` type (see `AuthSource`) rather
  * than a generic "stored", since a site can now store a credential of each
  * type at once — with neither `--use-auth` nor `--username`/`--password`/env
  * vars given, both types stored for the same site is an error (ambiguous)
@@ -422,7 +422,7 @@ function buildAuth(
 			throw new CliError(
 				`--use-auth=${ OAUTH2_AUTH_TYPE } was given, but no OAuth2 credential is stored for ${ normalizeSiteUrl(
 					siteUrl
-				) }. Store one first with "wp auth oauth2 login" or "wp auth oauth2 add".`
+				) }. Store one first with "wrapido auth oauth2 login" or "wrapido auth oauth2 add".`
 			);
 		}
 		return new OAuth2AuthProvider( stored.accessToken );
@@ -437,7 +437,7 @@ function buildAuth(
 			throw new CliError(
 				`--use-auth=${ APPLICATION_PASSWORDS_AUTH_TYPE } was given, but no credential is stored for ${ normalizeSiteUrl(
 					siteUrl
-				) }. Store one first with "wp auth application-passwords login" or "wp auth application-passwords add".`
+				) }. Store one first with "wrapido auth application-passwords login" or "wrapido auth application-passwords add".`
 			);
 		}
 		return new BasicAuthProvider( stored.username, stored.password );
@@ -580,7 +580,7 @@ function formatEndpointArgs(
 }
 
 /**
- * Renders `wp <namespace> <route>`'s full introspection output: one section
+ * Renders `wrapido <namespace> <route>`'s full introspection output: one section
  * per HTTP method, each with its detailed argument listing.
  * @param namespace    The route's namespace.
  * @param route        The route name.
@@ -680,7 +680,7 @@ function displayRoute( route: string ): string {
 }
 
 /**
- * A single WP-CLI-style synopsis line for one verb, e.g. `wp-rest-cli wp/v2 posts create [--title=<title>] [--<field>=<value>]`.
+ * A single WP-CLI-style synopsis line for one verb, e.g. `wrapido wp/v2 posts create [--title=<title>] [--<field>=<value>]`.
  * @param namespace    The route's namespace.
  * @param route        The route name.
  * @param verb         The verb to build a synopsis for.
@@ -695,9 +695,7 @@ function buildVerbSynopsis(
 	endpoints: RouteEndpoint[],
 	urlParamName?: string
 ): string {
-	const base = `wp-rest-cli ${ namespace } ${ displayRoute(
-		route
-	) } ${ verb }`;
+	const base = `wrapido ${ namespace } ${ displayRoute( route ) } ${ verb }`;
 	const method = COLLECTION_VERB_METHOD[ verb ];
 	const endpoint = method
 		? endpoints.find( ( e ) => e.methods.includes( method ) )
@@ -739,7 +737,7 @@ function buildVerbSynopsis(
 }
 
 /**
- * A `usage: ... \n   or: ... ` block, matching `wp help <command>`'s synopsis
+ * A `usage: ... \n   or: ... ` block, matching `wrapido help <command>`'s synopsis
  * style — one line per verb this route actually supports (`supportedVerbs`,
  * from `supportedVerbsForRoute`). Filtering matters: a singleton resource
  * like `wp/v2/settings` has no addressable `<id>` at all, so unconditionally
@@ -940,16 +938,16 @@ function formatSubcommandRows(
  * Renders a WP-CLI-native NAME/DESCRIPTION/SYNOPSIS/SUBCOMMANDS page for a
  * list of child items — namespaces under the bare CLI, or routes under a
  * namespace — mirroring the page real WP-CLI's own bare `wp` prints. Used
- * only for the top-level bare `wp-rest-cli` / `wp-rest-cli <namespace>`
+ * only for the top-level bare `wrapido` / `wrapido <namespace>`
  * listing in `--format=table`; other formats keep returning the raw
  * `{route, verbs}`-shaped rows (see `buildChildRows`/`renderRouteChildren`)
  * for scripting — this page is for the top-level listing alone (a route's
  * own nested-children note, `renderChildrenNote`, reuses just the
  * `formatSubcommandRows` row style above, without the NAME/DESCRIPTION/
  * SYNOPSIS headers, since it's appended to output that already has those).
- * @param name        The command name line, e.g. "wp-rest-cli" or "wp-rest-cli wp/v2".
+ * @param name        The command name line, e.g. "wrapido" or "wrapido wp/v2".
  * @param description One or more description lines (empty string for a blank line).
- * @param synopsis    The one-line synopsis, e.g. "wp-rest-cli <namespace>".
+ * @param synopsis    The one-line synopsis, e.g. "wrapido <namespace>".
  * @param items       Each subcommand's name and one-line description (may be empty).
  * @return The rendered page.
  */
@@ -1005,7 +1003,7 @@ function isRealRoute(
  * declares a `meta` field, so `meta` shows up as a discoverable sub-route
  * alongside any real ones — it isn't a route the site's index knows about
  * (it's a CLI-only concept layered on top of the REST resource), but it's
- * navigable the same way (`wp <namespace> <route> meta ...`), so it belongs
+ * navigable the same way (`wrapido <namespace> <route> meta ...`), so it belongs
  * in the same listing.
  * @param children  The route's real child segments, from `routeChildren`.
  * @param route     The route name, to build the synthetic child's `route` field.
@@ -1063,7 +1061,7 @@ function renderChildrenNote(
 }
 
 /**
- * Renders `wp help <namespace> <route> <verb>`'s single-verb help block: its
+ * Renders `wrapido help <namespace> <route> <verb>`'s single-verb help block: its
  * usage line, a warning if the route doesn't actually support it, its argument
  * schema, and any verb-specific notes (e.g. `--force` for delete).
  * @param namespace      The route's namespace.
@@ -1382,7 +1380,7 @@ async function validateVerbFields(
  * folded in via `withMetaChild`) right after this, which is where `meta`
  * shows up as a discoverable subcommand; repeating its full 8-line usage
  * block here as well was pure noise on every single route that supports it.
- * Run `wp <namespace> <route> meta` (or `wp help ... meta`) for that detail.
+ * Run `wrapido <namespace> <route> meta` (or `wrapido help ... meta`) for that detail.
  * @param namespace     The route's namespace.
  * @param route         The route name.
  * @param schema        The route's introspected schema.
@@ -1404,9 +1402,9 @@ function renderRouteHelp(
 	const paramNote = requiresParam
 		? pc.dim(
 				`\nThis route only exists with a value in place of its URL parameter, e.g.:\n` +
-					`  wp-rest-cli ${ namespace } ${ displayRoute(
-						route
-					) } get <${ paramName ?? 'value' }>\n`
+					`  wrapido ${ namespace } ${ displayRoute( route ) } get <${
+						paramName ?? 'value'
+					}>\n`
 		  )
 		: '';
 	const noIdNote =
@@ -1509,7 +1507,7 @@ function formatOptionsWpCli( endpoint: RouteEndpoint ): string[] {
 
 /**
  * A single realistic-looking example invocation for a verb, e.g.
- * `wp-rest-cli wp/v2 widgets create --title=<title> --url=https://example.com`
+ * `wrapido wp/v2 widgets create --title=<title> --url=https://example.com`
  * — unlike {@link buildVerbSynopsis}, this only includes an endpoint's
  * *required* args (no `[--optional=<optional>]` bracket noise), since it's
  * meant to read as a command a user could actually type.
@@ -1525,7 +1523,7 @@ function buildExampleInvocation(
 	verb: Verb,
 	endpoint: RouteEndpoint | undefined
 ): string {
-	const base = `wp-rest-cli ${ namespace } ${ route } ${ verb }`;
+	const base = `wrapido ${ namespace } ${ route } ${ verb }`;
 	const id =
 		verb === 'get' ||
 		verb === 'update' ||
@@ -1547,7 +1545,7 @@ function buildExampleInvocation(
  * DESCRIPTION, SYNOPSIS, SUBCOMMANDS and EXAMPLES — mirroring the format real
  * WP-CLI prints for a resource command like `wp post --help`. This is a
  * separate, friendlier rendering from {@link renderRouteHelp}'s denser
- * `usage:`/`or:` block, which `wp help ...` and bare introspection keep using.
+ * `usage:`/`or:` block, which `wrapido help ...` and bare introspection keep using.
  * @param namespace      The route's namespace.
  * @param route          The route name.
  * @param schema         The route's introspected schema.
@@ -1581,7 +1579,7 @@ function renderRouteHelpWpCli(
 		descriptionLines.push(
 			'',
 			'  This route only exists with a value in place of its URL parameter, e.g.:',
-			`    wp-rest-cli ${ namespace } ${ route } get <value>`
+			`    wrapido ${ namespace } ${ route } get <value>`
 		);
 	}
 	if (
@@ -1647,7 +1645,7 @@ function renderRouteHelpWpCli(
 	return [
 		pc.bold( 'NAME' ),
 		'',
-		`  wp-rest-cli ${ namespace } ${ route }`,
+		`  wrapido ${ namespace } ${ route }`,
 		'',
 		pc.bold( 'DESCRIPTION' ),
 		'',
@@ -1655,7 +1653,7 @@ function renderRouteHelpWpCli(
 		'',
 		pc.bold( 'SYNOPSIS' ),
 		'',
-		`  wp-rest-cli ${ namespace } ${ route } <command>`,
+		`  wrapido ${ namespace } ${ route } <command>`,
 		'',
 		pc.bold( 'SUBCOMMANDS' ),
 		'',
@@ -1672,7 +1670,7 @@ function renderRouteHelpWpCli(
  * NAME, DESCRIPTION, SYNOPSIS, OPTIONS (when the verb has a live arg schema)
  * and EXAMPLES — mirroring the format real WP-CLI prints for a leaf command
  * like `wp post create --help`. A separate, friendlier rendering from
- * {@link printVerbHelp}, which `wp help ...` keeps using.
+ * {@link printVerbHelp}, which `wrapido help ...` keeps using.
  * @param namespace      The route's namespace.
  * @param route          The route name.
  * @param verb           The verb to describe.
@@ -1690,7 +1688,7 @@ function renderVerbHelpWpCli(
 	const lines: string[] = [
 		pc.bold( 'NAME' ),
 		'',
-		`  wp-rest-cli ${ namespace } ${ route } ${ verb }`,
+		`  wrapido ${ namespace } ${ route } ${ verb }`,
 		'',
 		pc.bold( 'DESCRIPTION' ),
 		'',
@@ -1782,13 +1780,13 @@ export async function runRestCommand(
 		if ( flags.format === 'table' ) {
 			const output =
 				renderChildListWpCli(
-					'wp-rest-cli',
+					'wrapido',
 					[
 						"Talk to any WordPress site's REST API, WP-CLI style.",
 						'',
-						"Run 'wp-rest-cli help <namespace>' to get more information on a specific namespace.",
+						"Run 'wrapido help <namespace>' to get more information on a specific namespace.",
 					],
-					'wp-rest-cli <namespace>',
+					'wrapido <namespace>',
 					index.namespaces.map( ( namespace ) => ( {
 						label: namespace,
 						description: '',
@@ -1817,13 +1815,13 @@ export async function runRestCommand(
 		if ( flags.format === 'table' ) {
 			const rows = buildChildRows( index, parsed.namespace, children );
 			const output = renderChildListWpCli(
-				`wp-rest-cli ${ parsed.namespace }`,
+				`wrapido ${ parsed.namespace }`,
 				[
 					`Routes available under the "${ parsed.namespace }" namespace.`,
 					'',
-					`Run 'wp-rest-cli help ${ parsed.namespace } <route>' to get more information on a specific route.`,
+					`Run 'wrapido help ${ parsed.namespace } <route>' to get more information on a specific route.`,
 				],
-				`wp-rest-cli ${ parsed.namespace } <route>`,
+				`wrapido ${ parsed.namespace } <route>`,
 				rows.map( ( row ) => ( {
 					label: row.route,
 					description: row.verbs,
@@ -1858,13 +1856,13 @@ export async function runRestCommand(
 					children
 				);
 				const output = renderChildListWpCli(
-					`wp-rest-cli ${ parsed.namespace } ${ displayRoute(
+					`wrapido ${ parsed.namespace } ${ displayRoute(
 						parsed.route
 					) }`,
 					[
 						`This route has no schema of its own — it's a pure container for the routes nested beneath it.`,
 					],
-					`wp-rest-cli ${ parsed.namespace } ${ displayRoute(
+					`wrapido ${ parsed.namespace } ${ displayRoute(
 						parsed.route
 					) } <route>`,
 					rows.map( ( row ) => ( {
@@ -1914,7 +1912,7 @@ export async function runRestCommand(
 			throw new CliError(
 				`No such route "${ parsed.namespace }/${ displayRoute(
 					parsed.route
-				) }". Run "wp-rest-cli ${ parsed.namespace }" to list routes.`
+				) }". Run "wrapido ${ parsed.namespace }" to list routes.`
 			);
 		}
 		const { schema, requiresParam, paramName, verbs } =
@@ -2464,7 +2462,7 @@ export async function runRestCommand(
 }
 
 /**
- * Read-only help lookups, mirroring `wp help <command>...`: shows routes for a
+ * Read-only help lookups, mirroring `wrapido help <command>...`: shows routes for a
  * namespace, a route's full schema, or (given a verb) just that verb's calling
  * convention and matching argument schema — never performs the verb's request.
  * @param parsed  The parsed help request.
@@ -2499,13 +2497,13 @@ export async function runHelpCommand(
 		if ( flags.format === 'table' ) {
 			const rows = buildChildRows( index, parsed.namespace, children );
 			const output = renderChildListWpCli(
-				`wp-rest-cli ${ parsed.namespace }`,
+				`wrapido ${ parsed.namespace }`,
 				[
 					`Routes available under the "${ parsed.namespace }" namespace.`,
 					'',
-					`Run 'wp-rest-cli help ${ parsed.namespace } <route>' to get more information on a specific route.`,
+					`Run 'wrapido help ${ parsed.namespace } <route>' to get more information on a specific route.`,
 				],
-				`wp-rest-cli ${ parsed.namespace } <route>`,
+				`wrapido ${ parsed.namespace } <route>`,
 				rows.map( ( row ) => ( {
 					label: row.route,
 					description: row.verbs,
@@ -2558,13 +2556,13 @@ export async function runHelpCommand(
 					children
 				);
 				const output = renderChildListWpCli(
-					`wp-rest-cli ${ parsed.namespace } ${ displayRoute(
+					`wrapido ${ parsed.namespace } ${ displayRoute(
 						parsed.route
 					) }`,
 					[
 						`This route has no schema of its own — it's a pure container for the routes nested beneath it.`,
 					],
-					`wp-rest-cli ${ parsed.namespace } ${ displayRoute(
+					`wrapido ${ parsed.namespace } ${ displayRoute(
 						parsed.route
 					) } <route>`,
 					rows.map( ( row ) => ( {

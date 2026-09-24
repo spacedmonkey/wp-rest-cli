@@ -1,11 +1,11 @@
 ---
 name: add-cli-verb
-description: Add a new top-level verb to wp-rest-cli (like list/get/create/exists/generate), or change how an existing one is parsed, dispatched, or documented. Use when the user asks to add a new command/verb to the CLI, change verb argument handling, or add a new WP-CLI-style operation (e.g. "add a wp post touch-style verb", "add a verb that does X").
+description: Add a new top-level verb to wrapido (like list/get/create/exists/generate), or change how an existing one is parsed, dispatched, or documented. Use when the user asks to add a new command/verb to the CLI, change verb argument handling, or add a new WP-CLI-style operation (e.g. "add a wp post touch-style verb", "add a verb that does X").
 ---
 
-# Adding a top-level verb to wp-rest-cli
+# Adding a top-level verb to wrapido
 
-A "verb" here is one of `list`/`get`/`create`/`update`/`delete`/`exists`/`generate` — the token that follows `<namespace> <route>` in `wp-rest-cli <namespace> <route> <verb> ...`. Adding one touches several files that all need to agree; missing one produces a confusing partial feature (e.g. it parses but the help text is wrong, or it typechecks but `buildVerbRequest`'s switch silently doesn't cover it).
+A "verb" here is one of `list`/`get`/`create`/`update`/`delete`/`exists`/`generate` — the token that follows `<namespace> <route>` in `wrapido <namespace> <route> <verb> ...`. Adding one touches several files that all need to agree; missing one produces a confusing partial feature (e.g. it parses but the help text is wrong, or it typechecks but `buildVerbRequest`'s switch silently doesn't cover it).
 
 ## Decide the verb's shape first
 
@@ -36,6 +36,6 @@ Before touching code, work out:
 
 ## Gotchas from past additions
 
-- `parseHelpArgs`/`runHelpCommand` reuse the *same* `VERBS`/`consumeRouteSegments` machinery as the main dispatch, so `wp-rest-cli help <namespace> <route> <verb>` generally works automatically once the verb is in `VERBS` and `buildVerbSynopsis` — you don't need to touch `runHelpCommand` for a normal verb. You only touch it if the verb needs bespoke help behavior beyond `printVerbHelp`.
+- `parseHelpArgs`/`runHelpCommand` reuse the *same* `VERBS`/`consumeRouteSegments` machinery as the main dispatch, so `wrapido help <namespace> <route> <verb>` generally works automatically once the verb is in `VERBS` and `buildVerbSynopsis` — you don't need to touch `runHelpCommand` for a normal verb. You only touch it if the verb needs bespoke help behavior beyond `printVerbHelp`.
 - `npx tsc --noEmit` will catch most of the coordination mistakes (missing switch case, `Verb` union mismatch) — run it after step 3, not just at the end.
 - Run `npx prettier --write` on whatever you touched; this codebase enforces Prettier formatting and CI-equivalent (`npm run lint`) will flag anything unformatted.

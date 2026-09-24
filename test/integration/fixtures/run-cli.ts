@@ -34,7 +34,7 @@ type RunCliOptions = {
 /** Every env var that can switch agent mode on, unset for the child. */
 const AGENT_ENV_SCRUB: Record< string, undefined > = Object.fromEntries(
 	[
-		'WP_REST_CLI_AGENT',
+		'WRAPIDO_AGENT',
 		'AI_AGENT',
 		'CLAUDECODE',
 		'CODEX_CI',
@@ -61,7 +61,7 @@ export function runCli( args: string[], options: RunCliOptions = {} ) {
 		reject: false,
 		...options,
 		// The suite itself may run inside an AI agent's shell, so scrub every
-		// agent marker: tests opt in explicitly (e.g. `WP_REST_CLI_AGENT: '1'`).
+		// agent marker: tests opt in explicitly (e.g. `WRAPIDO_AGENT: '1'`).
 		env: { ...AGENT_ENV_SCRUB, ...options.env },
 	} );
 }

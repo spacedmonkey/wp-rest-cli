@@ -533,7 +533,7 @@ export function isApplicationPasswordsSupported(
 
 /**
  * Reads the site's Application Password authorization endpoint URL, if it
- * advertises one — this is where `wp auth application-passwords login`
+ * advertises one — this is where `wrapido auth application-passwords login`
  * sends the user's browser to approve a new Application Password.
  * @param index The site's root REST API index.
  * @return The authorization endpoint URL (absolute or site-relative, as the

@@ -5,7 +5,7 @@
  * everywhere. Scrub every marker so tests opt into agent mode explicitly.
  */
 for ( const name of [
-	'WP_REST_CLI_AGENT',
+	'WRAPIDO_AGENT',
 	'AI_AGENT',
 	'CLAUDECODE',
 	'CODEX_CI',

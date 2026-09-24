@@ -15,7 +15,7 @@ export default defineConfig( {
 	// child process rather than running it in-process. A normal `npm run
 	// build` skips it, keeping the published package (`files: ["dist"]`)
 	// free of an unused .map file.
-	sourcemap: process.env.WP_REST_CLI_COVERAGE === 'true',
+	sourcemap: process.env.WRAPIDO_COVERAGE === 'true',
 	banner: {
 		js: '#!/usr/bin/env node',
 	},

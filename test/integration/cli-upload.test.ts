@@ -37,7 +37,7 @@ async function makeFile( name: string, contents = 'FILE-BYTES' ) {
 
 beforeAll( async () => {
 	fixture = await startFixture();
-	dir = await mkdtemp( path.join( tmpdir(), 'wp-rest-cli-upload-' ) );
+	dir = await mkdtemp( path.join( tmpdir(), 'wrapido-upload-' ) );
 } );
 
 afterAll( async () => {

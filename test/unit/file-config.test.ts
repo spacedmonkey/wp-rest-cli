@@ -14,10 +14,10 @@ import { loadFileConfig } from '../../src/core/file-config.js';
 let root: string;
 let cwd: string;
 let userFile: string;
-const env = () => ( { WP_REST_CLI_CONFIG_PATH: userFile } );
+const env = () => ( { WRAPIDO_CONFIG_PATH: userFile } );
 
 beforeEach( () => {
-	root = mkdtempSync( join( tmpdir(), 'wp-rest-cli-cfg-' ) );
+	root = mkdtempSync( join( tmpdir(), 'wrapido-cfg-' ) );
 	cwd = join( root, 'a', 'b' );
 	mkdirSync( cwd, { recursive: true } );
 	userFile = join( root, 'user.yml' );
@@ -27,7 +27,7 @@ afterEach( () => rmSync( root, { recursive: true, force: true } ) );
 
 describe( 'loadFileConfig', () => {
 	it( 'finds files in parent directories', () => {
-		writeFileSync( join( root, 'wp-rest-cli.yml' ), 'format: json\n' );
+		writeFileSync( join( root, 'wrapido.yml' ), 'format: json\n' );
 		expect( loadFileConfig( cwd, env() ).values ).toEqual( {
 			format: 'json',
 		} );
@@ -36,17 +36,17 @@ describe( 'loadFileConfig', () => {
 	it( 'layers local over project over user, per key', () => {
 		writeFileSync( userFile, 'format: csv\ncontext: edit\ntimeout: 5\n' );
 		writeFileSync(
-			join( root, 'wp-rest-cli.yml' ),
+			join( root, 'wrapido.yml' ),
 			'format: yaml\ncontext: embed\n'
 		);
-		writeFileSync( join( cwd, 'wp-rest-cli.local.yml' ), 'format: json\n' );
+		writeFileSync( join( cwd, 'wrapido.local.yml' ), 'format: json\n' );
 		const { values, origins } = loadFileConfig( cwd, env() );
 		expect( values ).toEqual( {
 			format: 'json',
 			context: 'embed',
 			timeout: 5,
 		} );
-		expect( origins.format ).toBe( join( cwd, 'wp-rest-cli.local.yml' ) );
+		expect( origins.format ).toBe( join( cwd, 'wrapido.local.yml' ) );
 		expect( origins.timeout ).toBe( userFile );
 	} );
 

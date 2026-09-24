@@ -1,25 +1,25 @@
-# Using wp-rest-cli from an AI agent
+# Using wrapido from an AI agent
 
-`wp-rest-cli` talks to any WordPress site's REST API over HTTP. Its command set is built from the site's live API, so **discover, don't guess**. Human docs: `docs/agent-mode.md`.
+`wrapido` talks to any WordPress site's REST API over HTTP. Its command set is built from the site's live API, so **discover, don't guess**. Human docs: `docs/agent-mode.md`.
 
 ## 1. Agent mode
 
 Usually **automatic**: detected from your environment (Claude Code, OpenAI Codex, GitHub Copilot, Cline, Cursor, or the cross-tool `AI_AGENT` convention). If your tool isn't detected, set it by hand:
 
 ```sh
-export WP_REST_CLI_AGENT=1
+export WRAPIDO_AGENT=1
 ```
 
-`WP_REST_CLI_AGENT` always wins over detection — `0`/`false`/`no`/`off` forces it off, `1` (or anything else non-falsy) forces it on. Run with `--debug` to see whether it's on and why (`agent mode: on (AI_AGENT)`). With it set you get:
+`WRAPIDO_AGENT` always wins over detection — `0`/`false`/`no`/`off` forces it off, `1` (or anything else non-falsy) forces it on. Run with `--debug` to see whether it's on and why (`agent mode: on (AI_AGENT)`). With it set you get:
 
 -   `--format=json` by default, printed **compact** with `_links`/`_embedded` stripped (name them in `--fields` to keep them).
 -   No colour, no spinners. Data is on **stdout**; notices/warnings are plain lines on **stderr**.
 -   Errors as JSON on stderr: `{"error":{"message","code","status","params","hint"}}`. Local CLI errors carry only `message`; API errors add the rest and often a `hint`. Exit code is `1` on any failure.
 -   A stderr `Warning: --per-page is not a declared arg of this route; did you mean --per_page?` for `--name=value` args the route doesn't declare (typos are otherwise silently ignored by WordPress).
 
-Without it, pass `--format=json --quiet --no-color` on every call instead. An explicit `--format` or a `format:` in a `wp-rest-cli.yml` still overrides the agent-mode default.
+Without it, pass `--format=json --quiet --no-color` on every call instead. An explicit `--format` or a `format:` in a `wrapido.yml` still overrides the agent-mode default.
 
-Also put the site in a `wp-rest-cli.yml` in the working directory (or pass `--url=<site>` each time):
+Also put the site in a `wrapido.yml` in the working directory (or pass `--url=<site>` each time):
 
 ```yaml
 url: https://example.com
@@ -30,28 +30,28 @@ url: https://example.com
 `auth ... login` opens a browser: humans only. Instead:
 
 -   Env vars `WP_USERNAME` + `WP_PASSWORD` (a WordPress Application Password). Preferred: `--password` leaks into shell history and `ps`.
--   Or store once: `wp-rest-cli auth application-passwords add <url> --username=<u> --password=<app-password>`.
+-   Or store once: `wrapido auth application-passwords add <url> --username=<u> --password=<app-password>`.
 
 Stored credentials are used **implicitly** for that site. Use `--use-auth=none` to see what an anonymous visitor sees. An OAuth2 `client_credentials` token acts as user 0, so drafts and `--context=edit` still need a real user.
 
 ## 3. Best workflow: discover, then act
 
 ```sh
-wp-rest-cli                                # namespaces
-wp-rest-cli wp/v2                          # routes: [{route, verbs:[...], has_children}]
-wp-rest-cli wp/v2 posts                    # the route: verbs, endpoints (args, types, enums, required[]), children[]
-wp-rest-cli help wp/v2 posts create        # ONE verb's endpoint only (cheapest; ~9 KB vs ~15 KB for the whole route)
+wrapido                                # namespaces
+wrapido wp/v2                     # routes: [{route, verbs:[...], has_children}]
+wrapido wp/v2 posts               # the route: verbs, endpoints (args, types, enums, required[]), children[]
+wrapido help wp/v2 posts create   # ONE verb's endpoint only (cheapest; ~9 KB vs ~15 KB for the whole route)
 ```
 
 Then act with `list`, `get <id>`, `create`, `update <id>`, `delete <id>`, `exists <id>`, `generate`, `meta ...`:
 
 ```sh
-wp-rest-cli wp/v2 posts list --per_page=5 --fields=id,date,title.rendered
-wp-rest-cli wp/v2 posts create --title="Hello" --status=draft
-wp-rest-cli wp/v2 posts update 12 --body='{"content":"..."}'   # --body for nested/complex payloads
+wrapido wp/v2 posts list --per_page=5 --fields=id,date,title.rendered
+wrapido wp/v2 posts create --title="Hello" --status=draft
+wrapido wp/v2 posts update 12 --body='{"content":"..."}'   # --body for nested/complex payloads
 ```
 
-Nested routes (e.g. `posts revisions`) appear in a route's `children` array, and as `has_children: true` in a namespace listing. Address them as separate words: `wp-rest-cli wp/v2 posts revisions get <post-id>` (revisions/autosaves need a real user).
+Nested routes (e.g. `posts revisions`) appear in a route's `children` array, and as `has_children: true` in a namespace listing. Address them as separate words: `wrapido wp/v2 posts revisions get <post-id>` (revisions/autosaves need a real user).
 
 Tips for fewer calls:
 
@@ -71,7 +71,7 @@ Tips for fewer calls:
 -   `list --format=count` prints the site total (`X-WP-Total`) when sent, else the rows returned. Default `--per_page` is 10 (the route's max, usually 100), newest first. When more pages exist, stderr says `Page 1 of N (T total)`; use `--page=N`, or `--per_page=-1` to get every page in one go (it ignores `--page`, and count never needs it).
 -   `exists <id>` exits `1` for "not found" and still prints `{"exists":false}` on stdout. An unknown route or namespace exits `1` with `No such route`/`No such namespace` (a JSON error in agent mode).
 -   `--format=raw` is Node-inspect text, not JSON. `auth ... login` needs a browser (humans only).
--   Nested routes are separate words: `wp-rest-cli wp/v2 posts revisions get <post-id>`.
+-   Nested routes are separate words: `wrapido wp/v2 posts revisions get <post-id>`.
 -   `types`, `taxonomies`, `statuses` list one row per entry, so `--fields=slug,name` works.
 -   Uploads: the flag is the endpoint's own parameter name (`--file=@/path/img.png` for core media).
 -   `--debug` logs every HTTP request (credentials redacted) to stderr.

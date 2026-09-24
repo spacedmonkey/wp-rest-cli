@@ -11,7 +11,7 @@ import type { GlobalFlags } from '../types.js';
 import { runApplicationPasswordsAuthCommand } from './auth/application-passwords.js';
 import { runOAuth2AuthCommand } from './auth/oauth2.js';
 
-const DEFAULT_APP_NAME = 'wp-rest-cli';
+const DEFAULT_APP_NAME = 'wrapido';
 const AUTH_SUBCOMMANDS = [ 'login', 'add', 'list', 'remove', 'use', 'status' ];
 
 /**
@@ -24,7 +24,7 @@ export const AVAILABLE_AUTH_TYPES_LINE = `Available types: ${ APPLICATION_PASSWO
 export type AuthResult = { output: string; exitCode: number };
 
 /**
- * A parsed `wp auth <type> ...` command. `login`/`add` are authType-conditional —
+ * A parsed `wrapido auth <type> ...` command. `login`/`add` are authType-conditional —
  * each type's own fields (`appName` for application-passwords; `redirectUri`/
  * `port` for oauth2) only exist on that type's own union member, so a
  * handler can't accidentally read a field that was never parsed for the type
@@ -89,7 +89,7 @@ export type ParsedAuth =
  * Validates the `<type>` token immediately following `auth` before any verb
  * parsing happens, with two distinct errors: type missing or entirely
  * unrecognized; or — specifically — a bare verb typed where the type belongs,
- * the exact mistake anyone using the old `wp auth <verb> ...` grammar (no
+ * the exact mistake anyone using the old `wrapido auth <verb> ...` grammar (no
  * type) would make.
  * @param  type The first token after `auth`, if any.
  * @throws {CliError} Always, unless `type` is a currently-implemented {@link AuthType}.
@@ -105,35 +105,35 @@ export function assertKnownAuthType(
 	}
 	if ( type && AUTH_SUBCOMMANDS.includes( type ) ) {
 		throw new CliError(
-			`"wp auth ${ type } ..." is the old syntax — the type now comes first, e.g. "wp auth ${ APPLICATION_PASSWORDS_AUTH_TYPE } ${ type } ...".`
+			`"wrapido auth ${ type } ..." is the old syntax — the type now comes first, e.g. "wrapido auth ${ APPLICATION_PASSWORDS_AUTH_TYPE } ${ type } ...".`
 		);
 	}
 	throw new CliError(
-		`Usage: wp auth <type> <${ AUTH_SUBCOMMANDS.join(
+		`Usage: wrapido auth <type> <${ AUTH_SUBCOMMANDS.join(
 			'|'
 		) }> ...\n${ AVAILABLE_AUTH_TYPES_LINE }`
 	);
 }
 
 /**
- * The full `wp auth <type> --help`/`wp auth --help` usage line, branched on
+ * The full `wrapido auth <type> --help`/`wrapido auth --help` usage line, branched on
  * `authType` since each type's field grammar is different — a bare
- * `wp auth --help` (no type at all) falls back to the generic usage.
+ * `wrapido auth --help` (no type at all) falls back to the generic usage.
  * @param authType The already-validated type, if one was given.
  * @return The usage text to print.
  */
 export function authUsageText( authType?: AuthType ): string {
 	if ( authType === OAUTH2_AUTH_TYPE ) {
 		return (
-			`Usage: wp auth ${ OAUTH2_AUTH_TYPE } <login|add|list|remove|use|status> [<url>] [--client-id=] [--client-secret=] [--token=] [redirect-uri=] [port=] [skip-verify=] [--all]\n` +
+			`Usage: wrapido auth ${ OAUTH2_AUTH_TYPE } <login|add|list|remove|use|status> [<url>] [--client-id=] [--client-secret=] [--token=] [redirect-uri=] [port=] [skip-verify=] [--all]\n` +
 			`${ AVAILABLE_AUTH_TYPES_LINE }\n` +
 			'login requires --client-id= (--client-secret= is optional); add requires either --token= (a personal access token) or both --client-id= and --client-secret= (client_credentials) — add also accepts skip-verify=true to skip verifying --token= against the site.'
 		);
 	}
 	if ( authType === APPLICATION_PASSWORDS_AUTH_TYPE ) {
-		return `Usage: wp auth ${ APPLICATION_PASSWORDS_AUTH_TYPE } <login|add|list|remove|use|status> [<url>] [--username=] [--password=] [--skip-verify] [--all]\n${ AVAILABLE_AUTH_TYPES_LINE }\nlogin also accepts an optional app-name=<name> field (default: wp-rest-cli).`;
+		return `Usage: wrapido auth ${ APPLICATION_PASSWORDS_AUTH_TYPE } <login|add|list|remove|use|status> [<url>] [--username=] [--password=] [--skip-verify] [--all]\n${ AVAILABLE_AUTH_TYPES_LINE }\nlogin also accepts an optional app-name=<name> field (default: wrapido).`;
 	}
-	return `Usage: wp auth <type> <${ AUTH_SUBCOMMANDS.join(
+	return `Usage: wrapido auth <type> <${ AUTH_SUBCOMMANDS.join(
 		'|'
 	) }> ...\n${ AVAILABLE_AUTH_TYPES_LINE }`;
 }
@@ -159,7 +159,7 @@ function isKnownFieldToken( token: string, knownFields: string[] ): boolean {
  * `knownFields`' `field=value` pairs; otherwise falls back to `defaultUrl`
  * (the global `--url` flag, or a saved default — the exact same fallback the
  * generic REST command pipeline already uses for every other command), so
- * `wp auth <type> login`/`add`/etc. don't force repeating a URL the CLI was
+ * `wrapido auth <type> login`/`add`/etc. don't force repeating a URL the CLI was
  * already invoked with. Never throws itself — callers decide what "no URL
  * from either source" means for their own usage message and error priority
  * (e.g. checking for the deprecated `client-id=` syntax first).
@@ -193,7 +193,7 @@ function resolveAuthUrlArgument(
 
 /** Appended to a usage error when `<url>` was omitted and no `--url`/saved default was available either. */
 const NO_URL_HINT =
-	'Pass <url> explicitly, or run with --url=<site> (or save a default via "wp config set --url=<site>").';
+	'Pass <url> explicitly, or run with --url=<site> (or save a default via "wrapido config set --url=<site>").';
 
 /**
  * Parses trailing `field=value` tokens.
@@ -232,7 +232,7 @@ function parsePortField( raw: string | undefined ): number | undefined {
 }
 
 /**
- * Parses `wp auth <type> login ...`, authType-conditionally: application-passwords
+ * Parses `wrapido auth <type> login ...`, authType-conditionally: application-passwords
  * takes an optional trailing `app-name=<name>` field; oauth2 accepts optional
  * `redirect-uri=`/`port=` fields (the actual `--client-id`/`--client-secret`
  * credential comes from global flags — see `handleLogin` in
@@ -250,7 +250,7 @@ function parseLoginArgs(
 ): ParsedAuth {
 	if ( authType === OAUTH2_AUTH_TYPE ) {
 		// 'client-id'/'client-secret' included here too (not just checked
-		// after resolving fieldTokens below) so `wp auth oauth2 login
+		// after resolving fieldTokens below) so `wrapido auth oauth2 login
 		// client-id=xxx` (old syntax, no URL at all) is recognized as a field
 		// token rather than misread as the site URL, and falls through to the
 		// specific migration-hint rejection below instead of a confusing
@@ -272,12 +272,12 @@ function parseLoginArgs(
 			fields[ 'client-secret' ] !== undefined
 		) {
 			throw new CliError(
-				`wp auth ${ authType } login: client-id=/client-secret= are no longer accepted here — use --client-id=<id>/--client-secret=<secret> instead.`
+				`wrapido auth ${ authType } login: client-id=/client-secret= are no longer accepted here — use --client-id=<id>/--client-secret=<secret> instead.`
 			);
 		}
 		if ( ! url ) {
 			throw new CliError(
-				`Usage: wp auth ${ authType } login [<url>] --client-id=<id> [--client-secret=<secret>] [redirect-uri=<uri>] [port=<port>]\n${ NO_URL_HINT }`
+				`Usage: wrapido auth ${ authType } login [<url>] --client-id=<id> [--client-secret=<secret>] [redirect-uri=<uri>] [port=<port>]\n${ NO_URL_HINT }`
 			);
 		}
 		// `redirect-uri=` already carries a port; combining it with `port=`
@@ -289,7 +289,7 @@ function parseLoginArgs(
 			fields.port !== undefined
 		) {
 			throw new CliError(
-				`wp auth ${ authType } login: pass either redirect-uri= (which already includes a port) or port=, not both.`
+				`wrapido auth ${ authType } login: pass either redirect-uri= (which already includes a port) or port=, not both.`
 			);
 		}
 		return {
@@ -308,7 +308,7 @@ function parseLoginArgs(
 	);
 	if ( ! url ) {
 		throw new CliError(
-			`Usage: wp auth ${ authType } login [<url>] [app-name=<name>]\n${ NO_URL_HINT }`
+			`Usage: wrapido auth ${ authType } login [<url>] [app-name=<name>]\n${ NO_URL_HINT }`
 		);
 	}
 	const fields = parseFields( fieldTokens );
@@ -326,7 +326,7 @@ function parseLoginArgs(
 }
 
 /**
- * Parses `wp auth <type> add ...`, authType-conditionally: application-passwords
+ * Parses `wrapido auth <type> add ...`, authType-conditionally: application-passwords
  * takes username/password from the global `--username`/`--password` flags
  * (see `handleAdd` in `commands/auth/application-passwords.ts`) plus an
  * optional `skip-verify=true` field; oauth2 takes its credential from the
@@ -363,12 +363,12 @@ function parseAddArgs(
 			fields[ 'client-secret' ] !== undefined
 		) {
 			throw new CliError(
-				`wp auth ${ authType } add: client-id=/client-secret= are no longer accepted here — use --client-id=<id>/--client-secret=<secret> instead.`
+				`wrapido auth ${ authType } add: client-id=/client-secret= are no longer accepted here — use --client-id=<id>/--client-secret=<secret> instead.`
 			);
 		}
 		if ( ! url ) {
 			throw new CliError(
-				`Usage: wp auth ${ authType } add [<url>] (--client-id=<id> --client-secret=<secret> | --token=<token>) [skip-verify=true]\n${ NO_URL_HINT }`
+				`Usage: wrapido auth ${ authType } add [<url>] (--client-id=<id> --client-secret=<secret> | --token=<token>) [skip-verify=true]\n${ NO_URL_HINT }`
 			);
 		}
 		return {
@@ -386,7 +386,7 @@ function parseAddArgs(
 	);
 	if ( ! url ) {
 		throw new CliError(
-			`Usage: wp auth ${ authType } add [<url>] --username=<u> --password=<p> [--skip-verify]\n${ NO_URL_HINT }`
+			`Usage: wrapido auth ${ authType } add [<url>] --username=<u> --password=<p> [--skip-verify]\n${ NO_URL_HINT }`
 		);
 	}
 	const fields = parseFields( fieldTokens );
@@ -399,7 +399,7 @@ function parseAddArgs(
 }
 
 /**
- * Parses `wp auth <type> <login|add|list|remove|use|status> ...`'s arguments
+ * Parses `wrapido auth <type> <login|add|list|remove|use|status> ...`'s arguments
  * into a typed {@link ParsedAuth}. `<type>` is validated first (see
  * {@link assertKnownAuthType}). `<url>` is optional everywhere it appears
  * (`login`/`add`/`remove`/`use`) — see `resolveAuthUrlArgument` — falling
@@ -430,14 +430,14 @@ export function parseAuthArgs(
 			if ( fields.all === 'true' ) {
 				if ( explicitUrlGiven ) {
 					throw new CliError(
-						`wp auth ${ authType } remove: pass either <url> or --all, not both.`
+						`wrapido auth ${ authType } remove: pass either <url> or --all, not both.`
 					);
 				}
 				return { authType, mode: 'remove-all' };
 			}
 			if ( ! url ) {
 				throw new CliError(
-					`Usage: wp auth ${ authType } remove [<url>] | wp auth ${ authType } remove --all\n${ NO_URL_HINT }`
+					`Usage: wrapido auth ${ authType } remove [<url>] | wrapido auth ${ authType } remove --all\n${ NO_URL_HINT }`
 				);
 			}
 			return { authType, mode: 'remove', url };
@@ -446,7 +446,7 @@ export function parseAuthArgs(
 			const { url } = resolveAuthUrlArgument( rest, [], defaultUrl );
 			if ( ! url ) {
 				throw new CliError(
-					`Usage: wp auth ${ authType } use [<url>]\n${ NO_URL_HINT }`
+					`Usage: wrapido auth ${ authType } use [<url>]\n${ NO_URL_HINT }`
 				);
 			}
 			return { authType, mode: 'use', url };
@@ -455,7 +455,7 @@ export function parseAuthArgs(
 			return { authType, mode: 'status' };
 		default:
 			throw new CliError(
-				`Usage: wp auth ${ authType } <${ AUTH_SUBCOMMANDS.join(
+				`Usage: wrapido auth ${ authType } <${ AUTH_SUBCOMMANDS.join(
 					'|'
 				) }> ...`
 			);
@@ -463,7 +463,7 @@ export function parseAuthArgs(
 }
 
 /**
- * Executes a parsed `wp auth <type> ...` command, dispatching on `authType`.
+ * Executes a parsed `wrapido auth <type> ...` command, dispatching on `authType`.
  * `AuthType` is a real union, so TypeScript's exhaustiveness checking on this
  * switch forces a compile error the moment a further `AuthType` is added
  * without a matching case here — the extension point for a future auth

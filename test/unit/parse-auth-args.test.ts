@@ -15,7 +15,9 @@ describe( 'parseAuthArgs', () => {
 	describe( 'type validation', () => {
 		it( 'throws a general usage error when no type is given at all', () => {
 			expect( () => parseAuthArgs( [] ) ).toThrow( CliError );
-			expect( () => parseAuthArgs( [] ) ).toThrow( 'Usage: wp auth' );
+			expect( () => parseAuthArgs( [] ) ).toThrow(
+				'Usage: wrapido auth'
+			);
 		} );
 
 		it( 'throws a general usage error for a completely unrecognized type', () => {
@@ -23,7 +25,7 @@ describe( 'parseAuthArgs', () => {
 				CliError
 			);
 			expect( () => parseAuthArgs( [ 'bogus', 'login' ] ) ).toThrow(
-				'Usage: wp auth'
+				'Usage: wrapido auth'
 			);
 		} );
 
@@ -32,7 +34,7 @@ describe( 'parseAuthArgs', () => {
 				parseAuthArgs( [ 'login', 'https://example.com' ] )
 			).toThrow( 'is the old syntax' );
 			expect( () => parseAuthArgs( [ 'status' ] ) ).toThrow(
-				'wp auth application-passwords status'
+				'wrapido auth application-passwords status'
 			);
 		} );
 	} );
@@ -45,7 +47,7 @@ describe( 'parseAuthArgs', () => {
 				authType: TYPE,
 				mode: 'login',
 				url: 'https://example.com',
-				appName: 'wp-rest-cli',
+				appName: 'wrapido',
 			} );
 		} );
 
@@ -92,7 +94,7 @@ describe( 'parseAuthArgs', () => {
 				authType: TYPE,
 				mode: 'login',
 				url: 'https://example.com/?rest_route=/',
-				appName: 'wp-rest-cli',
+				appName: 'wrapido',
 			} );
 		} );
 
@@ -503,7 +505,7 @@ describe( 'parseAuthArgs: <url> falls back to defaultUrl (the --url flag/saved d
 			authType: APP_PASSWORDS_TYPE,
 			mode: 'login',
 			url: DEFAULT_URL,
-			appName: 'wp-rest-cli',
+			appName: 'wrapido',
 		} );
 	} );
 
@@ -529,7 +531,7 @@ describe( 'parseAuthArgs: <url> falls back to defaultUrl (the --url flag/saved d
 			authType: APP_PASSWORDS_TYPE,
 			mode: 'login',
 			url: 'https://explicit.example.com',
-			appName: 'wp-rest-cli',
+			appName: 'wrapido',
 		} );
 	} );
 

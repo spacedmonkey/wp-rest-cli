@@ -337,7 +337,7 @@ export interface UploadMultipartOptions {
 export async function uploadMultipart(
 	opts: UploadMultipartOptions
 ): Promise< UploadResponse > {
-	const boundary = `----wp-rest-cli-${ randomBytes( 12 ).toString( 'hex' ) }`;
+	const boundary = `----wrapido-${ randomBytes( 12 ).toString( 'hex' ) }`;
 	const chunks: Array< Buffer | PreparedFile > = [];
 	for ( const [ name, value ] of Object.entries( opts.textFields ) ) {
 		chunks.push(

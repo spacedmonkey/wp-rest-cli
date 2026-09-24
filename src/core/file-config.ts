@@ -29,12 +29,12 @@ export type FileConfigValue = string | number | boolean;
 /** Keys that are real flags but deliberately not allowed in a file, with why. */
 const REJECTED_KEYS: Record< string, string > = {
 	password:
-		'secrets do not belong in a config file — use WP_PASSWORD or "wp auth"',
+		'secrets do not belong in a config file — use WP_PASSWORD or "wrapido auth"',
 	'client-secret':
 		'secrets do not belong in a config file — pass it on the command line',
 	token: 'secrets do not belong in a config file — pass it on the command line',
 	username:
-		'a username is only useful together with a password — use WP_USERNAME/WP_PASSWORD or "wp auth"',
+		'a username is only useful together with a password — use WP_USERNAME/WP_PASSWORD or "wrapido auth"',
 };
 
 /** The merged result of every config file found. */
@@ -49,15 +49,14 @@ export interface FileConfig {
 let loaded: FileConfig | undefined;
 
 /**
- * The user-level config file: `WP_REST_CLI_CONFIG_PATH`, else
- * `~/.wp-rest-cli/config.yml`.
- * @param env The environment to read `WP_REST_CLI_CONFIG_PATH` from.
+ * The user-level config file: `WRAPIDO_CONFIG_PATH`, else
+ * `~/.wrapido/config.yml`.
+ * @param env The environment to read `WRAPIDO_CONFIG_PATH` from.
  * @return The (possibly nonexistent) path.
  */
 export function userConfigPath( env: NodeJS.ProcessEnv = process.env ): string {
 	return (
-		env.WP_REST_CLI_CONFIG_PATH ||
-		join( homedir(), '.wp-rest-cli', 'config.yml' )
+		env.WRAPIDO_CONFIG_PATH || join( homedir(), '.wrapido', 'config.yml' )
 	);
 }
 
@@ -135,10 +134,10 @@ function readConfigFile(
 
 /**
  * Loads and merges every config file, then remembers the result for
- * {@link getFileConfig}. Precedence, highest first: `wp-rest-cli.local.yml`,
- * `wp-rest-cli.yml` (each the nearest one at or above `cwd`), then the user-level file.
+ * {@link getFileConfig}. Precedence, highest first: `wrapido.local.yml`,
+ * `wrapido.yml` (each the nearest one at or above `cwd`), then the user-level file.
  * @param cwd The directory to search upward from.
- * @param env The environment to read `WP_REST_CLI_CONFIG_PATH` from.
+ * @param env The environment to read `WRAPIDO_CONFIG_PATH` from.
  * @return The merged config.
  */
 export function loadFileConfig(
@@ -146,8 +145,8 @@ export function loadFileConfig(
 	env: NodeJS.ProcessEnv = process.env
 ): FileConfig {
 	const candidates = [
-		findUpward( 'wp-rest-cli.local.yml', cwd ),
-		findUpward( 'wp-rest-cli.yml', cwd ),
+		findUpward( 'wrapido.local.yml', cwd ),
+		findUpward( 'wrapido.yml', cwd ),
 		userConfigPath( env ),
 	].filter( ( f ): f is string => f !== undefined && existsSync( f ) );
 

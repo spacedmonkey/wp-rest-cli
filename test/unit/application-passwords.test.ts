@@ -23,7 +23,7 @@ describe( 'introspectApplicationPassword', () => {
 				body: {
 					uuid: 'abcd-1234',
 					app_id: 'app-id-value',
-					name: 'wp-rest-cli',
+					name: 'wrapido',
 					created: 1700000000,
 					last_used: 1700000100,
 					last_ip: '127.0.0.1',
@@ -36,7 +36,7 @@ describe( 'introspectApplicationPassword', () => {
 		).resolves.toEqual( {
 			uuid: 'abcd-1234',
 			appId: 'app-id-value',
-			name: 'wp-rest-cli',
+			name: 'wrapido',
 			created: 1700000000,
 			lastUsed: 1700000100,
 			lastIp: '127.0.0.1',
@@ -63,7 +63,7 @@ describe( 'introspectApplicationPassword', () => {
 				body: {
 					uuid: 'abcd-1234',
 					app_id: null,
-					name: 'wp-rest-cli',
+					name: 'wrapido',
 					created: 1700000000,
 					last_used: null,
 					last_ip: null,

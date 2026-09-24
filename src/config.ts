@@ -31,7 +31,7 @@ export interface StoredApplicationPasswordCredential {
 	username: string;
 	password: string;
 	authMethod: 'password' | 'application-password';
-	// The application password's uuid on the site, if known — lets `wp auth
+	// The application password's uuid on the site, if known — lets `wrapido auth
 	// remove`/re-`login` revoke it server-side. Only ever set when confirmed
 	// via introspection; absent for a plain account password.
 	uuid?: string;
@@ -79,7 +79,7 @@ interface StoredConfig {
 // it, next to but separate from the config data — `conf` itself uses
 // `env-paths` internally for this same resolution, so passing `cwd`
 // explicitly here just makes that directory choice visible to this file too.
-const configDir = envPaths( 'wp-rest-cli', { suffix: 'nodejs' } ).config;
+const configDir = envPaths( 'wrapido', { suffix: '' } ).config;
 const keyFilePath = join( configDir, 'credential-key' );
 
 /**
@@ -123,7 +123,7 @@ function confOptions(
 	cwd: string,
 	encryptionKey: string
 ): ConstructorParameters< typeof Conf< StoredConfig > >[ 0 ] {
-	return { projectName: 'wp-rest-cli', cwd, encryptionKey };
+	return { projectName: 'wrapido', cwd, encryptionKey };
 }
 
 /**
@@ -152,7 +152,7 @@ function createStore(): Conf< StoredConfig > {
 			try {
 				renameSync( realConfigFilePath, backupPath );
 				process.stderr.write(
-					`Warning: wp-rest-cli's stored config/credentials could not be read (${
+					`Warning: wrapido's stored config/credentials could not be read (${
 						error instanceof Error ? error.message : String( error )
 					}) — the key file and config file may be out of sync. The ` +
 						`unreadable file was preserved at ${ backupPath }; starting ` +
@@ -184,7 +184,7 @@ let store = createStore();
 
 /**
  * Regenerates the local encryption key and re-encrypts the existing store
- * under it. Used by `wp config rotate-key` — an incident-response escape
+ * under it. Used by `wrapido config rotate-key` — an incident-response escape
  * hatch if the local key file is ever suspected compromised.
  *
  * The new, fully-populated store is built and verified in a temporary
@@ -251,7 +251,7 @@ export function rotateEncryptionKey(): void {
 
 /**
  * Reads the default `--url`: a config file's `url` if one was loaded, else the
- * one persisted via `wp config set` or `wp auth application-passwords use`.
+ * one persisted via `wrapido config set` or `wrapido auth application-passwords use`.
  * @return The default site URL, or undefined if none is set.
  */
 export function getDefaultUrl(): string | undefined {
@@ -260,7 +260,7 @@ export function getDefaultUrl(): string | undefined {
 }
 
 /**
- * Reads the persisted default `--username`, if one was set via `wp config set`.
+ * Reads the persisted default `--username`, if one was set via `wrapido config set`.
  * @return The stored username, or undefined if none is set.
  */
 export function getDefaultUsername(): string | undefined {
@@ -282,15 +282,15 @@ export function setDefaults( values: StoredConfig ): void {
 }
 
 /**
- * Removes the persisted default `--url`/`--username` (`wp config clear`).
- * Does not touch credentials saved via `wp auth` — use `wp auth application-passwords remove` for those.
+ * Removes the persisted default `--url`/`--username` (`wrapido config clear`).
+ * Does not touch credentials saved via `wrapido auth` — use `wrapido auth application-passwords remove` for those.
  */
 export function clearDefaults(): void {
 	store.delete( 'url' );
 	store.delete( 'username' );
 }
 
-/** Path to the on-disk config file backing this store, for `wp config get`'s display. */
+/** Path to the on-disk config file backing this store, for `wrapido config get`'s display. */
 export function configFilePath(): string {
 	return store.path;
 }
@@ -301,8 +301,8 @@ export function configFilePath(): string {
  * credential. A non-ASCII hostname is punycode-encoded by `URL` itself as
  * part of this canonicalization (e.g. `https://münchen.example` becomes
  * `https://xn--mnchen-3ya.example`) — the correct, stable form to key on, but
- * worth knowing about since it's also what `wp auth application-passwords
- * list`/`wp auth application-passwords status` then display back, which
+ * worth knowing about since it's also what `wrapido auth application-passwords
+ * list`/`wrapido auth application-passwords status` then display back, which
  * won't visually match what was typed.
  * @param  url The site URL to normalize.
  * @return The canonicalized URL, with no trailing slash.
@@ -359,7 +359,7 @@ function readSites(): Record< string, PerSiteCredentials > {
 
 /**
  * Reads the stored Application Password credential for a site, if one was
- * saved via `wp auth application-passwords login`/`add`.
+ * saved via `wrapido auth application-passwords login`/`add`.
  * @param url      The site URL to look up (normalized internally).
  * @param authType {@link APPLICATION_PASSWORDS_AUTH_TYPE}.
  * @return The stored credential, or undefined if none is saved for this site.
@@ -370,7 +370,7 @@ export function getSiteCredential(
 ): StoredApplicationPasswordCredential | undefined;
 /**
  * Reads the stored OAuth2 credential for a site, if one was saved via
- * `wp auth oauth2 login`/`add`.
+ * `wrapido auth oauth2 login`/`add`.
  * @param url      The site URL to look up (normalized internally).
  * @param authType {@link OAUTH2_AUTH_TYPE}.
  * @return The stored credential, or undefined if none is saved for this site.
@@ -395,7 +395,7 @@ export function getSiteCredential(
  * other.
  *
  * Like every other function here, this does a plain read-modify-write with
- * no cross-process locking — two `wp auth` invocations racing at the exact
+ * no cross-process locking — two `wrapido auth` invocations racing at the exact
  * same instant (e.g. a script adding/removing several sites in parallel)
  * could lose one's update. Accepted as a low-severity gap for a CLI that's
  * normally run interactively, one command at a time, rather than adding a
@@ -480,8 +480,8 @@ export type SiteCredentialRow = { url: string } & (
 
 /**
  * Lists every stored site credential, across every auth type, without
- * secrets (password/uuid/accessToken/clientSecret) — for `wp auth
- * application-passwords list`/`wp auth oauth2 list`, each of which filters
+ * secrets (password/uuid/accessToken/clientSecret) — for `wrapido auth
+ * application-passwords list`/`wrapido auth oauth2 list`, each of which filters
  * this down to its own `authType` client-side rather than this function
  * taking a filter parameter.
  * @return One row per stored `(url, authType)` pair.

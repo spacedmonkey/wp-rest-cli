@@ -63,14 +63,14 @@ const UPLOAD_ERROR_HINTS: Record< string, string > = {
 /** Hints for common auth/routing/validation errors, keyed by WordPress error code. */
 const GENERAL_ERROR_HINTS: Record< string, string > = {
 	rest_forbidden:
-		'Not allowed: check credentials (see `wp auth ... status`) and that the user has the needed capability.',
+		'Not allowed: check credentials (see `wrapido auth ... status`) and that the user has the needed capability.',
 	rest_no_route:
-		'No such route: run `wp <namespace>` to list routes and `wp help <namespace> <route>` for its verbs.',
+		'No such route: run `wrapido <namespace>` to list routes and `wrapido help <namespace> <route>` for its verbs.',
 	rest_forbidden_context:
 		'This --context (e.g. edit) needs a real authenticated user; a client_credentials token acts as user 0. Try --context=view.',
 	rest_post_invalid_id: 'No item has that id; run `list` to find valid ids.',
 	rest_invalid_param:
-		'A field value is invalid: run `wp help <namespace> <route> <verb>` for the accepted fields and types.',
+		'A field value is invalid: run `wrapido help <namespace> <route> <verb>` for the accepted fields and types.',
 };
 
 /**

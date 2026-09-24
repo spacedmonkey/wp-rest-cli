@@ -35,17 +35,15 @@ describe( 'auth', () => {
 	let authConfigDir: string;
 
 	beforeAll( async () => {
-		authConfigDir = await mkdtemp(
-			join( tmpdir(), 'wp-rest-cli-auth-it-' )
-		);
+		authConfigDir = await mkdtemp( join( tmpdir(), 'wrapido-auth-it-' ) );
 	} );
 
 	afterAll( async () => {
 		await rm( authConfigDir, { recursive: true, force: true } );
 	} );
 
-	// `wp auth` now requires a `<type>` positional right after `auth`
-	// (`wp auth <type> <verb> ...`) — inserted here centrally, rather than
+	// `wrapido auth` now requires a `<type>` positional right after `auth`
+	// (`wrapido auth <type> <verb> ...`) — inserted here centrally, rather than
 	// in every call site below, so this is the one place that would need
 	// to change if a test ever needed to exercise a different type.
 	const AUTH_TYPE = 'application-passwords';
@@ -234,7 +232,7 @@ describe( 'auth', () => {
 			'does not support Application Passwords'
 		);
 		expect( result.stderr ).toContain(
-			'wp auth application-passwords add'
+			'wrapido auth application-passwords add'
 		);
 	} );
 
@@ -362,7 +360,7 @@ describe( 'auth', () => {
 		expect( list.stdout ).toContain( 'No stored credentials' );
 	} );
 
-	it( 'wp config rotate-key re-encrypts the store without losing data', async () => {
+	it( 'wrapido config rotate-key re-encrypts the store without losing data', async () => {
 		await removeIfPresent( fixture.baseUrl );
 		await runAuth( [
 			'auth',
@@ -402,7 +400,7 @@ describe( 'config store recovery', () => {
 	// interrupted partway through).
 	it( 'recovers instead of crashing when the config file cannot be decrypted, preserving a backup', async () => {
 		const recoveryDir = await mkdtemp(
-			join( tmpdir(), 'wp-rest-cli-recovery-it-' )
+			join( tmpdir(), 'wrapido-recovery-it-' )
 		);
 		try {
 			const set = await runCli(

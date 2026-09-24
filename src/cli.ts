@@ -225,7 +225,7 @@ function applyFileConfig( options: RawOptions ): RawOptions {
 
 /**
  * Validates and narrows Commander's raw parsed options into typed {@link GlobalFlags}.
- * Color is on unless `--no-color`, `NO_COLOR` or agent mode (`WP_REST_CLI_AGENT`) turns it off.
+ * Color is on unless `--no-color`, `NO_COLOR` or agent mode (`WRAPIDO_AGENT`) turns it off.
  * @param options Commander's raw parsed options.
  * @return The validated global flags.
  */
@@ -278,7 +278,7 @@ function toGlobalFlags( options: RawOptions ): GlobalFlags {
 }
 
 /**
- * Handles `wp config get|set|clear`, the one subcommand that never touches the
+ * Handles `wrapido config get|set|clear`, the one subcommand that never touches the
  * REST API.
  * @param args    The full positional argument list, starting with `config`.
  * @param options Commander's raw parsed options.
@@ -343,7 +343,7 @@ async function handleConfigCommand(
 			console.error(
 				errorText(
 					new CliError(
-						'Usage: wp config <get|set|clear|rotate-key> [--url=] [--username=]'
+						'Usage: wrapido config <get|set|clear|rotate-key> [--url=] [--username=]'
 					),
 					options.format
 				)
@@ -354,7 +354,7 @@ async function handleConfigCommand(
 }
 
 /**
- * Handles `wp help ...`: resolves the site URL, parses the help arguments,
+ * Handles `wrapido help ...`: resolves the site URL, parses the help arguments,
  * and prints the result.
  * @param args    The positional arguments following `help`.
  * @param options Commander's raw parsed options.
@@ -374,7 +374,7 @@ async function handleHelpCommand(
 	const siteUrl = flags.url ?? getDefaultUrl();
 	if ( ! siteUrl ) {
 		throw new CliError(
-			'Missing --url. Pass --url=<site>, or save a default with: wp-rest-cli config set --url=<site>'
+			'Missing --url. Pass --url=<site>, or save a default with: wrapido config set --url=<site>'
 		);
 	}
 	const parsed = parseHelpArgs( args );
@@ -394,7 +394,7 @@ disableTlsVerification();
 const program = new Command();
 
 program
-	.name( 'wp-rest-cli' )
+	.name( 'wrapido' )
 	.description( "Talk to any WordPress site's REST API, WP-CLI style." )
 	.argument( '[args...]', 'namespace route verb id field=value...' )
 	.option( '--url <url>', 'WordPress site URL' )
@@ -408,15 +408,15 @@ program
 	)
 	.option(
 		'--client-id <id>',
-		'OAuth2 client id, from a manually-created wp-admin Application (for "wp auth oauth2 login/add")'
+		'OAuth2 client id, from a manually-created wp-admin Application (for "wrapido auth oauth2 login/add")'
 	)
 	.option(
 		'--client-secret <secret>',
-		'OAuth2 client secret (for "wp auth oauth2 login/add"; required for add, optional for login)'
+		'OAuth2 client secret (for "wrapido auth oauth2 login/add"; required for add, optional for login)'
 	)
 	.option(
 		'--token <token>',
-		'OAuth2 personal access token, generated in wp-admin (for "wp auth oauth2 add"; alternative to --client-id/--client-secret)'
+		'OAuth2 personal access token, generated in wp-admin (for "wrapido auth oauth2 add"; alternative to --client-id/--client-secret)'
 	)
 	.option(
 		'--use-auth <source>',
@@ -453,30 +453,30 @@ program
 		'after',
 		`
 Examples:
-  $ wp-rest-cli --url=https://example.com
-  $ wp-rest-cli wp/v2 --url=https://example.com
-  $ wp-rest-cli wp/v2 posts --url=https://example.com
-  $ wp-rest-cli wp/v2 posts list --per_page=5 --format=json --url=https://example.com
-  $ wp-rest-cli wp/v2 posts get 42 --context=edit --url=https://example.com --username=admin --password=xxxx-xxxx-xxxx-xxxx
-  $ wp-rest-cli wp/v2 posts create --title="Hello" --status=publish --url=https://example.com
-  $ wp-rest-cli wp/v2 posts delete 42 --force --url=https://example.com
-  $ wp-rest-cli wp/v2 media create --file=./cat.jpg --title="Cat" --url=https://example.com
-  $ wp-rest-cli wp/v2 media create --file=https://example.com/cat.jpg --url=https://example.com
-  $ wp-rest-cli config set --url=https://example.com --username=admin
-  $ wp-rest-cli auth application-passwords login https://example.com
-  $ wp-rest-cli auth application-passwords add https://example.com --username=admin --password=xxxx-xxxx-xxxx-xxxx
-  $ wp-rest-cli auth application-passwords list
-  $ wp-rest-cli auth application-passwords remove --all
-  $ wp-rest-cli auth oauth2 login https://example.com --client-id=abc123
-  $ wp-rest-cli auth oauth2 add https://example.com --client-id=abc123 --client-secret=xxxx
-  $ wp-rest-cli config rotate-key
-  $ wp-rest-cli help wp/v2 posts list --url=https://example.com
-  $ wp-rest-cli wp/v2 posts --help --url=https://example.com
-  $ wp-rest-cli wp/v2 posts create --help --url=https://example.com
+  $ wrapido --url=https://example.com
+  $ wrapido wp/v2 --url=https://example.com
+  $ wrapido wp/v2 posts --url=https://example.com
+  $ wrapido wp/v2 posts list --per_page=5 --format=json --url=https://example.com
+  $ wrapido wp/v2 posts get 42 --context=edit --url=https://example.com --username=admin --password=xxxx-xxxx-xxxx-xxxx
+  $ wrapido wp/v2 posts create --title="Hello" --status=publish --url=https://example.com
+  $ wrapido wp/v2 posts delete 42 --force --url=https://example.com
+  $ wrapido wp/v2 media create --file=./cat.jpg --title="Cat" --url=https://example.com
+  $ wrapido wp/v2 media create --file=https://example.com/cat.jpg --url=https://example.com
+  $ wrapido config set --url=https://example.com --username=admin
+  $ wrapido auth application-passwords login https://example.com
+  $ wrapido auth application-passwords add https://example.com --username=admin --password=xxxx-xxxx-xxxx-xxxx
+  $ wrapido auth application-passwords list
+  $ wrapido auth application-passwords remove --all
+  $ wrapido auth oauth2 login https://example.com --client-id=abc123
+  $ wrapido auth oauth2 add https://example.com --client-id=abc123 --client-secret=xxxx
+  $ wrapido config rotate-key
+  $ wrapido help wp/v2 posts list --url=https://example.com
+  $ wrapido wp/v2 posts --help --url=https://example.com
+  $ wrapido wp/v2 posts create --help --url=https://example.com
 
 Dynamic field/query arguments (e.g. --per_page=, --title=, --force) are passed
 straight through to the WordPress REST API and are not fixed ahead of time —
-run "wp-rest-cli <namespace> <route>" to see which ones a given route supports.
+run "wrapido <namespace> <route>" to see which ones a given route supports.
 "list --per_page=-1" fetches every page, using the route's maximum page size.
 `
 	)
@@ -490,7 +490,7 @@ run "wp-rest-cli <namespace> <route>" to see which ones a given route supports.
 			if ( args[ 0 ] === 'config' ) {
 				if ( options.help ) {
 					console.log(
-						'Usage: wp config <get|set|clear|rotate-key> [--url=] [--username=]'
+						'Usage: wrapido config <get|set|clear|rotate-key> [--url=] [--username=]'
 					);
 					process.exitCode = 0;
 					return;
@@ -502,7 +502,7 @@ run "wp-rest-cli <namespace> <route>" to see which ones a given route supports.
 			if ( args[ 0 ] === 'auth' ) {
 				if ( options.help ) {
 					// Validate a given type the same way a real invocation
-					// would (bare `wp auth --help`, with no type at all, is
+					// would (bare `wrapido auth --help`, with no type at all, is
 					// exempt — that's just asking for the general usage
 					// below) — otherwise `--help` would silently accept a
 					// bogus type and exit 0 where every other invocation
@@ -557,7 +557,7 @@ run "wp-rest-cli <namespace> <route>" to see which ones a given route supports.
 			const siteUrl = flags.url ?? getDefaultUrl();
 			if ( ! siteUrl ) {
 				throw new CliError(
-					'Missing --url. Pass --url=<site>, or save a default with: wp-rest-cli config set --url=<site>'
+					'Missing --url. Pass --url=<site>, or save a default with: wrapido config set --url=<site>'
 				);
 			}
 
