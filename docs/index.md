@@ -1,6 +1,6 @@
 # wrapido
 
-**WordPress REST API Doer**: a fast CLI for any WordPress site.
+**W**ordPress **R**EST **API** **Do**er: a fast CLI for any WordPress site.
 
 A WP-CLI-style command line tool for talking to **any** WordPress site's REST API over HTTP — no PHP, no SSH, no WordPress install required locally.
 
