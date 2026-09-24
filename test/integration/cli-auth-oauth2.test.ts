@@ -34,9 +34,7 @@ describe( 'oauth2', () => {
 	let authConfigDir: string;
 
 	beforeAll( async () => {
-		authConfigDir = await mkdtemp(
-			join( tmpdir(), 'wp-rest-cli-oauth2-it-' )
-		);
+		authConfigDir = await mkdtemp( join( tmpdir(), 'wrapido-oauth2-it-' ) );
 	} );
 
 	afterAll( async () => {
@@ -75,7 +73,7 @@ describe( 'oauth2', () => {
 	}
 
 	/**
-	 * Spawns `wp auth oauth2 login`, captures the printed authorize URL,
+	 * Spawns `wrapido auth oauth2 login`, captures the printed authorize URL,
 	 * and returns the still-running child alongside that URL — callers
 	 * decide how to complete the flow (follow the fixture's own redirect
 	 * like a browser would, or hit the local callback server directly to

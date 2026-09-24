@@ -50,7 +50,7 @@ function isApplicationPasswordsRow(
 	return site.authType === APPLICATION_PASSWORDS_AUTH_TYPE;
 }
 
-/** The outcome of verifying a manually-supplied credential for `wp auth application-passwords add`. */
+/** The outcome of verifying a manually-supplied credential for `wrapido auth application-passwords add`. */
 interface AddVerificationResult {
 	authMethod: 'password' | 'application-password';
 	uuid?: string;
@@ -61,7 +61,7 @@ interface AddVerificationResult {
 }
 
 /**
- * The generic "am I authenticated at all" check `wp auth application-passwords
+ * The generic "am I authenticated at all" check `wrapido auth application-passwords
  * add`'s validation falls back to when introspection doesn't apply (either
  * skipped because the site can't possibly support Application Passwords, or
  * the credential genuinely isn't one). A 200 and a 401/403 are both
@@ -98,7 +98,7 @@ async function verifyViaUsersMe(
 }
 
 /**
- * Verifies a manually-supplied `wp auth application-passwords add` credential
+ * Verifies a manually-supplied `wrapido auth application-passwords add` credential
  * against the live site: tries to confirm it's an Application Password first (conclusive,
  * either way), then falls back to a generic authenticated check. Never
  * called when `--skip-verify` is passed.
@@ -208,7 +208,7 @@ async function revokePreviousLoginCredential(
 }
 
 /**
- * `wp auth application-passwords login <url>`: runs the browser-based registration flow, then
+ * `wrapido auth application-passwords login <url>`: runs the browser-based registration flow, then
  * best-effort revokes whatever Application Password it's replacing for this
  * site. Ordering matters — the new credential is always safely stored
  * *before* anything old is touched, so a mid-flow failure can never destroy
@@ -274,7 +274,7 @@ async function handleLogin(
 }
 
 /**
- * `wp auth application-passwords add <url> --username= --password= [--skip-verify]`: stores a
+ * `wrapido auth application-passwords add <url> --username= --password= [--skip-verify]`: stores a
  * manually-supplied credential, verifying it against the site first unless
  * `--skip-verify` was passed.
  * @param parsed The parsed `add` command.
@@ -290,7 +290,7 @@ async function handleAdd(
 ): Promise< AuthResult > {
 	if ( ! flags.username || ! flags.password ) {
 		throw new CliError(
-			`wp auth ${ APPLICATION_PASSWORDS_AUTH_TYPE } add requires --username and --password.`
+			`wrapido auth ${ APPLICATION_PASSWORDS_AUTH_TYPE } add requires --username and --password.`
 		);
 	}
 
@@ -342,7 +342,7 @@ async function handleAdd(
 }
 
 /**
- * `wp auth application-passwords list`: every stored site's URL/username/auth method, never passwords.
+ * `wrapido auth application-passwords list`: every stored site's URL/username/auth method, never passwords.
  * @param flags Global CLI flags.
  * @return The command's rendered output and exit code.
  */
@@ -351,7 +351,7 @@ async function handleList( flags: GlobalFlags ): Promise< AuthResult > {
 	if ( ! sites.length ) {
 		return {
 			output: pc.dim(
-				`No stored credentials. Use "wp auth ${ APPLICATION_PASSWORDS_AUTH_TYPE } login <url>" or "wp auth ${ APPLICATION_PASSWORDS_AUTH_TYPE } add <url> --username=<u> --password=<p>".`
+				`No stored credentials. Use "wrapido auth ${ APPLICATION_PASSWORDS_AUTH_TYPE } login <url>" or "wrapido auth ${ APPLICATION_PASSWORDS_AUTH_TYPE } add <url> --username=<u> --password=<p>".`
 			),
 			exitCode: 0,
 		};
@@ -377,7 +377,7 @@ async function handleList( flags: GlobalFlags ): Promise< AuthResult > {
 }
 
 /**
- * `wp auth application-passwords remove <url>`: forgets the stored credential locally, first
+ * `wrapido auth application-passwords remove <url>`: forgets the stored credential locally, first
  * best-effort revoking it on the site if it's a tracked Application Password.
  * @param parsed The parsed `remove` command.
  * @param flags  Global CLI flags.
@@ -420,7 +420,7 @@ async function handleRemove(
 }
 
 /**
- * `wp auth application-passwords remove --all`: best-effort revokes and
+ * `wrapido auth application-passwords remove --all`: best-effort revokes and
  * forgets every stored application-passwords credential, one site at a
  * time — an incident-response escape hatch, so intentionally sequential
  * rather than parallelized. Scoped to this auth type only: a site's stored
@@ -475,7 +475,7 @@ async function handleRemoveAll( flags: GlobalFlags ): Promise< AuthResult > {
 }
 
 /**
- * `wp auth application-passwords use <url>`: sets the default `--url` (same mechanism `wp config
+ * `wrapido auth application-passwords use <url>`: sets the default `--url` (same mechanism `wrapido config
  * set --url=` uses).
  * @param parsed The parsed `use` command.
  * @return The command's rendered output and exit code.
@@ -493,7 +493,7 @@ function handleUse(
 }
 
 /**
- * `wp auth application-passwords status`: the current default site, and whether a credential is stored for it.
+ * `wrapido auth application-passwords status`: the current default site, and whether a credential is stored for it.
  * @return The command's rendered output and exit code.
  */
 function handleStatus(): AuthResult {
@@ -501,7 +501,7 @@ function handleStatus(): AuthResult {
 	if ( ! defaultUrl ) {
 		return {
 			output: pc.dim(
-				`No default site set. Use "wp auth ${ APPLICATION_PASSWORDS_AUTH_TYPE } use <url>" or "wp config set --url=<url>".`
+				`No default site set. Use "wrapido auth ${ APPLICATION_PASSWORDS_AUTH_TYPE } use <url>" or "wrapido config set --url=<url>".`
 			),
 			exitCode: 0,
 		};
@@ -517,17 +517,17 @@ function handleStatus(): AuthResult {
 					`authenticated as ${ credential.username } (${ credential.authMethod })`
 			  )
 			: pc.dim(
-					`no stored credential for this site — pass --username/--password (or WP_USERNAME/WP_PASSWORD), or run "wp auth ${ APPLICATION_PASSWORDS_AUTH_TYPE } login <url>".`
+					`no stored credential for this site — pass --username/--password (or WP_USERNAME/WP_PASSWORD), or run "wrapido auth ${ APPLICATION_PASSWORDS_AUTH_TYPE } login <url>".`
 			  ),
 	];
 	return { output: lines.join( '\n' ), exitCode: 0 };
 }
 
 /**
- * Executes a parsed `wp auth application-passwords` command: manages stored
+ * Executes a parsed `wrapido auth application-passwords` command: manages stored
  * per-site credentials and runs the browser-based Application Password
  * registration flow. Never dispatches through the generic REST command
- * pipeline (`rest.ts`) — like `wp config`, this is CLI-local bookkeeping.
+ * pipeline (`rest.ts`) — like `wrapido config`, this is CLI-local bookkeeping.
  * @param parsed The parsed auth command.
  * @param flags  Global CLI flags (only `--username`/`--password`/`--format`/`--fields`/`--field`/`--color`/`--quiet`/`--debug` are relevant here).
  * @return The command's rendered output and exit code.

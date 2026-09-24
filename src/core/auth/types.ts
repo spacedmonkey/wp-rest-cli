@@ -9,7 +9,7 @@ export interface AuthProvider {
 }
 
 /**
- * The `wp auth` type slug for WordPress core Application Passwords — matches
+ * The `wrapido auth` type slug for WordPress core Application Passwords — matches
  * the literal key WordPress's own REST API root index uses in its
  * `authentication` object (see `core/indexer.ts`'s
  * `getApplicationPasswordAuthorizationUrl`).
@@ -17,14 +17,14 @@ export interface AuthProvider {
 export const APPLICATION_PASSWORDS_AUTH_TYPE = 'application-passwords';
 
 /**
- * The `wp auth` type slug for the WP-API/OAuth2 plugin — matches the literal
+ * The `wrapido auth` type slug for the WP-API/OAuth2 plugin — matches the literal
  * key that plugin's `register_in_index()` uses in the site's `authentication`
  * object (see `core/indexer.ts`'s `getOAuth2Endpoints`).
  */
 export const OAUTH2_AUTH_TYPE = 'oauth2';
 
 /**
- * Auth types `wp auth <type> ...` can actually dispatch to. A real TypeScript
+ * Auth types `wrapido auth <type> ...` can actually dispatch to. A real TypeScript
  * union rather than a bare `string`, so adding a further type later and
  * updating `commands/auth.ts`'s `runAuthCommand` switch to handle it is
  * enforced by TypeScript's exhaustiveness checking, not just a comment.

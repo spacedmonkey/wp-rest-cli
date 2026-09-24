@@ -174,7 +174,7 @@ export async function downloadToTemp(
 			headers: {
 				// The byte count for the progress bar must match what's written.
 				'Accept-Encoding': 'identity',
-				'User-Agent': 'wp-rest-cli',
+				'User-Agent': 'wrapido',
 			},
 			signal: controller.signal,
 		} );
@@ -203,7 +203,7 @@ export async function downloadToTemp(
 		response.headers.get( 'content-disposition' ),
 		response.headers.get( 'content-type' )
 	);
-	const dir = await mkdtemp( path.join( os.tmpdir(), 'wp-rest-cli-' ) );
+	const dir = await mkdtemp( path.join( os.tmpdir(), 'wrapido-' ) );
 	tempDirs.add( dir );
 	installExitHooks();
 	const cleanup = async () => {

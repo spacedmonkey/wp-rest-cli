@@ -49,10 +49,10 @@ describe( 'meta', () => {
 		expect( result.stdout ).toMatch( /meta\s+\(subcommand\)/ );
 		// The full "usage: ... meta add/clean-duplicates/.../update"
 		// block is redundant once meta is already listed above as a
-		// discoverable subcommand — `wp <namespace> <route> meta` (or
-		// `wp help ... meta`) is where that detail belongs instead.
+		// discoverable subcommand — `wrapido <namespace> <route> meta` (or
+		// `wrapido help ... meta`) is where that detail belongs instead.
 		expect( result.stdout ).not.toContain(
-			'usage: wp-rest-cli wp/v2 widgets meta add <id> <key>'
+			'usage: wrapido wp/v2 widgets meta add <id> <key>'
 		);
 	} );
 

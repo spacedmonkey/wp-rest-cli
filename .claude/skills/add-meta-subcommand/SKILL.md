@@ -1,6 +1,6 @@
 ---
 name: add-meta-subcommand
-description: Add or change a `wp-rest-cli <namespace> <route> meta <subcommand>` command, or map a new WP-CLI `wp post meta`-style operation onto the REST API's `meta` field. Use when the user wants a new meta subcommand, wants to change how add/update/delete/patch/pluck/list/clean-duplicates/get work, or asks how to expose some WP-CLI meta behavior over REST.
+description: Add or change a `wrapido <namespace> <route> meta <subcommand>` command, or map a new WP-CLI `wp post meta`-style operation onto the REST API's `meta` field. Use when the user wants a new meta subcommand, wants to change how add/update/delete/patch/pluck/list/clean-duplicates/get work, or asks how to expose some WP-CLI meta behavior over REST.
 ---
 
 # Working on `meta` commands (`src/commands/meta.ts`)
@@ -9,7 +9,7 @@ description: Add or change a `wp-rest-cli <namespace> <route> meta <subcommand>`
 
 WP-CLI's `wp post meta` talks to `wp_postmeta` directly via PHP/DB access. This CLI only has HTTP. Over REST, meta **only exists** as the `meta` object field on the parent resource — visible only for keys a plugin/theme registered with `show_in_rest: true`. There is no separate meta collection endpoint, no way to enumerate unregistered meta, and no true "insert a second value under a single-value key" the way direct DB access allows.
 
-Every subcommand in this file is therefore a **documented best-effort mapping** onto "GET the resource, read/mutate `meta`, PATCH it back" — not a literal port of WP-CLI's DB-backed behavior. When adding or changing a subcommand, decide the mapping deliberately and write it into `META_VERB_DESCRIPTIONS` (shown in `wp-rest-cli help <namespace> <route> meta <verb>`) so the gap is visible to users, rather than silently pretending REST parity that doesn't exist. Existing precedent:
+Every subcommand in this file is therefore a **documented best-effort mapping** onto "GET the resource, read/mutate `meta`, PATCH it back" — not a literal port of WP-CLI's DB-backed behavior. When adding or changing a subcommand, decide the mapping deliberately and write it into `META_VERB_DESCRIPTIONS` (shown in `wrapido help <namespace> <route> meta <verb>`) so the gap is visible to users, rather than silently pretending REST parity that doesn't exist. Existing precedent:
 
 - `add` and `update` are identical (no multi-value "add" semantics over REST).
 - `clean-duplicates` only does anything for **array-type** meta values (`single: false` registration) — for a scalar value it's a documented no-op.
@@ -35,4 +35,4 @@ Every subcommand in this file is therefore a **documented best-effort mapping** 
 
 ## Discoverability
 
-The `meta` usage block only appears in `wp-rest-cli <namespace> <route>` / `help <namespace> <route>` output when `routeSupportsMeta(endpoints)` finds a `meta` key in the route's create/update args (from the live OPTIONS schema). If you're testing against a real site and don't see the meta block, that route's post type/object likely hasn't registered any meta with `show_in_rest` — this is expected, not a bug in the detection.
+The `meta` usage block only appears in `wrapido <namespace> <route>` / `help <namespace> <route>` output when `routeSupportsMeta(endpoints)` finds a `meta` key in the route's create/update args (from the live OPTIONS schema). If you're testing against a real site and don't see the meta block, that route's post type/object likely hasn't registered any meta with `show_in_rest` — this is expected, not a bug in the detection.

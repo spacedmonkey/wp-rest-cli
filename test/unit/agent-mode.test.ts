@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it } from '@jest/globals';
 import { agentMode, agentModeReason } from '../../src/ui.js';
 
 const MARKERS = [
-	'WP_REST_CLI_AGENT',
+	'WRAPIDO_AGENT',
 	'AI_AGENT',
 	'CLAUDECODE',
 	'CODEX_CI',
@@ -49,10 +49,10 @@ describe( 'agentMode auto-detection', () => {
 		expect( agentModeReason() ).toBe( name );
 	} );
 
-	it( 'WP_REST_CLI_AGENT=0 overrides every marker', () => {
+	it( 'WRAPIDO_AGENT=0 overrides every marker', () => {
 		process.env.AI_AGENT = '1';
 		process.env.CLAUDECODE = '1';
-		process.env.WP_REST_CLI_AGENT = '0';
+		process.env.WRAPIDO_AGENT = '0';
 		expect( agentMode() ).toBe( false );
 	} );
 
@@ -61,12 +61,12 @@ describe( 'agentMode auto-detection', () => {
 		expect( agentModeReason() ).toBeUndefined();
 	} );
 
-	it( 'WP_REST_CLI_AGENT=1 wins with no other markers set', () => {
-		process.env.WP_REST_CLI_AGENT = '1';
-		expect( agentModeReason() ).toBe( 'WP_REST_CLI_AGENT' );
+	it( 'WRAPIDO_AGENT=1 wins with no other markers set', () => {
+		process.env.WRAPIDO_AGENT = '1';
+		expect( agentModeReason() ).toBe( 'WRAPIDO_AGENT' );
 	} );
 
-	it( 'a falsy AI_AGENT overrides a marker too, like WP_REST_CLI_AGENT=0 does', () => {
+	it( 'a falsy AI_AGENT overrides a marker too, like WRAPIDO_AGENT=0 does', () => {
 		process.env.CLAUDECODE = '1';
 		process.env.AI_AGENT = 'off';
 		expect( agentModeReason() ).toBeUndefined();

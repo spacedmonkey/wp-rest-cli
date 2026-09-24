@@ -19,13 +19,13 @@ import { CliError } from '../../src/core/errors.js';
 // `import()` inside `beforeAll`, after setting the env var, is what makes
 // this test suite isolated from whatever real config file already exists on
 // the machine running it (a pre-existing gap this suite also closes for the
-// `wp config get` integration tests, which read the real one).
+// `wrapido config get` integration tests, which read the real one).
 let configModule: typeof import('../../src/config.js');
 let tempDir: string;
 const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
 
 beforeAll( async () => {
-	tempDir = mkdtempSync( join( tmpdir(), 'wp-rest-cli-config-test-' ) );
+	tempDir = mkdtempSync( join( tmpdir(), 'wrapido-config-test-' ) );
 	process.env.XDG_CONFIG_HOME = tempDir;
 	configModule = await import( '../../src/config.js' );
 } );
@@ -383,7 +383,7 @@ describe( 'legacy sites shape migration', () => {
 			'utf8'
 		).trim();
 		const rawStore = new Conf< { sites?: Record< string, unknown > } >( {
-			projectName: 'wp-rest-cli',
+			projectName: 'wrapido',
 			cwd: configDir,
 			encryptionKey,
 		} );

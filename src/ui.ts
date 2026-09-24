@@ -11,7 +11,7 @@ import picocolors from 'picocolors';
 // own TTY-based auto-detection everywhere at once via this live binding.
 let pc = picocolors.createColors( true );
 
-/** Env values that mean "off" (for `WP_REST_CLI_AGENT`, `AI_AGENT`, ...). */
+/** Env values that mean "off" (for `WRAPIDO_AGENT`, `AI_AGENT`, ...). */
 const FALSY_ENV = [ '', '0', 'false', 'no', 'off' ];
 
 /**
@@ -20,7 +20,7 @@ const FALSY_ENV = [ '', '0', 'false', 'no', 'off' ];
  * an agent-controlled terminal — never user config/credentials a human could
  * set themselves, like `COPILOT_MODEL`/`COPILOT_GITHUB_TOKEN` or an API key.
  * `CURSOR_AGENT` is also set in a human typing in Cursor's own terminal, not
- * just an autonomous run — same trade-off as `CLAUDECODE`/`WP_REST_CLI_AGENT=0`
+ * just an autonomous run — same trade-off as `CLAUDECODE`/`WRAPIDO_AGENT=0`
  * exists to opt back out of it.
  */
 const AGENT_ENV_MARKERS = [
@@ -47,16 +47,16 @@ function envOn( name: string ): boolean {
 
 /**
  * Which env var turned agent mode on, or undefined when it is off. An
- * explicit `WP_REST_CLI_AGENT` always wins (a false value is the human
+ * explicit `WRAPIDO_AGENT` always wins (a false value is the human
  * escape hatch); otherwise `AI_AGENT` or a known agent marker enables it.
  * @return The triggering variable's name, or undefined when agent mode is off.
  */
 export function agentModeReason(): string | undefined {
-	if ( process.env.WP_REST_CLI_AGENT !== undefined ) {
-		return envOn( 'WP_REST_CLI_AGENT' ) ? 'WP_REST_CLI_AGENT' : undefined;
+	if ( process.env.WRAPIDO_AGENT !== undefined ) {
+		return envOn( 'WRAPIDO_AGENT' ) ? 'WRAPIDO_AGENT' : undefined;
 	}
 	// AI_AGENT is the cross-tool convention: a falsy value is an explicit
-	// opt-out too, same as WP_REST_CLI_AGENT — it doesn't fall through to a
+	// opt-out too, same as WRAPIDO_AGENT — it doesn't fall through to a
 	// more specific marker like CLAUDECODE.
 	if ( process.env.AI_AGENT !== undefined ) {
 		return envOn( 'AI_AGENT' ) ? 'AI_AGENT' : undefined;
@@ -65,7 +65,7 @@ export function agentModeReason(): string | undefined {
 }
 
 /**
- * Whether agent mode is on — set `WP_REST_CLI_AGENT=1`, or it is detected from
+ * Whether agent mode is on — set `WRAPIDO_AGENT=1`, or it is detected from
  * an AI agent's environment (see {@link agentModeReason}): plain,
  * machine-friendly output with no spinners or colour, JSON by default.
  * @return True when agent mode is on.

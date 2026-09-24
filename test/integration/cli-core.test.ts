@@ -43,10 +43,10 @@ it( 'lists namespaces when run with no args, WP-CLI-native NAME/DESCRIPTION/SYNO
 	const result = await run( [] );
 	expect( result.exitCode ).toBe( 0 );
 	expect( result.stdout ).toContain( 'NAME' );
-	expect( result.stdout ).toContain( 'wp-rest-cli' );
+	expect( result.stdout ).toContain( 'wrapido' );
 	expect( result.stdout ).toContain( 'DESCRIPTION' );
 	expect( result.stdout ).toContain( 'SYNOPSIS' );
-	expect( result.stdout ).toContain( 'wp-rest-cli <namespace>' );
+	expect( result.stdout ).toContain( 'wrapido <namespace>' );
 	expect( result.stdout ).toContain( 'SUBCOMMANDS' );
 	expect( result.stdout ).toContain( 'wp/v2' );
 	expect( result.stdout ).toContain( 'Application Passwords' );
@@ -75,9 +75,9 @@ it( 'lists routes for a namespace in table format as a WP-CLI-native SUBCOMMANDS
 	const result = await run( [ 'wp/v2' ] );
 	expect( result.exitCode ).toBe( 0 );
 	expect( result.stdout ).toContain( 'NAME' );
-	expect( result.stdout ).toContain( 'wp-rest-cli wp/v2' );
+	expect( result.stdout ).toContain( 'wrapido wp/v2' );
 	expect( result.stdout ).toContain( 'SYNOPSIS' );
-	expect( result.stdout ).toContain( 'wp-rest-cli wp/v2 <route>' );
+	expect( result.stdout ).toContain( 'wrapido wp/v2 <route>' );
 	expect( result.stdout ).toContain( 'SUBCOMMANDS' );
 	expect( result.stdout ).toMatch(
 		/widgets\s+list, get, create, update, delete, exists, generate/
@@ -100,23 +100,23 @@ it( 'shows a WP-CLI-style usage synopsis covering every verb', async () => {
 	expect( result.exitCode ).toBe( 0 );
 	const lines = result.stdout.split( '\n' );
 	expect( lines[ 0 ] ).toBe(
-		'usage: wp-rest-cli wp/v2 widgets list [--context=<context>] [--per_page=<per_page>]'
+		'usage: wrapido wp/v2 widgets list [--context=<context>] [--per_page=<per_page>]'
 	);
 	expect( lines[ 1 ] ).toBe(
-		'   or: wp-rest-cli wp/v2 widgets get <id> [--context=<context>]'
+		'   or: wrapido wp/v2 widgets get <id> [--context=<context>]'
 	);
 	expect( lines[ 2 ] ).toBe(
-		'   or: wp-rest-cli wp/v2 widgets create --title=<title> [--content=<content>] [--meta=<meta>] [--<field>=<value>]'
+		'   or: wrapido wp/v2 widgets create --title=<title> [--content=<content>] [--meta=<meta>] [--<field>=<value>]'
 	);
 	expect( lines[ 3 ] ).toBe(
-		'   or: wp-rest-cli wp/v2 widgets update <id> --title=<title> [--content=<content>] [--meta=<meta>] [--<field>=<value>]'
+		'   or: wrapido wp/v2 widgets update <id> --title=<title> [--content=<content>] [--meta=<meta>] [--<field>=<value>]'
 	);
 	expect( lines[ 4 ] ).toBe(
-		'   or: wp-rest-cli wp/v2 widgets delete <id> [--force]'
+		'   or: wrapido wp/v2 widgets delete <id> [--force]'
 	);
-	expect( lines[ 5 ] ).toBe( '   or: wp-rest-cli wp/v2 widgets exists <id>' );
+	expect( lines[ 5 ] ).toBe( '   or: wrapido wp/v2 widgets exists <id>' );
 	expect( lines[ 6 ] ).toBe(
-		'   or: wp-rest-cli wp/v2 widgets generate [--count=<count>] --title=<title> [--content=<content>] [--meta=<meta>] [--<field>=<value>]'
+		'   or: wrapido wp/v2 widgets generate [--count=<count>] --title=<title> [--content=<content>] [--meta=<meta>] [--<field>=<value>]'
 	);
 } );
 
@@ -347,9 +347,7 @@ it( 'shows route schema for `help <namespace> <route>`', async () => {
 it( 'shows list-verb help with the matching collection GET args', async () => {
 	const result = await run( [ 'help', 'wp/v2', 'widgets', 'list' ] );
 	expect( result.exitCode ).toBe( 0 );
-	expect( result.stdout ).toContain(
-		'usage: wp-rest-cli wp/v2 widgets list'
-	);
+	expect( result.stdout ).toContain( 'usage: wrapido wp/v2 widgets list' );
 	expect( result.stdout ).toContain( '[--per_page=<per_page>]' );
 } );
 
@@ -420,9 +418,9 @@ it( 'shows a pure-container route (no schema of its own) as a WP-CLI-native SUBC
 	const result = await run( [ 'wp/v2', 'posts' ] );
 	expect( result.exitCode ).toBe( 0 );
 	expect( result.stdout ).toContain( 'NAME' );
-	expect( result.stdout ).toContain( 'wp-rest-cli wp/v2 posts' );
+	expect( result.stdout ).toContain( 'wrapido wp/v2 posts' );
 	expect( result.stdout ).toContain( 'SYNOPSIS' );
-	expect( result.stdout ).toContain( 'wp-rest-cli wp/v2 posts <route>' );
+	expect( result.stdout ).toContain( 'wrapido wp/v2 posts <route>' );
 	expect( result.stdout ).toContain( 'SUBCOMMANDS' );
 	expect( result.stdout ).toMatch( /revisions\s+list, get, exists/ );
 	expect( result.stdout ).not.toContain( '+-' );
@@ -456,7 +454,7 @@ it( "shows a mid-path route's own URL parameter as required, both in the detaile
 	// The route itself is shown as separate words ("posts revisions"), the
 	// way it's actually typed at the CLI, not the internal "posts/revisions".
 	expect( result.stdout ).toContain(
-		'usage: wp-rest-cli wp/v2 posts revisions list --parent=<parent>'
+		'usage: wrapido wp/v2 posts revisions list --parent=<parent>'
 	);
 } );
 
@@ -571,7 +569,7 @@ describe( '--debug', () => {
 
 describe( 'partial credentials', () => {
 	// A lone --username/--password (or WP_USERNAME/WP_PASSWORD) must be
-	// rejected rather than silently falling through to whatever `wp auth`
+	// rejected rather than silently falling through to whatever `wrapido auth`
 	// credential happens to be stored for the site — that would mean
 	// requests running as a different, unintended account with no warning.
 	it( 'rejects --username given without --password', async () => {
@@ -684,18 +682,18 @@ describe( 'YAML config files', () => {
 		runCli( [ ...args, '--quiet', '--no-color' ], {
 			cwd: dir,
 			env: {
-				WP_REST_CLI_CONFIG_PATH: join( dir, 'user.yml' ),
+				WRAPIDO_CONFIG_PATH: join( dir, 'user.yml' ),
 			},
 		} );
 
 	beforeEach( () => {
-		dir = mkdtempSync( join( tmpdir(), 'wp-rest-cli-yml-' ) );
+		dir = mkdtempSync( join( tmpdir(), 'wrapido-yml-' ) );
 	} );
 	afterEach( () => rmSync( dir, { recursive: true, force: true } ) );
 
-	it( 'uses url and format from wp-rest-cli.yml with no flags', async () => {
+	it( 'uses url and format from wrapido.yml with no flags', async () => {
 		writeFileSync(
-			join( dir, 'wp-rest-cli.yml' ),
+			join( dir, 'wrapido.yml' ),
 			`url: ${ fixture.baseUrl }\nformat: json\n`
 		);
 		const result = await runIn( [] );
@@ -707,10 +705,10 @@ describe( 'YAML config files', () => {
 
 	it( 'lets command-line flags beat the file, and local.yml beat the project file', async () => {
 		writeFileSync(
-			join( dir, 'wp-rest-cli.yml' ),
+			join( dir, 'wrapido.yml' ),
 			`url: ${ fixture.baseUrl }\nformat: csv\n`
 		);
-		writeFileSync( join( dir, 'wp-rest-cli.local.yml' ), 'format: json\n' );
+		writeFileSync( join( dir, 'wrapido.local.yml' ), 'format: json\n' );
 		expect( JSON.parse( ( await runIn( [] ) ).stdout ) ).toEqual( [
 			{ namespace: 'wp/v2' },
 		] );
@@ -720,13 +718,13 @@ describe( 'YAML config files', () => {
 	} );
 
 	it( 'rejects a secret in a config file', async () => {
-		writeFileSync( join( dir, 'wp-rest-cli.yml' ), 'password: hunter2\n' );
+		writeFileSync( join( dir, 'wrapido.yml' ), 'password: hunter2\n' );
 		const result = await runIn( [ `--url=${ fixture.baseUrl }` ] );
 		expect( result.exitCode ).toBe( 1 );
 		expect( result.stderr ).toContain( '"password" is not allowed' );
 	} );
 
-	it( 'shows where wp config get values came from', async () => {
+	it( 'shows where wrapido config get values came from', async () => {
 		const file = join( dir, 'user.yml' );
 		writeFileSync( file, 'timeout: 5000\n' );
 		const result = await runIn( [ 'config', 'get' ] );
@@ -809,7 +807,7 @@ describe( 'agent-friendly JSON output', () => {
 		expect( result.stderr ).toContain( 'No such namespace' );
 	} );
 
-	it( 'fails for an unknown namespace via wp help', async () => {
+	it( 'fails for an unknown namespace via wrapido help', async () => {
 		const result = await run( [ 'help', 'nonsense/v1' ] );
 		expect( result.exitCode ).toBe( 1 );
 		expect( result.stderr ).toContain( 'No such namespace' );
@@ -822,7 +820,7 @@ describe( 'agent-friendly JSON output', () => {
 	} );
 
 	it( 'agent mode: no spinner/ANSI, JSON by default and JSON errors', async () => {
-		const env = { WP_REST_CLI_AGENT: '1' };
+		const env = { WRAPIDO_AGENT: '1' };
 		const ok = await runCli(
 			[ 'wp/v2', 'widgets', 'list', `--url=${ fixture.baseUrl }` ],
 			{ env }
@@ -853,7 +851,7 @@ describe( 'agent-friendly JSON output', () => {
 				'--per-page=1',
 				`--url=${ fixture.baseUrl }`,
 			],
-			{ env: { WP_REST_CLI_AGENT: '1' } }
+			{ env: { WRAPIDO_AGENT: '1' } }
 		);
 		expect( result.exitCode ).toBe( 0 );
 		expect( result.stdout ).not.toContain( '\n' );
@@ -945,7 +943,7 @@ describe( 'agent-friendly JSON output', () => {
 				'--per_page=1',
 				`--url=${ fixture.baseUrl }`,
 			],
-			{ env: { WP_REST_CLI_AGENT: '1' } }
+			{ env: { WRAPIDO_AGENT: '1' } }
 		);
 		expect( result.stderr ).toMatch( /Page 1 of \d+ \(\d+ total\)/ );
 	} );
@@ -953,7 +951,7 @@ describe( 'agent-friendly JSON output', () => {
 	describe( '--per_page=-1', () => {
 		const agent = ( args: string[] ) =>
 			runCli( [ 'wp/v2', ...args, `--url=${ fixture.baseUrl }` ], {
-				env: { WP_REST_CLI_AGENT: '1' },
+				env: { WRAPIDO_AGENT: '1' },
 			} );
 		const ids = ( stdout: string ) =>
 			( JSON.parse( stdout ) as Array< { id: number } > ).map(
@@ -1115,7 +1113,7 @@ describe( 'agent-friendly JSON output', () => {
 				'--format=bogus',
 				`--url=${ fixture.baseUrl }`,
 			],
-			{ env: { WP_REST_CLI_AGENT: '1' } }
+			{ env: { WRAPIDO_AGENT: '1' } }
 		);
 		expect( result.exitCode ).toBe( 1 );
 		expect( JSON.parse( result.stderr ).error.message ).toContain(
@@ -1126,7 +1124,7 @@ describe( 'agent-friendly JSON output', () => {
 	it( 'agent mode: fails with No such namespace for an unknown namespace plus a verb', async () => {
 		const result = await runCli(
 			[ 'nons/v1', 'widgets', 'list', `--url=${ fixture.baseUrl }` ],
-			{ env: { WP_REST_CLI_AGENT: '1' } }
+			{ env: { WRAPIDO_AGENT: '1' } }
 		);
 		expect( result.exitCode ).toBe( 1 );
 		expect( result.stderr ).toContain( 'No such namespace' );
@@ -1152,7 +1150,7 @@ describe( 'agent-friendly JSON output', () => {
 	it( 'agent mode: bare route JSON drops the bulky schema; human mode keeps it', async () => {
 		const agent = await runCli(
 			[ 'wp/v2', 'widgets', `--url=${ fixture.baseUrl }` ],
-			{ env: { WP_REST_CLI_AGENT: '1' } }
+			{ env: { WRAPIDO_AGENT: '1' } }
 		);
 		const agentJson = JSON.parse( agent.stdout );
 		expect( agentJson ).not.toHaveProperty( 'schema' );
@@ -1163,7 +1161,7 @@ describe( 'agent-friendly JSON output', () => {
 
 	it( 'agent mode: namespace listing has array verbs and has_children', async () => {
 		const agent = await runCli( [ 'wp/v2', `--url=${ fixture.baseUrl }` ], {
-			env: { WP_REST_CLI_AGENT: '1' },
+			env: { WRAPIDO_AGENT: '1' },
 		} );
 		const rows = JSON.parse( agent.stdout );
 		const widgets = rows.find(
@@ -1204,10 +1202,10 @@ describe( 'agent-friendly JSON output', () => {
 		expect( result.stderr ).toContain( 'Discovering REST API' );
 	} );
 
-	it( 'WP_REST_CLI_AGENT=0 overrides a detected marker', async () => {
+	it( 'WRAPIDO_AGENT=0 overrides a detected marker', async () => {
 		const result = await runCli(
 			[ 'wp/v2', 'widgets', `--url=${ fixture.baseUrl }` ],
-			{ env: { CLAUDECODE: '1', WP_REST_CLI_AGENT: '0' } }
+			{ env: { CLAUDECODE: '1', WRAPIDO_AGENT: '0' } }
 		);
 		expect( result.stderr ).toContain( 'Discovering REST API' );
 	} );

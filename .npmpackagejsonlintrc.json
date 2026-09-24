@@ -1,6 +1,6 @@
 {
 	"extends": "@wordpress/npm-package-json-lint-config",
 	"rules": {
-		"valid-values-license": ["error", ["MIT"]]
+		"valid-values-license": [ "error", [ "MIT" ] ]
 	}
 }

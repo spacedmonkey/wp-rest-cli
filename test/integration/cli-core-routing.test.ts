@@ -244,7 +244,7 @@ describe( 'singleton routes (e.g. settings)', () => {
 		const result = await run( [ 'wp/v2', 'settings' ] );
 		expect( result.exitCode ).toBe( 0 );
 		expect( result.stdout ).toContain(
-			'usage: wp-rest-cli wp/v2 settings list'
+			'usage: wrapido wp/v2 settings list'
 		);
 		expect( result.stdout ).not.toContain( 'settings get <id>' );
 		expect( result.stdout ).not.toContain( 'settings update <id>' );
@@ -706,7 +706,7 @@ describe( 'generate', () => {
 				'--title=Bulk widget',
 				`--url=${ fixture.baseUrl }`,
 			],
-			{ env: { WP_REST_CLI_AGENT: '1' } }
+			{ env: { WRAPIDO_AGENT: '1' } }
 		);
 		expect( result.exitCode ).toBe( 0 );
 		expect( result.stderr ).not.toMatch( /\x1b\[|\r/ );

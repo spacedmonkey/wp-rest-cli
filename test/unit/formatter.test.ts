@@ -218,10 +218,10 @@ describe( 'formatOutput', () => {
 
 describe( 'formatOutput in agent mode', () => {
 	beforeEach( () => {
-		process.env.WP_REST_CLI_AGENT = '1';
+		process.env.WRAPIDO_AGENT = '1';
 	} );
 	afterEach( () => {
-		delete process.env.WP_REST_CLI_AGENT;
+		delete process.env.WRAPIDO_AGENT;
 	} );
 
 	it( 'prints compact json without _links/_embedded', async () => {
@@ -253,7 +253,7 @@ describe( 'formatOutput in agent mode', () => {
 	it.each( [ 'FALSE', ' 0 ', 'off', 'No' ] )(
 		'treats %p as agent mode off',
 		async ( value ) => {
-			process.env.WP_REST_CLI_AGENT = value;
+			process.env.WRAPIDO_AGENT = value;
 			const out = await formatOutput(
 				{ id: 1 },
 				{ format: 'json', color: false }

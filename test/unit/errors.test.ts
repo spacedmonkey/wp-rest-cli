@@ -91,7 +91,7 @@ describe( 'formatErrorForDisplay', () => {
 			401
 		);
 		expect( formatErrorForDisplay( error ) ).toBe(
-			'Error: Not allowed. (rest_forbidden, status 401)\nNot allowed: check credentials (see `wp auth ... status`) and that the user has the needed capability.'
+			'Error: Not allowed. (rest_forbidden, status 401)\nNot allowed: check credentials (see `wrapido auth ... status`) and that the user has the needed capability.'
 		);
 	} );
 

@@ -1,6 +1,6 @@
 # Installation
 
-`wp-rest-cli` isn't published to the npm registry yet (see the note at the bottom of this page), so install it from source.
+`wrapido` isn't published to the npm registry yet (see the note at the bottom of this page), so install it from source.
 
 ## Requirements
 
@@ -9,8 +9,8 @@
 ## Build and run
 
 ```sh
-git clone https://github.com/spacedmonkey/wp-rest-cli.git
-cd wp-rest-cli
+git clone https://github.com/spacedmonkey/wrapido.git
+cd wrapido
 npm install
 npm run build
 ```
@@ -44,7 +44,4 @@ npm run wp -- <namespace> <route> [<verb>] [<id>] [--flag=value...] --url=<site>
 | `npm run lint` | `eslint .`. |
 | `npm run format` | `prettier --write .`. |
 
-See [CONTRIBUTING.md](https://github.com/spacedmonkey/wp-rest-cli/blob/main/CONTRIBUTING.md) for the full contributor workflow.
-
-!!! warning "npm package name"
-    The package name `wp-rest-cli` (and bin `wp-rest`) is already used by a different, actively-maintained project on the npm registry. This project isn't published under that name yet — it would need to be renamed or scoped (e.g. `@spacedmonkey/wp-rest-cli`) before an `npm publish` could succeed.
+See [CONTRIBUTING.md](https://github.com/spacedmonkey/wrapido/blob/main/CONTRIBUTING.md) for the full contributor workflow.

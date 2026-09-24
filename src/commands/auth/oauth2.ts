@@ -41,7 +41,7 @@ function isOAuth2Row(
 }
 
 /**
- * `wp auth oauth2 login <url> --client-id=<id> [...]`: runs the browser-based
+ * `wrapido auth oauth2 login <url> --client-id=<id> [...]`: runs the browser-based
  * `authorization_code` flow against a manually-created wp-admin Application,
  * then stores the resulting access token. Re-running `login` for the same
  * site overwrites the stored token silently — the WP-API/OAuth2 plugin
@@ -63,7 +63,7 @@ async function handleLogin(
 ): Promise< AuthResult > {
 	if ( ! flags.clientId ) {
 		throw new CliError(
-			`wp auth ${ OAUTH2_AUTH_TYPE } login requires --client-id, from a manually-created wp-admin Application (Users → Applications).`
+			`wrapido auth ${ OAUTH2_AUTH_TYPE } login requires --client-id, from a manually-created wp-admin Application (Users → Applications).`
 		);
 	}
 
@@ -110,7 +110,7 @@ async function handleLogin(
 }
 
 /**
- * The outcome of verifying a personal token for `wp auth oauth2 add
+ * The outcome of verifying a personal token for `wrapido auth oauth2 add
  * --token=`, before it's saved. Unlike `client_credentials`' verification
  * (which never blocks, since that grant has no real user context), a
  * personal token authenticates as a real user — so an unambiguous 401/403 is
@@ -153,7 +153,7 @@ async function verifyPersonalToken(
 }
 
 /**
- * `wp auth oauth2 add <url> (--client-id=<id> --client-secret=<secret> |
+ * `wrapido auth oauth2 add <url> (--client-id=<id> --client-secret=<secret> |
  * --token=<token>)`: stores an OAuth2 credential without a browser step,
  * either via the `client_credentials` grant (exchanges a client id/secret
  * for an access token, then best-effort verifies it against
@@ -179,7 +179,7 @@ async function handleAdd(
 ): Promise< AuthResult > {
 	if ( flags.token && ( flags.clientId || flags.clientSecret ) ) {
 		throw new CliError(
-			`wp auth ${ OAUTH2_AUTH_TYPE } add: pass either --token (a personal access token) or --client-id/--client-secret (client_credentials), not both.`
+			`wrapido auth ${ OAUTH2_AUTH_TYPE } add: pass either --token (a personal access token) or --client-id/--client-secret (client_credentials), not both.`
 		);
 	}
 
@@ -227,7 +227,7 @@ async function handleAdd(
 
 	if ( ! flags.clientId || ! flags.clientSecret ) {
 		throw new CliError(
-			`wp auth ${ OAUTH2_AUTH_TYPE } add requires either --token, or both --client-id and --client-secret from a manually-created wp-admin Application with the client_credentials grant enabled.`
+			`wrapido auth ${ OAUTH2_AUTH_TYPE } add requires either --token, or both --client-id and --client-secret from a manually-created wp-admin Application with the client_credentials grant enabled.`
 		);
 	}
 
@@ -272,7 +272,7 @@ async function handleAdd(
 }
 
 /**
- * `wp auth oauth2 list`: every stored site's URL/client id/grant type, never
+ * `wrapido auth oauth2 list`: every stored site's URL/client id/grant type, never
  * the access token itself.
  * @param flags Global CLI flags.
  * @return The command's rendered output and exit code.
@@ -282,7 +282,7 @@ async function handleList( flags: GlobalFlags ): Promise< AuthResult > {
 	if ( ! sites.length ) {
 		return {
 			output: pc.dim(
-				`No stored credentials. Use "wp auth ${ OAUTH2_AUTH_TYPE } login <url> client-id=<id>" or "wp auth ${ OAUTH2_AUTH_TYPE } add <url> client-id=<id> client-secret=<secret>".`
+				`No stored credentials. Use "wrapido auth ${ OAUTH2_AUTH_TYPE } login <url> client-id=<id>" or "wrapido auth ${ OAUTH2_AUTH_TYPE } add <url> client-id=<id> client-secret=<secret>".`
 			),
 			exitCode: 0,
 		};
@@ -308,7 +308,7 @@ async function handleList( flags: GlobalFlags ): Promise< AuthResult > {
 }
 
 /**
- * `wp auth oauth2 remove <url>`: forgets the stored token locally. The
+ * `wrapido auth oauth2 remove <url>`: forgets the stored token locally. The
  * WP-API/OAuth2 plugin exposes no REST revocation endpoint, unlike
  * Application Passwords, so there's nothing to attempt remotely.
  * @param parsed The parsed `remove` command.
@@ -336,7 +336,7 @@ function handleRemove(
 }
 
 /**
- * `wp auth oauth2 remove --all`: forgets every stored oauth2 credential —
+ * `wrapido auth oauth2 remove --all`: forgets every stored oauth2 credential —
  * purely local, nothing to revoke remotely. Scoped to this auth type only: a
  * site's stored application-passwords credential (if any) is left untouched.
  * @return The command's rendered output and exit code.
@@ -361,8 +361,8 @@ function handleRemoveAll(): AuthResult {
 }
 
 /**
- * `wp auth oauth2 use <url>`: sets the default `--url` (same mechanism
- * `wp config set --url=` uses).
+ * `wrapido auth oauth2 use <url>`: sets the default `--url` (same mechanism
+ * `wrapido config set --url=` uses).
  * @param parsed The parsed `use` command.
  * @return The command's rendered output and exit code.
  */
@@ -379,7 +379,7 @@ function handleUse(
 }
 
 /**
- * `wp auth oauth2 status`: the current default site, and whether an oauth2
+ * `wrapido auth oauth2 status`: the current default site, and whether an oauth2
  * credential is stored for it.
  * @return The command's rendered output and exit code.
  */
@@ -388,7 +388,7 @@ function handleStatus(): AuthResult {
 	if ( ! defaultUrl ) {
 		return {
 			output: pc.dim(
-				`No default site set. Use "wp auth ${ OAUTH2_AUTH_TYPE } use <url>" or "wp config set --url=<url>".`
+				`No default site set. Use "wrapido auth ${ OAUTH2_AUTH_TYPE } use <url>" or "wrapido config set --url=<url>".`
 			),
 			exitCode: 0,
 		};
@@ -405,18 +405,18 @@ function handleStatus(): AuthResult {
 					})`
 			  )
 			: pc.dim(
-					`no stored OAuth2 credential for this site — run "wp auth ${ OAUTH2_AUTH_TYPE } login <url> client-id=<id>" or "wp auth ${ OAUTH2_AUTH_TYPE } add <url> client-id=<id> client-secret=<secret>".`
+					`no stored OAuth2 credential for this site — run "wrapido auth ${ OAUTH2_AUTH_TYPE } login <url> client-id=<id>" or "wrapido auth ${ OAUTH2_AUTH_TYPE } add <url> client-id=<id> client-secret=<secret>".`
 			  ),
 	];
 	return { output: lines.join( '\n' ), exitCode: 0 };
 }
 
 /**
- * Executes a parsed `wp auth oauth2` command: manages stored per-site OAuth2
+ * Executes a parsed `wrapido auth oauth2` command: manages stored per-site OAuth2
  * tokens and runs the two grant flows this CLI supports
  * (`authorization_code` via `login`, `client_credentials` via `add`). Never
  * dispatches through the generic REST command pipeline (`rest.ts`) — like
- * `wp config`, this is CLI-local bookkeeping.
+ * `wrapido config`, this is CLI-local bookkeeping.
  * @param parsed The parsed auth command.
  * @param flags  Global CLI flags.
  * @return The command's rendered output and exit code.

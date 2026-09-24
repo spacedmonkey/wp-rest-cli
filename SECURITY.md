@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-`wp-rest-cli` is currently pre-1.0. Only the latest published release is supported with security fixes;
+`wrapido` is currently pre-1.0. Only the latest published release is supported with security fixes;
 please upgrade to the latest version before reporting an issue.
 
 | Version | Supported          |
@@ -19,5 +19,5 @@ security issue - anything from credential handling/logging, to auth bypass, to u
 untrusted REST API responses - please report it privately by emailing **spacedmonkey2@gmail.com**.
 
 Please include as much detail as you can: the command/flow that triggers the issue, the version of
-`wp-rest-cli` and Node.js you're using, and, if possible, steps to reproduce. We'll aim to acknowledge
+`wrapido` and Node.js you're using, and, if possible, steps to reproduce. We'll aim to acknowledge
 reports promptly and keep you updated as the issue is investigated and fixed.

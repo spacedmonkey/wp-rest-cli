@@ -38,14 +38,14 @@ describe( 'buildAuthorizationUrl', () => {
 		const url = buildAuthorizationUrl(
 			'https://example.com/wp-json/',
 			'/wp-admin/authorize-application.php',
-			'wp-rest-cli',
+			'wrapido',
 			'http://127.0.0.1:4567/callback'
 		);
 		const parsed = new URL( url );
 		expect( parsed.origin + parsed.pathname ).toBe(
 			'https://example.com/wp-admin/authorize-application.php'
 		);
-		expect( parsed.searchParams.get( 'app_name' ) ).toBe( 'wp-rest-cli' );
+		expect( parsed.searchParams.get( 'app_name' ) ).toBe( 'wrapido' );
 		expect( parsed.searchParams.get( 'success_url' ) ).toBe(
 			'http://127.0.0.1:4567/callback'
 		);
@@ -55,7 +55,7 @@ describe( 'buildAuthorizationUrl', () => {
 		const url = buildAuthorizationUrl(
 			'https://example.com/wp-json/',
 			'https://auth.example.com/wp-admin/authorize-application.php',
-			'wp-rest-cli',
+			'wrapido',
 			'http://127.0.0.1:4567/callback'
 		);
 		expect( new URL( url ).host ).toBe( 'auth.example.com' );
@@ -99,7 +99,7 @@ describe( 'runAuthorizationFlow', () => {
 		const flow = runAuthorizationFlow(
 			fakeIndexClient( NO_AUTH_INDEX ),
 			'http://example.com/wp-json/',
-			'wp-rest-cli',
+			'wrapido',
 			() => {}
 		);
 		await expect( flow ).rejects.toBeInstanceOf( CliError );
@@ -112,7 +112,7 @@ describe( 'runAuthorizationFlow', () => {
 		const flow = runAuthorizationFlow(
 			fakeIndexClient( NO_AUTH_INDEX ),
 			'https://example.com/wp-json/',
-			'wp-rest-cli',
+			'wrapido',
 			() => {}
 		);
 		await expect( flow ).rejects.toBeInstanceOf( CliError );
@@ -123,7 +123,7 @@ describe( 'runAuthorizationFlow', () => {
 		const flow = runAuthorizationFlow(
 			fakeIndexClient( NO_AUTH_INDEX ),
 			'http://localhost:8080/wp-json/',
-			'wp-rest-cli',
+			'wrapido',
 			() => {}
 		);
 		await expect( flow ).rejects.toThrow( 'requires WordPress 5.6+' );
@@ -151,7 +151,7 @@ describe( 'runAuthorizationFlow', () => {
 		const flow = runAuthorizationFlow(
 			fakeIndexClient( index ),
 			'https://example.com/wp-json/',
-			'wp-rest-cli',
+			'wrapido',
 			( line ) => resolvePrinted( line )
 		);
 
@@ -192,7 +192,7 @@ describe( 'runAuthorizationFlow', () => {
 			runAuthorizationFlow(
 				fakeIndexClient( index ),
 				'https://example.com/wp-json/',
-				'wp-rest-cli',
+				'wrapido',
 				() => {},
 				50
 			)

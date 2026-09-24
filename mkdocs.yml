@@ -1,8 +1,8 @@
-site_name: wp-rest-cli
+site_name: wrapido
 site_description: A WP-CLI-style command line tool for talking to any WordPress site's REST API over HTTP.
-site_url: https://spacedmonkey.github.io/wp-rest-cli/
-repo_url: https://github.com/spacedmonkey/wp-rest-cli
-repo_name: spacedmonkey/wp-rest-cli
+site_url: https://spacedmonkey.github.io/wrapido/
+repo_url: https://github.com/spacedmonkey/wrapido
+repo_name: spacedmonkey/wrapido
 edit_uri: edit/main/docs/
 
 docs_dir: docs
@@ -62,4 +62,4 @@ plugins:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/spacedmonkey/wp-rest-cli
+      link: https://github.com/spacedmonkey/wrapido

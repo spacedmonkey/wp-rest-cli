@@ -94,17 +94,17 @@ const META_VERB_SYNOPSES: Record< MetaVerb, ( base: string ) => string > = {
 };
 
 /**
- * The `wp-rest-cli <namespace> <route> meta` prefix shared by every meta usage line.
+ * The `wrapido <namespace> <route> meta` prefix shared by every meta usage line.
  * @param namespace The route's namespace.
  * @param route     The route name.
  * @return The shared usage prefix.
  */
 function metaBase( namespace: string, route: string ): string {
-	return `wp-rest-cli ${ namespace } ${ route } meta`;
+	return `wrapido ${ namespace } ${ route } meta`;
 }
 
 /**
- * A `usage: ... \n   or: ...` block covering every meta command, matching `wp help post meta`'s style.
+ * A `usage: ... \n   or: ...` block covering every meta command, matching `wrapido help post meta`'s style.
  * @param namespace The route's namespace.
  * @param route     The route name.
  * @return The full multi-line usage block.
@@ -119,7 +119,7 @@ export function printMetaUsage( namespace: string, route: string ): string {
 }
 
 /**
- * Renders `wp help <namespace> <route> meta <verb>`'s single-command help block.
+ * Renders `wrapido help <namespace> <route> meta <verb>`'s single-command help block.
  * @param namespace The route's namespace.
  * @param route     The route name.
  * @param metaVerb  The meta subcommand to describe.
