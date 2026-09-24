@@ -26,6 +26,7 @@ import {
 import { WpRestClient } from '../core/client.js';
 import { resolveApiRoot } from '../core/discovery.js';
 import { CliError, WpApiError } from '../core/errors.js';
+import { fetchAllPages } from '../core/fetch-all.js';
 import { followCreatedLocation } from '../core/follow-location.js';
 import { formatOutput } from '../core/formatter.js';
 import { generateDefaultValue } from '../core/generate-defaults.js';
@@ -2291,6 +2292,28 @@ export async function runRestCommand(
 		parsed.fields,
 		! flags.quiet
 	);
+	const perPage =
+		parsed.verb === 'list' ? parsed.fields.per_page?.trim() : undefined;
+	if ( perPage !== undefined && Number( perPage ) < -1 ) {
+		throw new CliError(
+			'--per_page must be -1 (all pages) or a positive integer.'
+		);
+	}
+	// `per_page=-1` means "everything" to WP_Query but is rejected by the REST
+	// API, so emulate it client-side at the route's own maximum page size.
+	const fetchAll =
+		perPage === '-1' &&
+		!! verbArgs?.per_page &&
+		!! verbArgs.page &&
+		! isKeyedRoute( parsed.route );
+	const maxPerPage =
+		typeof verbArgs?.per_page?.maximum === 'number'
+			? verbArgs.per_page.maximum
+			: 100;
+	if ( fetchAll && parsed.fields.page !== undefined ) {
+		// Shown even under --quiet: it flags a likely mistake.
+		notice( '--page is ignored with --per_page=-1.', true );
+	}
 	const paramIndex = parsed.id
 		? await resolveParamIndex(
 				client,
@@ -2344,15 +2367,27 @@ export async function runRestCommand(
 		} );
 	}
 
-	const response = await withSpinner(
-		`${ request.method } ${ parsed.namespace }/${ parsed.route }`,
-		! flags.quiet,
-		() =>
-			client.request( request.url, {
-				method: request.method,
-				body: request.body,
-			} )
-	);
+	const spinnerText = `${ request.method } ${ parsed.namespace }/${ parsed.route }`;
+	// A count only needs page 1's X-WP-Total, so it skips fetching every page.
+	const countOnly = flags.format === 'count' && ! flags.field;
+	const response =
+		fetchAll && ! countOnly
+			? // Shows its own spinner and progress bar.
+			  await fetchAllPages(
+					client,
+					request.url,
+					maxPerPage,
+					`Fetching all pages of ${ parsed.namespace }/${ parsed.route }`,
+					! flags.quiet
+			  )
+			: await withSpinner( spinnerText, ! flags.quiet, () =>
+					client.request(
+						request.url,
+						fetchAll
+							? { query: { per_page: maxPerPage, page: 1 } }
+							: { method: request.method, body: request.body }
+					)
+			  );
 	const followed =
 		parsed.verb === 'create'
 			? await followCreatedLocation( client, apiRoot, response, flags )
@@ -2403,7 +2438,7 @@ export async function runRestCommand(
 			: null;
 	const totalPages =
 		totalPagesHeader === null ? NaN : Number( totalPagesHeader );
-	if ( totalPages > 1 ) {
+	if ( totalPages > 1 && ! fetchAll ) {
 		notice(
 			`Page ${ parsed.fields.page ?? 1 } of ${ totalPages }${
 				Number.isFinite( total ) ? ` (${ total } total)` : ''

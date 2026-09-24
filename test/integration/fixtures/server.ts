@@ -450,6 +450,31 @@ export async function startFixture(): Promise< Fixture > {
 							{ methods: [ 'POST' ] },
 						],
 					},
+					// Paginated collections for `--per_page=-1` (fetch every
+					// page). `entries-linked` omits X-WP-TotalPages so the CLI
+					// has to follow `Link: rel="next"` instead.
+					'/wp/v2/entries': {
+						namespace: 'wp/v2',
+						methods: [ 'GET' ],
+						endpoints: [ { methods: [ 'GET' ] } ],
+					},
+					'/wp/v2/entries-linked': {
+						namespace: 'wp/v2',
+						methods: [ 'GET' ],
+						endpoints: [ { methods: [ 'GET' ] } ],
+					},
+					// Malformed X-WP-TotalPages (must fall back to `Link`).
+					'/wp/v2/entries-bad-total': {
+						namespace: 'wp/v2',
+						methods: [ 'GET' ],
+						endpoints: [ { methods: [ 'GET' ] } ],
+					},
+					// Page 2 fails with a 500 mid-crawl.
+					'/wp/v2/entries-broken': {
+						namespace: 'wp/v2',
+						methods: [ 'GET' ],
+						endpoints: [ { methods: [ 'GET' ] } ],
+					},
 					'/wp/v2/widgets/(?P<id>[\\d]+)': {
 						namespace: 'wp/v2',
 						methods: [ 'GET', 'PUT', 'DELETE' ],
@@ -1054,6 +1079,81 @@ export async function startFixture(): Promise< Fixture > {
 				res.writeHead( 404, { 'content-type': 'text/plain' } );
 				res.end( 'Not Found' );
 			}
+			return;
+		}
+
+		const entriesMatch = path.match(
+			/^\/wp-json\/wp\/v2\/(entries|entries-linked|entries-bad-total|entries-broken)$/
+		);
+		if ( entriesMatch && req.method === 'OPTIONS' ) {
+			send( res, 200, {
+				namespace: 'wp/v2',
+				methods: [ 'GET' ],
+				endpoints: [
+					{
+						methods: [ 'GET' ],
+						args: {
+							page: { type: 'integer', default: 1, minimum: 1 },
+							// A deliberately small maximum: fetching every
+							// page must use it, not a hard-coded 100.
+							per_page: {
+								type: 'integer',
+								default: 2,
+								minimum: 1,
+								maximum: ENTRIES_MAX_PER_PAGE,
+							},
+						},
+					},
+				],
+			} );
+			return;
+		}
+		if ( entriesMatch && req.method === 'GET' ) {
+			const perPage = Number( url.searchParams.get( 'per_page' ) ?? 2 );
+			const page = Number( url.searchParams.get( 'page' ) ?? 1 );
+			if (
+				! Number.isInteger( perPage ) ||
+				perPage < 1 ||
+				perPage > ENTRIES_MAX_PER_PAGE
+			) {
+				send( res, 400, {
+					code: 'rest_invalid_param',
+					message: 'Invalid parameter(s): per_page',
+					data: { status: 400 },
+				} );
+				return;
+			}
+			if ( entriesMatch[ 1 ] === 'entries-broken' && page === 2 ) {
+				send( res, 500, {
+					code: 'internal_server_error',
+					message: 'Page 2 exploded.',
+					data: { status: 500 },
+				} );
+				return;
+			}
+			const totalPages = Math.ceil( ENTRIES_TOTAL / perPage );
+			const items = Array.from( { length: ENTRIES_TOTAL }, ( _, i ) => ( {
+				id: i + 1,
+			} ) ).slice( ( page - 1 ) * perPage, page * perPage );
+			const headers: Record< string, string > = {
+				'X-WP-Total': String( ENTRIES_TOTAL ),
+			};
+			if (
+				entriesMatch[ 1 ] === 'entries' ||
+				entriesMatch[ 1 ] === 'entries-broken'
+			) {
+				headers[ 'X-WP-TotalPages' ] = String( totalPages );
+			} else if ( entriesMatch[ 1 ] === 'entries-bad-total' ) {
+				headers[ 'X-WP-TotalPages' ] = 'abc';
+			}
+			if ( page < totalPages ) {
+				headers.Link = `<${
+					baseUrlHolder.value
+				}${ path }?per_page=${ perPage }&page=${
+					page + 1
+				}>; rel="next"`;
+			}
+			send( res, 200, items, headers );
 			return;
 		}
 
@@ -1937,3 +2037,5 @@ export async function startFixture(): Promise< Fixture > {
 // header before startFixture() has returned it; this small mutable holder
 // breaks that ordering dependency without restructuring the request handler.
 const baseUrlHolder = { value: '' };
+const ENTRIES_TOTAL = 16;
+const ENTRIES_MAX_PER_PAGE = 3;

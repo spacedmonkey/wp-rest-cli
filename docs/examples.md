@@ -13,6 +13,9 @@ wp-rest-cli wp/v2 posts --url=https://example.com
 # List, with query args and JSON output
 wp-rest-cli wp/v2 posts list --per_page=5 --format=json --url=https://example.com
 
+# List every post (all pages, at the route's maximum page size)
+wp-rest-cli wp/v2 posts list --per_page=-1 --format=ids --url=https://example.com
+
 # Get one, as edit context, authenticated
 wp-rest-cli wp/v2 posts get 42 --context=edit --url=https://example.com --username=admin --password=xxxx-xxxx-xxxx-xxxx
 
