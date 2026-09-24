@@ -17,7 +17,8 @@
 ![Functions](https://img.shields.io/badge/functions-44.57%25-red.svg?style=flat)
 ![Lines](https://img.shields.io/badge/lines-100%25-brightgreen.svg?style=flat)
 
-**W**ordPress **R**EST **API** **Do**er: a fast CLI for any WordPress site.
+<!-- markdownlint-disable-next-line MD033 -->
+<u>W</u>ordPress <u>R</u>EST <u>API</u> <u>Do</u>er: a fast CLI for any WordPress site.
 
 A WP-CLI-style command line tool for talking to **any** WordPress site's REST API over HTTP — no PHP, no SSH, no WordPress install required locally. It auto-discovers a site's REST API from just a URL, introspects routes the way `?_method=OPTIONS` does, and speaks WP-CLI's own `--format=`/`--fields=` conventions.
 

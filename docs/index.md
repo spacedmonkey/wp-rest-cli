@@ -1,6 +1,7 @@
 # wrapido
 
-**W**ordPress **R**EST **API** **Do**er: a fast CLI for any WordPress site.
+<!-- markdownlint-disable-next-line MD033 -->
+<u>W</u>ordPress <u>R</u>EST <u>API</u> <u>Do</u>er: a fast CLI for any WordPress site.
 
 A WP-CLI-style command line tool for talking to **any** WordPress site's REST API over HTTP — no PHP, no SSH, no WordPress install required locally.
 
