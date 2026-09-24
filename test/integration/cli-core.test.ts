@@ -891,6 +891,51 @@ describe( 'agent-friendly JSON output', () => {
 		expect( Number( result.stdout ) ).toBeGreaterThan( 0 );
 	} );
 
+	it( '--format=count prefers X-WP-Total over the page’s item count', async () => {
+		await run( [ 'wp/v2', 'widgets', 'create', '--title=Count A' ] );
+		await run( [ 'wp/v2', 'widgets', 'create', '--title=Count B' ] );
+		const all = await run( [
+			'wp/v2',
+			'widgets',
+			'list',
+			'--format=json',
+		] );
+		const total = JSON.parse( all.stdout ).length;
+		expect( total ).toBeGreaterThan( 1 );
+
+		const result = await run( [
+			'wp/v2',
+			'widgets',
+			'list',
+			'--per_page=1',
+			'--format=count',
+		] );
+		expect( result.exitCode ).toBe( 0 );
+		expect( Number( result.stdout ) ).toBe( total );
+	} );
+
+	it( '--format=count counts the items when X-WP-Total is absent', async () => {
+		const result = await run( [
+			'wp/v2',
+			'widget-types',
+			'list',
+			'--format=count',
+		] );
+		expect( result.exitCode ).toBe( 0 );
+		expect( result.stdout.trim() ).toBe( '2' );
+	} );
+
+	it( '--format=count counts slug-keyed entries when X-WP-Total is absent', async () => {
+		const result = await run( [
+			'wp/v2',
+			'taxonomies',
+			'list',
+			'--format=count',
+		] );
+		expect( result.exitCode ).toBe( 0 );
+		expect( result.stdout.trim() ).toBe( '2' );
+	} );
+
 	it( 'hints at more pages on stderr when X-WP-TotalPages > 1', async () => {
 		const result = await runCli(
 			[

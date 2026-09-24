@@ -1113,7 +1113,11 @@ export async function startFixture(): Promise< Fixture > {
 		}
 
 		if ( path === '/wp-json/wp/v2/widgets' && req.method === 'GET' ) {
-			send( res, 200, [ ...widgets.values() ], {
+			// Honor `per_page` like WordPress: the body is one page, while
+			// X-WP-Total still reports the whole collection.
+			const perPage = Number( url.searchParams.get( 'per_page' ) );
+			const all = [ ...widgets.values() ];
+			send( res, 200, perPage > 0 ? all.slice( 0, perPage ) : all, {
 				'X-WP-Total': String( widgets.size ),
 				// Always claim a second page so the pagination hint is testable.
 				'X-WP-TotalPages': String( Math.max( 2, widgets.size ) ),
