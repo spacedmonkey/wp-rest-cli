@@ -34,7 +34,7 @@ npm run wp -- <namespace> <route> [<verb>] [<id>] [--flag=value...] --url=<site>
 wp                                                              # discover: list namespaces from the site's REST API index
 wp <namespace>                                                  # list routes registered under that namespace
 wp <namespace> <route>                                          # introspect: show the route's supported methods/args/context (an OPTIONS request)
-wp <namespace> <route> list        [--page=] [--per_page=] [...]
+wp <namespace> <route> list        [--page=] [--per_page=] [...]   # --per_page=-1: every page
 wp <namespace> <route> get <id>
 wp <namespace> <route> create      [--field=value...] [--body=<json>]
 wp <namespace> <route> update <id> [--field=value...] [--body=<json>]
@@ -68,6 +68,8 @@ wp <namespace> <route> delete <id> [--force]
 Flags with a YAML key can be set in a [config file](docs/configuration.md#yaml-config-files); a flag on the command line always wins.
 
 Any other `--name=value` (or bare `--name`, treated as `--name=true`) is passed straight through as a WordPress REST API field or query argument — e.g. `--per_page=5`, `--title="Hello"`, `--force`. Run `wp <namespace> <route>` first to see exactly which ones a route accepts.
+
+`list --per_page=-1` fetches **every** page. The REST API itself rejects `-1`, so the CLI works around it the same way Gutenberg's `api-fetch` does: it requests the route's own maximum page size (the `maximum` declared in its schema, usually `100`) and concatenates the pages, in parallel when `X-WP-TotalPages` is sent and otherwise by following `Link: rel="next"`. This only applies to routes that declare both `page` and `per_page`. A progress bar shows while the pages load (hidden by `--quiet`). `--page` is ignored alongside it, with a warning. `--format=count` still makes just one request, and a `per_page` below `-1` is rejected before anything is sent.
 
 ## Using with AI agents
 

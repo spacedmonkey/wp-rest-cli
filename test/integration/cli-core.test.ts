@@ -905,6 +905,135 @@ describe( 'agent-friendly JSON output', () => {
 		expect( result.stderr ).toMatch( /Page 1 of \d+ \(\d+ total\)/ );
 	} );
 
+	describe( '--per_page=-1', () => {
+		const agent = ( args: string[] ) =>
+			runCli( [ 'wp/v2', ...args, `--url=${ fixture.baseUrl }` ], {
+				env: { WP_REST_CLI_AGENT: '1' },
+			} );
+		const ids = ( stdout: string ) =>
+			( JSON.parse( stdout ) as Array< { id: number } > ).map(
+				( r ) => r.id
+			);
+		// 16 entries at 3 per page = 6 pages: more than one parallel batch of 5.
+		const ALL = Array.from( { length: 16 }, ( _, i ) => i + 1 );
+
+		it( 'agent mode: fetches every page at the route’s maximum per_page', async () => {
+			// The fixture's maximum is 3 and it 400s above that, so this
+			// also proves the schema maximum is used, not a fixed 100.
+			const result = await agent( [
+				'entries',
+				'list',
+				'--per_page=-1',
+			] );
+			expect( result.exitCode ).toBe( 0 );
+			expect( ids( result.stdout ) ).toEqual( ALL );
+			expect( result.stderr ).not.toMatch( /Page \d+ of/ );
+			expect( result.stderr ).toContain(
+				'Fetching all pages of wp/v2/entries'
+			);
+			expect( result.stderr ).toContain( 'done (6/6)' );
+		} );
+
+		it( 'human mode: fetches every page', async () => {
+			const result = await run( [
+				'wp/v2',
+				'entries',
+				'list',
+				'--per_page=-1',
+				'--format=json',
+			] );
+			expect( result.exitCode ).toBe( 0 );
+			expect( ids( result.stdout ) ).toEqual( ALL );
+		} );
+
+		it( 'follows Link rel="next" when X-WP-TotalPages is missing', async () => {
+			const result = await agent( [
+				'entries-linked',
+				'list',
+				'--per_page=-1',
+			] );
+			expect( result.exitCode ).toBe( 0 );
+			expect( ids( result.stdout ) ).toEqual( ALL );
+		} );
+
+		it( 'falls back to Link rel="next" on a non-numeric X-WP-TotalPages', async () => {
+			const result = await agent( [
+				'entries-bad-total',
+				'list',
+				'--per_page=-1',
+			] );
+			expect( result.exitCode ).toBe( 0 );
+			expect( ids( result.stdout ) ).toEqual( ALL );
+		} );
+
+		it( 'fails cleanly when a page errors mid-crawl', async () => {
+			const result = await agent( [
+				'entries-broken',
+				'list',
+				'--per_page=-1',
+			] );
+			expect( result.exitCode ).toBe( 1 );
+			expect( result.stdout ).toBe( '' );
+			expect( result.stderr ).toContain( 'Page 2 exploded.' );
+		} );
+
+		it( 'ignores --page, with a notice', async () => {
+			const result = await agent( [
+				'entries',
+				'list',
+				'--per_page=-1',
+				'--page=3',
+			] );
+			expect( result.exitCode ).toBe( 0 );
+			expect( ids( result.stdout ) ).toEqual( ALL );
+			expect( result.stderr ).toContain( '--page is ignored' );
+		} );
+
+		it( '--format=count reports the total', async () => {
+			const result = await run( [
+				'wp/v2',
+				'entries',
+				'list',
+				'--per_page=-1',
+				'--format=count',
+			] );
+			expect( result.exitCode ).toBe( 0 );
+			expect( result.stdout ).toBe( '16' );
+		} );
+
+		it( 'rejects per_page below -1 locally', async () => {
+			const human = await run( [
+				'wp/v2',
+				'entries',
+				'list',
+				'--per_page=-2',
+			] );
+			expect( human.exitCode ).toBe( 1 );
+			expect( human.stderr ).toContain( '--per_page must be -1' );
+			const result = await agent( [
+				'entries',
+				'list',
+				'--per_page=-2',
+			] );
+			expect( result.exitCode ).toBe( 1 );
+			expect( JSON.parse( result.stderr ).error.message ).toContain(
+				'--per_page must be -1'
+			);
+		} );
+
+		it( 'passes through unchanged on a route without a page arg', async () => {
+			const plain = await agent( [ 'widgets', 'list' ] );
+			const result = await agent( [
+				'widgets',
+				'list',
+				'--per_page=-1',
+			] );
+			expect( result.exitCode ).toBe( 0 );
+			expect( result.stdout ).toBe( plain.stdout );
+			expect( result.stderr ).toContain( 'Page 1 of' );
+		} );
+	} );
+
 	it( 'scopes verb help JSON to that verb’s HTTP method', async () => {
 		const result = await run( [
 			'help',

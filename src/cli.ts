@@ -477,6 +477,7 @@ Examples:
 Dynamic field/query arguments (e.g. --per_page=, --title=, --force) are passed
 straight through to the WordPress REST API and are not fixed ahead of time —
 run "wp-rest-cli <namespace> <route>" to see which ones a given route supports.
+"list --per_page=-1" fetches every page, using the route's maximum page size.
 `
 	)
 	.action( async ( args: string[], rawOptions: RawOptions ) => {
