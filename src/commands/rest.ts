@@ -25,7 +25,7 @@ import {
 } from '../core/auth/types.js';
 import { WpRestClient } from '../core/client.js';
 import { resolveApiRoot } from '../core/discovery.js';
-import { CliError, WpApiError } from '../core/errors.js';
+import { CliError, WpApiError, hintFor } from '../core/errors.js';
 import { fetchAllPages } from '../core/fetch-all.js';
 import { followCreatedLocation } from '../core/follow-location.js';
 import { formatOutput } from '../core/formatter.js';
@@ -2242,6 +2242,21 @@ export async function runRestCommand(
 						  )
 						: undefined;
 					if ( ! discoveredIdBase ) {
+						// A schema-less create route (no declared args at
+						// all) means neither `missingRequiredArgs` nor
+						// `HIDDEN_REQUIRED_FIELDS_BY_ERROR_CODE` had
+						// anything to synthesize — surface why recovery
+						// didn't happen instead of just rethrowing the raw
+						// API error with no CLI-added context.
+						if (
+							error instanceof WpApiError &&
+							! error.hint &&
+							! hintFor( error.code ) &&
+							Object.keys( generateArgs ?? {} ).length === 0
+						) {
+							error.hint =
+								"This route's schema declares no fields, so generate couldn't synthesize a value for whatever the API is rejecting. Pass the required field(s) explicitly, e.g. `wrapido <namespace> <route> generate field=value`.";
+						}
 						throw error;
 					}
 					fixedFallbackFields.id_base = discoveredIdBase;
@@ -2299,11 +2314,9 @@ export async function runRestCommand(
 	}
 	// `per_page=-1` means "everything" to WP_Query but is rejected by the REST
 	// API, so emulate it client-side at the route's own maximum page size.
-	const fetchAll =
-		perPage === '-1' &&
-		!! verbArgs?.per_page &&
-		!! verbArgs.page &&
-		! isKeyedRoute( parsed.route );
+	const declaresPagination = !! verbArgs?.per_page && !! verbArgs.page;
+	const routeIsKeyed = isKeyedRoute( parsed.route );
+	const fetchAll = perPage === '-1' && declaresPagination && ! routeIsKeyed;
 	const maxPerPage =
 		typeof verbArgs?.per_page?.maximum === 'number'
 			? verbArgs.per_page.maximum
@@ -2311,6 +2324,15 @@ export async function runRestCommand(
 	if ( fetchAll && parsed.fields.page !== undefined ) {
 		// Shown even under --quiet: it flags a likely mistake.
 		notice( '--page is ignored with --per_page=-1.', true );
+	} else if ( perPage === '-1' && ! declaresPagination && ! routeIsKeyed ) {
+		// Shown even under --quiet, same as the --page notice above: this
+		// route's schema doesn't declare page/per_page (often because it
+		// declares no args at all), so wrapido can't confirm the
+		// fetch-all-pages shortcut applies and is forwarding -1 as-is.
+		notice(
+			"--per_page=-1 forwarded to the API as-is: this route's schema doesn't declare both page and per_page, so wrapido can't confirm the fetch-all-pages shortcut applies.",
+			true
+		);
 	}
 	const paramIndex = parsed.id
 		? await resolveParamIndex(

@@ -15,7 +15,7 @@ export WRAPIDO_AGENT=1
 -   `--format=json` by default, printed **compact** with `_links`/`_embedded` stripped (name them in `--fields` to keep them).
 -   No colour, no spinners. Data is on **stdout**; notices/warnings are plain lines on **stderr**.
 -   Errors as JSON on stderr: `{"error":{"message","code","status","params","hint"}}`. Local CLI errors carry only `message`; API errors add the rest and often a `hint`. Exit code is `1` on any failure.
--   A stderr `Warning: --per-page is not a declared arg of this route; did you mean --per_page?` for `--name=value` args the route doesn't declare (typos are otherwise silently ignored by WordPress).
+-   A stderr `Warning: --per-page is not a declared arg of this route; did you mean --per_page?` for `--name=value` args the route doesn't declare (typos are otherwise silently ignored by WordPress). A route that declares no fields at all (missing `args`, or an explicitly empty `{}`) never warns, either way — there's no real contract to violate.
 
 Without it, pass `--format=json --quiet --no-color` on every call instead. An explicit `--format` or a `format:` in a `wrapido.yml` still overrides the agent-mode default.
 

@@ -100,6 +100,17 @@ describe( 'formatErrorForDisplay', () => {
 			formatErrorForDisplay( new CliError( 'Missing --url.' ) )
 		).toBe( 'Error: Missing --url.' );
 	} );
+
+	it( 'prefers an instance hint over the code-keyed lookup', () => {
+		const error = new WpApiError(
+			{ code: 'rest_forbidden', message: 'Not allowed.' },
+			401
+		);
+		error.hint = 'Custom hint.';
+		expect( formatErrorForDisplay( error ) ).toBe(
+			'Error: Not allowed. (rest_forbidden, status 401)\nCustom hint.'
+		);
+	} );
 } );
 
 describe( 'formatErrorForJson', () => {
@@ -125,5 +136,19 @@ describe( 'formatErrorForJson', () => {
 		expect(
 			JSON.parse( formatErrorForJson( new CliError( 'bad' ) ) )
 		).toEqual( { error: { message: 'bad' } } );
+	} );
+
+	it( 'prefers an instance hint over the code-keyed lookup', () => {
+		const error = new WpApiError(
+			{
+				code: 'rest_forbidden',
+				message: 'Not allowed.',
+				data: { status: 401 },
+			},
+			401
+		);
+		error.hint = 'Custom hint.';
+		const parsed = JSON.parse( formatErrorForJson( error ) );
+		expect( parsed.error.hint ).toBe( 'Custom hint.' );
 	} );
 } );

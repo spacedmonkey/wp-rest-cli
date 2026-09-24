@@ -69,7 +69,7 @@ export function validateFieldTypes(
 	args: Record< string, EndpointArgSchema > | undefined,
 	checkRequired = false
 ): void {
-	if ( ! args ) {
+	if ( ! args || Object.keys( args ).length === 0 ) {
 		return;
 	}
 	const problems: string[] = [];
@@ -119,7 +119,7 @@ export function coerceJsonFields(
 	fields: Record< string, string >,
 	args: Record< string, EndpointArgSchema > | undefined
 ): Record< string, unknown > {
-	if ( ! args ) {
+	if ( ! args || Object.keys( args ).length === 0 ) {
 		return fields;
 	}
 	const result: Record< string, unknown > = { ...fields };
@@ -178,7 +178,7 @@ export function unknownFieldWarnings(
 	fields: Record< string, unknown >,
 	args: Record< string, EndpointArgSchema > | undefined
 ): string[] {
-	if ( ! args ) {
+	if ( ! args || Object.keys( args ).length === 0 ) {
 		return [];
 	}
 	const known = Object.keys( args );
