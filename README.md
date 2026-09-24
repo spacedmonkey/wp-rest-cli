@@ -1,4 +1,12 @@
-# wrapido
+<!-- markdownlint-disable MD033 MD041 -->
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/logo-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset=".github/assets/logo-light.svg">
+    <img src=".github/assets/logo-light.svg" alt="wrapido" width="320">
+  </picture>
+</p>
+<!-- markdownlint-enable MD033 MD041 -->
 
 [![CI](https://github.com/spacedmonkey/wrapido/actions/workflows/ci.yml/badge.svg)](https://github.com/spacedmonkey/wrapido/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
