@@ -331,6 +331,12 @@ it( 'prints general usage for `help` with no arguments', async () => {
 	expect( result.stdout ).toContain( 'Examples:' );
 } );
 
+it( 'prints general usage for bare `--help`, same content as `help`', async () => {
+	const result = await run( [ '--help' ] );
+	expect( result.exitCode ).toBe( 0 );
+	expect( result.stdout ).toContain( 'Examples:' );
+} );
+
 it( 'lists routes for `help <namespace>`, same as bare <namespace>', async () => {
 	const result = await run( [ 'help', 'wp/v2' ] );
 	expect( result.exitCode ).toBe( 0 );
@@ -638,6 +644,37 @@ describe( '--no-color', () => {
 		const result = await runRaw( [ '--no-color', 'config', 'get' ] );
 		expect( result.exitCode ).toBe( 0 );
 		expect( result.stdout ).not.toMatch( /\x1b\[/ );
+	} );
+} );
+
+describe( '--no-pager', () => {
+	// execa's stdio is never a TTY, so paging never engages either way here -
+	// this just guards `--no-pager` staying a known flag rather than being
+	// swallowed by normalizeDynamicFlags into a bogus dynamic field token.
+	it( 'is accepted and behaves identically to a normal invocation for help text', async () => {
+		const withFlag = await run( [ '--no-pager', 'help', 'wp/v2' ] );
+		const withoutFlag = await run( [ 'help', 'wp/v2' ] );
+		expect( withFlag.exitCode ).toBe( 0 );
+		expect( withFlag.stdout ).toBe( withoutFlag.stdout );
+	} );
+
+	it( 'is accepted and behaves identically to a normal invocation for a bare namespace listing', async () => {
+		const withFlag = await run( [ '--no-pager', 'wp/v2' ] );
+		const withoutFlag = await run( [ 'wp/v2' ] );
+		expect( withFlag.exitCode ).toBe( 0 );
+		expect( withFlag.stdout ).toBe( withoutFlag.stdout );
+	} );
+
+	it( 'is accepted and behaves identically to a normal invocation for a list result', async () => {
+		const withFlag = await run( [
+			'--no-pager',
+			'wp/v2',
+			'widgets',
+			'list',
+		] );
+		const withoutFlag = await run( [ 'wp/v2', 'widgets', 'list' ] );
+		expect( withFlag.exitCode ).toBe( 0 );
+		expect( withFlag.stdout ).toBe( withoutFlag.stdout );
 	} );
 } );
 

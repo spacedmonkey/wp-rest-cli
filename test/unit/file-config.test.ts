@@ -50,6 +50,13 @@ describe( 'loadFileConfig', () => {
 		expect( origins.timeout ).toBe( userFile );
 	} );
 
+	it( 'reads a boolean pager key', () => {
+		writeFileSync( join( root, 'wrapido.yml' ), 'pager: false\n' );
+		expect( loadFileConfig( cwd, env() ).values ).toEqual( {
+			pager: false,
+		} );
+	} );
+
 	it( 'treats missing and empty files as no config', () => {
 		expect( loadFileConfig( cwd, env() ).values ).toEqual( {} );
 		writeFileSync( userFile, '' );

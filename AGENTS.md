@@ -67,7 +67,7 @@ Tips for fewer calls:
 
 ## 4. Facts worth knowing
 
--   Any `--name=value` that isn't a global flag is sent as a WordPress field/query arg. Reserved names: `url username password client-id client-secret token use-auth context format fields field body timeout color truncate-length quiet debug help`; use `--body` if an API field collides.
+-   Any `--name=value` that isn't a global flag is sent as a WordPress field/query arg. Reserved names: `url username password client-id client-secret token use-auth context format fields field body timeout color pager truncate-length quiet debug help`; use `--body` if an API field collides.
 -   `list --format=count` prints the site total (`X-WP-Total`) when sent, else the rows returned. Default `--per_page` is 10 (the route's max, usually 100), newest first. When more pages exist, stderr says `Page 1 of N (T total)`; use `--page=N`, or `--per_page=-1` to get every page in one go (it ignores `--page`, and count never needs it).
 -   `exists <id>` exits `1` for "not found" and still prints `{"exists":false}` on stdout. An unknown route or namespace exits `1` with `No such route`/`No such namespace` (a JSON error in agent mode).
 -   `--format=raw` is Node-inspect text, not JSON. `auth ... login` needs a browser (humans only).

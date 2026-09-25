@@ -18,6 +18,7 @@ const KEY_TYPES = {
 	format: 'string',
 	timeout: 'number',
 	color: 'boolean',
+	pager: 'boolean',
 	quiet: 'boolean',
 	debug: 'boolean',
 	'use-auth': 'string',
