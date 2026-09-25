@@ -34,22 +34,22 @@ Every key is optional; omit the ones you don't need.
 
 ### Global flags
 
-| Flag                                        | YAML key       | Env var                                                                                                    | In a config file?                  |
-| ------------------------------------------- | -------------- | ---------------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| `--url`                                     | `url`          | —                                                                                                          | yes                                |
-| `--context`                                 | `context`      | —                                                                                                          | yes                                |
-| `--format`                                  | `format`       | —                                                                                                          | yes                                |
-| `--timeout`                                 | `timeout`      | —                                                                                                          | yes                                |
-| `--use-auth`                                | `use-auth`     | —                                                                                                          | yes                                |
-| `--no-color`                                | `color: false` | —                                                                                                          | yes                                |
-| `--no-pager`                                | `pager: false` | `WRAPIDO_PAGER`, `PAGER` (which pager to run, not whether — see [Paging help output](#paging-help-output)) | yes                                |
-| `--quiet`                                   | `quiet`        | —                                                                                                          | yes                                |
-| `--debug`                                   | `debug`        | —                                                                                                          | yes                                |
-| `--username`                                | —              | `WP_USERNAME`                                                                                              | no — needs a password to be useful |
-| `--password`                                | —              | `WP_PASSWORD`                                                                                              | no — secret                        |
-| `--client-id`, `--client-secret`, `--token` | —              | —                                                                                                          | no — secrets / one-off credentials |
-| `--fields`, `--field`, `--body`             | —              | —                                                                                                          | no — per-invocation                |
-| `-h`, `--help`                              | —              | —                                                                                                          | no                                 |
+| Flag                                        | YAML key       | Env var                                                                                          | In a config file?                  |
+| ------------------------------------------- | -------------- | ------------------------------------------------------------------------------------------------ | ---------------------------------- |
+| `--url`                                     | `url`          | —                                                                                                | yes                                |
+| `--context`                                 | `context`      | —                                                                                                | yes                                |
+| `--format`                                  | `format`       | —                                                                                                | yes                                |
+| `--timeout`                                 | `timeout`      | —                                                                                                | yes                                |
+| `--use-auth`                                | `use-auth`     | —                                                                                                | yes                                |
+| `--no-color`                                | `color: false` | —                                                                                                | yes                                |
+| `--no-pager`                                | `pager: false` | `WRAPIDO_PAGER`, `PAGER` (which pager to run, not whether — see [Paging output](#paging-output)) | yes                                |
+| `--quiet`                                   | `quiet`        | —                                                                                                | yes                                |
+| `--debug`                                   | `debug`        | —                                                                                                | yes                                |
+| `--username`                                | —              | `WP_USERNAME`                                                                                    | no — needs a password to be useful |
+| `--password`                                | —              | `WP_PASSWORD`                                                                                    | no — secret                        |
+| `--client-id`, `--client-secret`, `--token` | —              | —                                                                                                | no — secrets / one-off credentials |
+| `--fields`, `--field`, `--body`             | —              | —                                                                                                | no — per-invocation                |
+| `-h`, `--help`                              | —              | —                                                                                                | no                                 |
 
 Putting a "no" key in a file is an error, so a secret can't be committed by accident. Use `WP_USERNAME`/`WP_PASSWORD` or [`wrapido auth`](authentication.md#stored-credentials-wrapido-auth) for credentials.
 
@@ -88,19 +88,20 @@ wrapido wp/v2 posts list --format=json   # json  (flag beats every file)
 !!! warning "Project files are trusted input"
 A `wrapido.yml` in a repository you cloned can set `url`. If `WP_USERNAME`/`WP_PASSWORD` are exported, they would be sent to that site. Check unfamiliar projects (`wrapido config get`) before running commands in them. This is unrelated to WP-CLI's own `wrapido config`, which edits `wp-config.php`.
 
-## Paging help output
+## Paging output
 
-`wrapido help ...` and a trailing `--help` on any command page their output through `less` (or `$PAGER`) when run at a real interactive terminal — matching [WP-CLI's own behavior](https://make.wordpress.org/cli/handbook/) exactly: only help/usage text is paged, not `list`/`get`/`create`/`auth ... list` command output.
+Any command's output — `list`/`get`/`create`/... results, route/namespace listings, `auth ... list`, and `help`/`--help` text alike — pages through `less` (or `$PAGER`) when run at a real interactive terminal, the same way `git log` or the AWS CLI does.
 
 Paging only ever engages when stdout is a live terminal — it is automatically off for piped/redirected output, scripts, CI, and [agent mode](agent-mode.md), regardless of any of the settings below.
 
 -   **`--no-pager`** (or `pager: false` in a config file) turns it off unconditionally.
--   **`WRAPIDO_PAGER`**, then **`PAGER`**, choose which pager command to run; an empty value (`PAGER=`) also disables paging. With neither set, the default is `less -FRX` (quit automatically if the content fits on one screen, pass through color, don't clear the screen on exit) on Linux/macOS — there is no built-in default on Windows, where `less` isn't reliably present.
+-   **`WRAPIDO_PAGER`**, then **`PAGER`**, choose which pager command to run; an empty value (`PAGER=`) also disables paging. With neither set, the default is `less -FRX` (`-R` passes through color, `-X` doesn't clear the screen on exit) on Linux/macOS — there is no built-in default on Windows, where `less` isn't reliably present.
+-   Output that already fits on one screen is printed directly, without invoking a pager at all — measured against the terminal's actual reported size (not left to a pager's own "quit if it fits" flag, which isn't reliably honored by every terminal/multiplexer).
 
 ```sh
-wrapido wp/v2 posts --help                 # pages through less at a terminal
-wrapido wp/v2 posts --help --no-pager       # never pages
-WRAPIDO_PAGER=cat wrapido help wp/v2 posts  # pages through `cat` (effectively unpaged, but still shows the full command)
+wrapido wp/v2 posts list --url=https://example.com                 # pages through less at a terminal
+wrapido wp/v2 posts list --url=https://example.com --no-pager       # never pages
+WRAPIDO_PAGER=cat wrapido help wp/v2 posts                          # pages through `cat` (effectively unpaged, but still shows the full command)
 ```
 
 ## Rotating the local encryption key

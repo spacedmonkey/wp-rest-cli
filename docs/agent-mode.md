@@ -27,23 +27,23 @@ Note: VS Code's Copilot agent mode is reported to set no distinguishing environm
 
 ## What changes
 
-| Behaviour                | Normal                                                                                         | With `WRAPIDO_AGENT=1`                                                                                                        |
-| ------------------------ | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| Default `--format`       | `table`                                                                                        | `json` (a `format` in a [config file](configuration.md) or an explicit `--format` still wins)                                 |
-| JSON layout              | Indented                                                                                       | Compact, one line                                                                                                             |
-| `_links` / `_embedded`   | Kept                                                                                           | Removed from json/yaml/raw output (kept if you name them in `--fields`)                                                       |
-| Colour                   | On                                                                                             | Off                                                                                                                           |
-| Spinners                 | On                                                                                             | Off; notices are plain lines on stderr                                                                                        |
-| Paging (`help`/`--help`) | On, when stdout is a real terminal                                                             | Always off                                                                                                                    |
-| Route discovery JSON     | Raw OPTIONS response (`wrapido <ns> <route>`); `verbs` as a `"list, get, (subcommand)"` string | Same object as `help` (no bulky item `schema`; `endpoints[].required`, `children[]`); `verbs` as an array plus `has_children` |
-| Errors                   | `Error: ...` text                                                                              | JSON on stderr, for every error (including a bad `--format`): `{"error":{"message","code","status","params","hint"}}`         |
-| Unknown `--name=value`   | Silently sent to the API                                                                       | Warning on stderr, with a suggestion (`--per-page` → `--per_page`)                                                            |
+| Behaviour              | Normal                                                                                         | With `WRAPIDO_AGENT=1`                                                                                                        |
+| ---------------------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Default `--format`     | `table`                                                                                        | `json` (a `format` in a [config file](configuration.md) or an explicit `--format` still wins)                                 |
+| JSON layout            | Indented                                                                                       | Compact, one line                                                                                                             |
+| `_links` / `_embedded` | Kept                                                                                           | Removed from json/yaml/raw output (kept if you name them in `--fields`)                                                       |
+| Colour                 | On                                                                                             | Off                                                                                                                           |
+| Spinners               | On                                                                                             | Off; notices are plain lines on stderr                                                                                        |
+| Paging                 | On, when stdout is a real terminal                                                             | Always off                                                                                                                    |
+| Route discovery JSON   | Raw OPTIONS response (`wrapido <ns> <route>`); `verbs` as a `"list, get, (subcommand)"` string | Same object as `help` (no bulky item `schema`; `endpoints[].required`, `children[]`); `verbs` as an array plus `has_children` |
+| Errors                 | `Error: ...` text                                                                              | JSON on stderr, for every error (including a bad `--format`): `{"error":{"message","code","status","params","hint"}}`         |
+| Unknown `--name=value` | Silently sent to the API                                                                       | Warning on stderr, with a suggestion (`--per-page` → `--per_page`)                                                            |
 
 JSON is the default because it is the only format that is lossless for every command's output (nested objects, single items, schemas, errors). For a long, flat list, `--format=csv --fields=...` is roughly half the size; and `--fields` trimming matters far more than the format.
 
 Data always goes to stdout and notices to stderr, so `2>/dev/null` gives clean data.
 
-Paging (`less`/`$PAGER`, for `help`/`--help` text) never engages under agent mode or when stdout isn't a real terminal — including every `execa`/subprocess invocation, piped output, and CI — regardless of `--no-pager`/config file settings, so scripted consumption of any `--format` is never affected.
+Paging (`less`/`$PAGER`) never engages under agent mode or when stdout isn't a real terminal — including every `execa`/subprocess invocation, piped output, and CI — regardless of `--no-pager`/config file settings, so scripted consumption of any `--format` is never affected.
 
 ## Works in any mode
 

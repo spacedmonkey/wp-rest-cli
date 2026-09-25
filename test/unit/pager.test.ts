@@ -9,6 +9,7 @@ import { EventEmitter } from 'node:events';
  * Internal dependencies
  */
 import {
+	fitsOnScreen,
 	resolvePagerCommand,
 	runPager,
 	shouldUsePager,
@@ -73,6 +74,39 @@ describe( 'shouldUsePager', () => {
 		expect( shouldUsePager( flags( { pager: false } ), true, false ) ).toBe(
 			false
 		);
+	} );
+} );
+
+describe( 'fitsOnScreen', () => {
+	it( 'fits when the line count is below the terminal height', () => {
+		expect( fitsOnScreen( 'a\nb\nc', 24, 80 ) ).toBe( true );
+	} );
+
+	it( 'does not fit when the line count reaches the terminal height', () => {
+		const output = Array.from( { length: 24 }, () => 'a line' ).join(
+			'\n'
+		);
+		expect( fitsOnScreen( output, 24, 80 ) ).toBe( false );
+	} );
+
+	it( 'does not fit when a single unwrapped-looking line actually wraps past the terminal height', () => {
+		// 200 visible chars at 80 columns wraps to 3 screen rows - more than
+		// this terminal's height, even though it is only one logical line.
+		const wideLine = 'x'.repeat( 200 );
+		expect( fitsOnScreen( wideLine, 2, 80 ) ).toBe( false );
+	} );
+
+	it( 'ignores ANSI color codes when measuring a line’s width', () => {
+		const colored = `\x1b[1mheading\x1b[22m`;
+		expect( fitsOnScreen( colored, 24, 80 ) ).toBe( true );
+	} );
+
+	it( 'assumes it does not fit when the terminal height is unknown (not a real TTY)', () => {
+		expect( fitsOnScreen( 'a', undefined, 80 ) ).toBe( false );
+	} );
+
+	it( 'falls back to one row per line when the terminal width is unknown', () => {
+		expect( fitsOnScreen( 'a\nb\nc', 24, undefined ) ).toBe( true );
 	} );
 } );
 

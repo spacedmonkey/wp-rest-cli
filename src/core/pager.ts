@@ -15,7 +15,7 @@ import type { GlobalFlags } from '../types.js';
 import { agentMode } from '../ui.js';
 
 /**
- * Whether help output should be paged for this invocation: only when stdout
+ * Whether output should be paged for this invocation: only when stdout
  * is a real interactive terminal, agent mode is off, `--quiet` wasn't
  * passed, and neither `--no-pager` nor a `pager: false` config-file value
  * turned it off. This can only ever narrow the default (`isTTY` on, nothing
@@ -112,10 +112,46 @@ export function runPager(
 	} );
 }
 
+/** Matches an SGR ANSI color escape (e.g. picocolors' `\x1b[1m`), so it doesn't inflate a line's measured width. */
+const ANSI_PATTERN = /\x1b\[[0-9;]*m/g;
+
 /**
- * The single choke point for printing a command's final help-output string
+ * Whether `output` already fits within the terminal's current size, in which
+ * case paging it would add nothing over printing it directly — computed here
+ * rather than left entirely to the pager's own "quit if it fits one screen"
+ * flag (`less -F`), which is a well-known unreliable heuristic across real
+ * terminals/multiplexers: it can open anyway and render short content
+ * anchored to the bottom of the screen instead of skipping straight to a
+ * normal top-anchored print. ANSI color codes are stripped before measuring
+ * each line's width so they don't count toward it.
+ * @param output  The text that would be paged.
+ * @param rows    The terminal's current height, or undefined if unknown.
+ * @param columns The terminal's current width, or undefined if unknown.
+ * @return True when the content needs no more than one screen.
+ */
+export function fitsOnScreen(
+	output: string,
+	rows: number | undefined,
+	columns: number | undefined
+): boolean {
+	if ( ! rows ) {
+		return false;
+	}
+	const screenLines = output.split( '\n' ).reduce( ( total, line ) => {
+		const visibleLength = line.replace( ANSI_PATTERN, '' ).length;
+		const wrapped = columns
+			? Math.max( 1, Math.ceil( visibleLength / columns ) )
+			: 1;
+		return total + wrapped;
+	}, 0 );
+	return screenLines < rows;
+}
+
+/**
+ * The single choke point for printing a command's final output string
  * — replaces a bare `console.log(output)`. Pages it through the resolved
- * pager when {@link shouldUsePager} says to and a pager command resolves and
+ * pager when {@link shouldUsePager} says to, the content doesn't already fit
+ * on one screen ({@link fitsOnScreen}), and a pager command resolves and
  * starts; otherwise (or on any failure to start one) prints exactly as
  * `console.log(output)` always did, so this is a behavior no-op whenever the
  * gate is false.
@@ -127,7 +163,10 @@ export async function printOutput(
 	flags: GlobalFlags
 ): Promise< void > {
 	const isTTY = Boolean( process.stdout.isTTY );
-	if ( ! shouldUsePager( flags, isTTY, agentMode() ) ) {
+	if (
+		! shouldUsePager( flags, isTTY, agentMode() ) ||
+		fitsOnScreen( output, process.stdout.rows, process.stdout.columns )
+	) {
 		console.log( output );
 		return;
 	}

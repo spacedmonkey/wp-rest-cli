@@ -44,7 +44,7 @@ wrapido config get|set|clear
 | `--body=<json>`                                       | —              | Raw JSON request body for `create`/`update`, overriding/merged under `--field=` args. Per-invocation only.                                                                                                                                                                                                                                                                                         |
 | `--timeout=<ms>`                                      | `timeout`      | Timeout for every HTTP request; when given it replaces all the defaults below. Defaults: 20000 (20 s) for API calls, 8000 for site discovery and `wrapido auth` calls, and 300000 (5 min) for file uploads/downloads, where it is an idle timeout that resets whenever data moves.                                                                                                                 |
 | `--no-color`                                          | `color: false` | Disable colored output. Also off when `NO_COLOR` is set or agent mode is on.                                                                                                                                                                                                                                                                                                                       |
-| `--no-pager`                                          | `pager: false` | Never page help output, even at a terminal. See [Paging help output](configuration.md#paging-help-output).                                                                                                                                                                                                                                                                                         |
+| `--no-pager`                                          | `pager: false` | Never page output, even at a terminal. See [Paging output](configuration.md#paging-output).                                                                                                                                                                                                                                                                                                        |
 | `--truncate-length=<n>`                               | —              | Max characters a table cell shows before truncating; default 50. `0` shows full values. Per-invocation only.                                                                                                                                                                                                                                                                                       |
 | `--quiet`                                             | `quiet`        | Suppress spinners.                                                                                                                                                                                                                                                                                                                                                                                 |
 | `--debug`                                             | `debug`        | Print a stack trace on unexpected (non-API) errors, and log every HTTP request/response to stderr (with the `Authorization` header redacted) plus the config files loaded. API requests add `?_envelope=true` so WordPress returns its response headers (`X-WP-Total`, plugin headers such as Query Monitor's `X-QM-*`, ...), which are logged too; the body is unwrapped and output is unchanged. |
@@ -60,6 +60,10 @@ Any other `--name=value` (or bare `--name`, treated as `--name=true`) is passed 
 
 Auto-detected inside Claude Code, OpenAI Codex, GitHub Copilot's agent tooling, Cline and Cursor (or set `WRAPIDO_AGENT=1` by hand): plain, machine-friendly output (JSON by default, no colour or spinners, JSON errors, unknown-flag warnings) without changing anything for interactive use. See [Agent mode](agent-mode.md).
 
+## Paging
+
+Any command's output pages through `less` (or `$PAGER`) automatically at a real terminal — see [Paging output](configuration.md#paging-output).
+
 ## TLS certificates
 
 The CLI does **not** verify HTTPS certificates, so sites with self-signed, expired or mismatched certificates (local and staging installs) work without extra flags. This applies to every request, including uploads and downloads. Because the server's identity isn't checked, avoid using it with real credentials over untrusted networks.
@@ -67,8 +71,6 @@ The CLI does **not** verify HTTPS certificates, so sites with self-signed, expir
 ## Help
 
 `wrapido help [<namespace> [<route...> [<verb>]]]` renders the same usage synopsis you'd see interactively, built dynamically from the site's live introspected schema, but never performs the underlying request.
-
-At a real terminal, long help pages through `less` (or `$PAGER`) automatically — see [Paging help output](configuration.md#paging-help-output).
 
 ## Uploading files
 

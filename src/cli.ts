@@ -483,7 +483,7 @@ program
 	.option( '--no-color', 'Disable colored output' )
 	.option(
 		'--no-pager',
-		'Never page help output, even on a terminal (paging is already off for piped/non-interactive output)'
+		'Never page output, even on a terminal (paging is already off for piped/non-interactive output)'
 	)
 	.option(
 		'--truncate-length <n>',
@@ -576,7 +576,7 @@ run "wrapido <namespace> <route>" to see which ones a given route supports.
 					parsed,
 					flags
 				);
-				console.log( output );
+				await printOutput( output, flags );
 				process.exitCode = exitCode;
 				return;
 			}
@@ -621,7 +621,7 @@ run "wrapido <namespace> <route>" to see which ones a given route supports.
 				flags,
 				siteUrl
 			);
-			console.log( output );
+			await printOutput( output, flags );
 			process.exitCode = exitCode;
 		} catch ( error ) {
 			console.error( errorText( error, options.format ) );
