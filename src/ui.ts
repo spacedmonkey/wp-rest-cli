@@ -235,6 +235,14 @@ export function createProgressBar(
 		WP_CLI_PROGRESS_PRESET
 	);
 	bar.start( total, 0, { msg: message } );
+	// cli-progress disables terminal line wrapping (and hides the cursor)
+	// until `stop()`; a Ctrl-C mid-bar would otherwise kill the process
+	// first and leave the user's terminal unable to wrap long lines.
+	const onSigint = () => {
+		bar.stop();
+		process.exit( 130 );
+	};
+	process.once( 'SIGINT', onSigint );
 	return {
 		tick( by = 1 ) {
 			bar.increment( by );
@@ -248,6 +256,7 @@ export function createProgressBar(
 			notice( logMessage, true );
 		},
 		finish() {
+			process.off( 'SIGINT', onSigint );
 			bar.stop();
 		},
 	};

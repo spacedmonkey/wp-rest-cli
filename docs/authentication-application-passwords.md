@@ -41,7 +41,7 @@ This only applies to credentials this tool itself confirmed as an Application Pa
 $ wrapido auth application-passwords login https://example.com
 Open this URL in your browser to authorize wrapido:
 
-  https://example.com/wp-admin/authorize-application.php?app_name=wrapido&success_url=http%3A%2F%2F127.0.0.1%3A54321%2Fcallback
+https://example.com/wp-admin/authorize-application.php?app_name=wrapido&success_url=http%3A%2F%2F127.0.0.1%3A54321%2Fcallback
 
 Waiting for authorization...
 Success: Saved an Application Password for admin@https://example.com.

@@ -6,6 +6,7 @@ import http from 'node:http';
 /**
  * Internal dependencies
  */
+import { agentMode } from '../../ui.js';
 import type { WpRestClient } from '../client.js';
 import { CliError } from '../errors.js';
 import {
@@ -60,6 +61,29 @@ export function buildAuthorizationUrl(
 	authorizeUrl.searchParams.set( 'app_name', appName );
 	authorizeUrl.searchParams.set( 'success_url', successUrl );
 	return authorizeUrl.toString();
+}
+
+/**
+ * The "open this URL" prompt shared by every browser-based auth flow. The URL
+ * sits alone on its own unindented line, so a wrapping terminal doesn't
+ * break it when copied. On an interactive terminal it's also an OSC 8
+ * hyperlink (one clickable link however it wraps; terminals without OSC 8
+ * support ignore it), preceded by DECAWM (`ESC[?7h`) to re-enable line
+ * wrapping — a terminal left in no-wrap mode (e.g. by another program
+ * killed mid-redraw) would otherwise clip the URL at its right edge.
+ * @param url The authorization URL to open.
+ * @param tty Whether to add terminal escapes (defaults to a human-mode tty
+ *            on stdout).
+ * @return The prompt text to print.
+ */
+export function authorizePrompt(
+	url: string,
+	tty = Boolean( process.stdout.isTTY ) && ! agentMode()
+): string {
+	const link = tty
+		? `\x1b[?7h\x1b]8;;${ url }\x1b\\${ url }\x1b]8;;\x1b\\`
+		: url;
+	return `Open this URL in your browser to authorize wrapido:\n\n${ link }\n\nWaiting for authorization...`;
 }
 
 /**
@@ -230,9 +254,7 @@ export async function runAuthorizationFlow(
 		successUrl
 	);
 
-	print(
-		`Open this URL in your browser to authorize wrapido:\n\n  ${ authorizeUrl }\n\nWaiting for authorization...`
-	);
+	print( authorizePrompt( authorizeUrl ) );
 
 	return result;
 }
