@@ -48,6 +48,7 @@ import {
 } from './core/file-config.js';
 import { setTruncateLength } from './core/formatter.js';
 import { printOutput } from './core/pager.js';
+import type { PagerFlags } from './core/pager.js';
 import { setUserTimeout } from './core/timeout.js';
 import { disableTlsVerification } from './core/tls.js';
 import type {
@@ -298,6 +299,21 @@ function toGlobalFlags( options: RawOptions ): GlobalFlags {
 }
 
 /**
+ * Narrows Commander's raw options down to just the two fields {@link printOutput}
+ * needs, with no validation — used for bare `--help`/`wrapido help` (no further
+ * args), so a bad `--context`/`--format`/`--use-auth` (command-line or from a
+ * broken project config file) can never block `--help` from working. The full,
+ * validating {@link toGlobalFlags} is only needed once help output has to be
+ * resolved against a specific namespace/route/verb (a real REST-introspecting
+ * request), not for printing the static top-level help text.
+ * @param options Commander's raw parsed options.
+ * @return Just the flags {@link printOutput} reads.
+ */
+function toPagerFlags( options: RawOptions ): PagerFlags {
+	return { pager: options.pager, quiet: Boolean( options.quiet ) };
+}
+
+/**
  * Handles `wrapido config get|set|clear`, the one subcommand that never touches the
  * REST API.
  * @param args    The full positional argument list, starting with `config`.
@@ -311,13 +327,15 @@ async function handleConfigCommand(
 	const [ , sub ] = args;
 	switch ( sub ) {
 		case 'get': {
-			console.log( `url: ${ getDefaultUrl() ?? '(not set)' }` );
-			console.log( `username: ${ getDefaultUsername() ?? '(not set)' }` );
+			const lines = [
+				`url: ${ getDefaultUrl() ?? '(not set)' }`,
+				`username: ${ getDefaultUsername() ?? '(not set)' }`,
+			];
 			const fileConfig = getFileConfig();
 			for ( const [ key, value ] of Object.entries(
 				fileConfig?.values ?? {}
 			) ) {
-				console.log(
+				lines.push(
 					`${ key }: ${ value } ${ pc.dim(
 						`(from ${
 							fileConfig?.origins[ key as FileConfigKey ] ?? '?'
@@ -325,10 +343,11 @@ async function handleConfigCommand(
 					) }`
 				);
 			}
-			console.log(
+			lines.push(
 				pc.dim( `user-level YAML config: ${ userConfigPath() }` )
 			);
-			console.log( pc.dim( `config file: ${ configFilePath() }` ) );
+			lines.push( pc.dim( `config file: ${ configFilePath() }` ) );
+			await printOutput( lines.join( '\n' ), toPagerFlags( options ) );
 			return 0;
 		}
 		case 'set': {
@@ -412,11 +431,11 @@ async function handleHelpCommand(
 	options: RawOptions,
 	style: HelpStyle = 'usage'
 ): Promise< number > {
-	const flags = toGlobalFlags( options );
 	if ( args.length === 0 ) {
-		await printOutput( capturedTopLevelHelp(), flags );
+		await printOutput( capturedTopLevelHelp(), toPagerFlags( options ) );
 		return 0;
 	}
+	const flags = toGlobalFlags( options );
 	const siteUrl = flags.url ?? getDefaultUrl();
 	if ( ! siteUrl ) {
 		throw new CliError(
@@ -540,8 +559,9 @@ run "wrapido <namespace> <route>" to see which ones a given route supports.
 			setTruncateLength( parseTruncateLength( options.truncateLength ) );
 			if ( args[ 0 ] === 'config' ) {
 				if ( options.help ) {
-					console.log(
-						'Usage: wrapido config <get|set|clear|rotate-key> [--url=] [--username=]'
+					await printOutput(
+						'Usage: wrapido config <get|set|clear|rotate-key> [--url=] [--username=]',
+						toPagerFlags( options )
 					);
 					process.exitCode = 0;
 					return;
@@ -561,8 +581,9 @@ run "wrapido <namespace> <route>" to see which ones a given route supports.
 					if ( args[ 1 ] !== undefined ) {
 						assertKnownAuthType( args[ 1 ] );
 					}
-					console.log(
-						authUsageText( args[ 1 ] as AuthType | undefined )
+					await printOutput(
+						authUsageText( args[ 1 ] as AuthType | undefined ),
+						toPagerFlags( options )
 					);
 					process.exitCode = 0;
 					return;
@@ -594,7 +615,7 @@ run "wrapido <namespace> <route>" to see which ones a given route supports.
 				if ( args.length === 0 ) {
 					await printOutput(
 						capturedTopLevelHelp(),
-						toGlobalFlags( options )
+						toPagerFlags( options )
 					);
 					process.exitCode = 0;
 					return;

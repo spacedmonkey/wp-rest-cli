@@ -14,6 +14,9 @@ type Spawn = ( command: string, options: SpawnOptions ) => ChildProcess;
 import type { GlobalFlags } from '../types.js';
 import { agentMode } from '../ui.js';
 
+/** The only two {@link GlobalFlags} fields the pager machinery reads — deliberately not the full type, so callers that only have raw/unvalidated options (e.g. bare `--help`, before {@link GlobalFlags} validation) can still page output without first validating unrelated flags like `--format`/`--context`. */
+export type PagerFlags = Pick< GlobalFlags, 'pager' | 'quiet' >;
+
 /**
  * Whether output should be paged for this invocation: only when stdout
  * is a real interactive terminal, agent mode is off, `--quiet` wasn't
@@ -27,7 +30,7 @@ import { agentMode } from '../ui.js';
  * @return True when output should be piped through a pager.
  */
 export function shouldUsePager(
-	flags: GlobalFlags,
+	flags: PagerFlags,
 	isTTY: boolean,
 	agentOn: boolean
 ): boolean {
@@ -161,11 +164,13 @@ export function fitsOnScreen(
  * `console.log(output)` always did, so this is a behavior no-op whenever the
  * gate is false.
  * @param output The complete output string to print.
- * @param flags  The resolved global flags.
+ * @param flags  The `pager`/`quiet` flags this needs — either the full
+ *               validated {@link GlobalFlags}, or, for a caller that hasn't
+ *               validated the rest yet (bare `--help`), just those two.
  */
 export async function printOutput(
 	output: string,
-	flags: GlobalFlags
+	flags: PagerFlags
 ): Promise< void > {
 	const isTTY = Boolean( process.stdout.isTTY );
 	if (
