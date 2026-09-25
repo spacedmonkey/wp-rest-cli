@@ -1,7 +1,14 @@
-name: Deploy Docs
+name: Docs
 
 on:
   push:
+    branches:
+      - main
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - '.github/workflows/docs.yml'
+  pull_request:
     branches:
       - main
     paths:
@@ -15,12 +22,9 @@ permissions:
   pages: write
   id-token: write
 
-concurrency:
-  group: pages
-  cancel-in-progress: false
-
 jobs:
   build:
+    name: Build (validate)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -37,14 +41,25 @@ jobs:
       - name: Build site
         run: mkdocs build --strict
 
+      # Only needed for the deploy job below, which never runs for a pull
+      # request (see its own `if:`) — but uploading it here is what lets
+      # `mkdocs build --strict` double as this job's actual PR check: a
+      # broken build (bad nav reference, invalid extension config, ...)
+      # fails the upload step too, and gets caught before merge instead of
+      # only surfacing once a push to main tries to deploy it.
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
         with:
           path: site
 
   deploy:
+    name: Deploy to GitHub Pages
     needs: build
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
