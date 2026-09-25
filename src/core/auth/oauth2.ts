@@ -14,7 +14,10 @@ import {
 	getOAuth2Endpoints,
 	type OAuth2Endpoints,
 } from '../indexer.js';
-import { canSiteUseApplicationPasswords } from './authorize.js';
+import {
+	authorizePrompt,
+	canSiteUseApplicationPasswords,
+} from './authorize.js';
 import type { AuthProvider } from './types.js';
 
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
@@ -305,9 +308,7 @@ export async function runOAuth2AuthorizationCodeFlow(
 	authorizeUrl.searchParams.set( 'redirect_uri', redirectUri );
 	authorizeUrl.searchParams.set( 'state', state );
 
-	print(
-		`Open this URL in your browser to authorize wrapido:\n\n  ${ authorizeUrl.toString() }\n\nWaiting for authorization...`
-	);
+	print( authorizePrompt( authorizeUrl.toString() ) );
 
 	const code = await result;
 

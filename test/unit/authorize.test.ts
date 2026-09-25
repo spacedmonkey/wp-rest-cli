@@ -7,6 +7,7 @@ import { describe, expect, it } from '@jest/globals';
  * Internal dependencies
  */
 import {
+	authorizePrompt,
 	buildAuthorizationUrl,
 	canSiteUseApplicationPasswords,
 	runAuthorizationFlow,
@@ -157,7 +158,7 @@ describe( 'runAuthorizationFlow', () => {
 
 		const line = await printed;
 		const [ authorizeUrl ] = line.match(
-			/https:\/\/example\.com\/wp-admin\/authorize-application\.php\?\S+/
+			/https:\/\/example\.com\/wp-admin\/authorize-application\.php\?[^\s\x1b]+/
 		) as RegExpMatchArray;
 		const successUrl = new URL( authorizeUrl ).searchParams.get(
 			'success_url'
@@ -197,5 +198,21 @@ describe( 'runAuthorizationFlow', () => {
 				50
 			)
 		).rejects.toThrow( 'Timed out' );
+	} );
+} );
+
+describe( 'authorizePrompt', () => {
+	const url = 'https://example.com/wp-admin/authorize-application.php?a=b';
+
+	it( 'prints the URL alone on an unindented line', () => {
+		const prompt = authorizePrompt( url, false );
+		expect( prompt.split( '\n' ) ).toContain( url );
+		expect( prompt ).not.toContain( '\x1b' );
+	} );
+
+	it( 'wraps the URL in an OSC 8 hyperlink when asked', () => {
+		expect( authorizePrompt( url, true ) ).toContain(
+			`\x1b]8;;${ url }\x1b\\${ url }\x1b]8;;\x1b\\`
+		);
 	} );
 } );
