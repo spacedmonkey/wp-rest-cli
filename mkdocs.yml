@@ -87,7 +87,14 @@ plugins:
   - search
   - tags
 
+copyright: >
+  Designed by <a href="https://spacedmonkey.com" target="_blank" rel="noopener">Spacedmonkey</a>
+
 extra:
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/spacedmonkey/wrapido
+    - icon: fontawesome/brands/twitter
+      link: https://twitter.com/thespacedmonkey
+    - icon: fontawesome/brands/linkedin
+      link: https://www.linkedin.com/in/jonathandavidharris/
