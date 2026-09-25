@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```sh
-npm run wp -- <namespace> <route> [<verb>] [<id>] [--flag=value...] --url=<site>  # run against src/ via tsx, no build needed
+npm run wrapido -- <namespace> <route> [<verb>] [<id>] [--flag=value...] --url=<site>  # run against src/ via tsx, no build needed
 npm run build          # bundle to dist/cli.js (tsup)
 npm run dev             # tsup --watch
 npm test                 # jest (unit, via wp-scripts) + vitest run (an execa-driven integration suite against a local fixture server)

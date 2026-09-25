@@ -30,10 +30,12 @@ npm install
 npm run build
 ```
 
+To use `wrapido` as a global command instead of running it from inside this repo, see [Install globally](https://spacedmonkey.github.io/wrapido/installation/#install-globally) in the full docs.
+
 For local development, run commands directly against the TypeScript source without a build step:
 
 ```sh
-npm run wp -- <namespace> <route> [<verb>] [<id>] [--flag=value...] --url=<site>
+npm run wrapido -- <namespace> <route> [<verb>] [<id>] [--flag=value...] --url=<site>
 ```
 
 ## Command grammar
@@ -152,7 +154,7 @@ See [Uploading files](https://spacedmonkey.github.io/wrapido/uploading-files/) f
 ## Development
 
 ```sh
-npm run wp -- <args>   # run against source via tsx, no build needed
+npm run wrapido -- <args>   # run against source via tsx, no build needed
 npm run build          # bundle to dist/cli.js (tsup)
 npm test                # jest (unit, via wp-scripts) + vitest (an execa-driven integration suite against a local fixture server)
 npm run coverage        # merged unit + integration coverage report (coverage/) and README badge update

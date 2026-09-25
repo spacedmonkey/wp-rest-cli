@@ -5,7 +5,7 @@
 ## How this was tested
 
 <!-- e.g. added/updated unit tests, added/updated integration tests against the fixture server,
-     manually ran `npm run wp -- ...` against a real site. -->
+     manually ran `npm run wrapido -- ...` against a real site. -->
 
 ## Checklist
 

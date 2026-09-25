@@ -13,7 +13,7 @@ body:
     id: command
     attributes:
       label: Command run
-      description: The exact `wrapido` (or `npm run wp -- ...`) command that triggered the problem.
+      description: The exact `wrapido` (or `npm run wrapido -- ...`) command that triggered the problem.
       render: sh
       placeholder: |
         wrapido wp/v2 posts list --url=https://example.com --per_page=5

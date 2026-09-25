@@ -13,10 +13,10 @@ npm install
 Run the CLI straight from source with `tsx` - no build step needed while iterating:
 
 ```sh
-npm run wp -- <namespace> <route> [<verb>] [<id>] [--flag=value...] --url=<site>
+npm run wrapido -- <namespace> <route> [<verb>] [<id>] [--flag=value...] --url=<site>
 
 # e.g.
-npm run wp -- wp/v2 posts list --url=https://example.com --per_page=5
+npm run wrapido -- wp/v2 posts list --url=https://example.com --per_page=5
 ```
 
 If you want a real built binary instead:
