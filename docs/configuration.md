@@ -95,7 +95,7 @@ Any command's output — `list`/`get`/`create`/... results, route/namespace list
 Paging only ever engages when stdout is a live terminal — it is automatically off for piped/redirected output, scripts, CI, and [agent mode](agent-mode.md), regardless of any of the settings below.
 
 -   **`--no-pager`** (or `pager: false` in a config file) turns it off unconditionally.
--   **`WRAPIDO_PAGER`**, then **`PAGER`**, choose which pager command to run; an empty value (`PAGER=`) also disables paging. With neither set, the default is `less -FRX` (`-R` passes through color, `-X` doesn't clear the screen on exit) on Linux/macOS — there is no built-in default on Windows, where `less` isn't reliably present.
+-   **`WRAPIDO_PAGER`**, then **`PAGER`**, choose which pager command to run; an empty value (`PAGER=`) also disables paging. With neither set, the default is `less -FR` (`-F` quit if it fits one screen, `-R` pass through color) on Linux/macOS — there is no built-in default on Windows, where `less` isn't reliably present. Quitting the pager clears its content from view, like a normal `less`/`git log` session — this is what lets your terminal's mouse-wheel/trackpad scrolling work while it's open (a `-X` flag that kept content on screen after quitting was tried first, but that also silently disabled scroll-wheel support in most terminals).
 -   Output that already fits on one screen is printed directly, without invoking a pager at all — measured against the terminal's actual reported size (not left to a pager's own "quit if it fits" flag, which isn't reliably honored by every terminal/multiplexer).
 
 ```sh

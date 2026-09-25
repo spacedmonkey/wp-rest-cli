@@ -36,10 +36,15 @@ export function shouldUsePager(
 
 /**
  * Resolves the shell command to run as the pager: `WRAPIDO_PAGER`, then
- * `PAGER`, then `less -FRX` (git's own default flags: quit if the content
- * fits one screen, pass through ANSI color, don't clear the screen on exit)
- * — except on Windows, where `less` isn't reliably present, so there is no
- * built-in default there; an explicit `WRAPIDO_PAGER`/`PAGER` still works.
+ * `PAGER`, then `less -FR` (`-F` quit if the content fits one screen, `-R`
+ * pass through ANSI color) — except on Windows, where `less` isn't reliably
+ * present, so there is no built-in default there; an explicit
+ * `WRAPIDO_PAGER`/`PAGER` still works. Deliberately no `-X`: that flag skips
+ * the terminal's alternate-screen mode, which is what most terminal
+ * emulators rely on to translate a mouse-wheel/trackpad scroll into input
+ * `less` understands — the trade-off is that paged content clears from view
+ * on quit, like a normal `less`/`git log` session, instead of lingering
+ * below the prompt.
  * An explicitly *empty* `WRAPIDO_PAGER`/`PAGER` (`PAGER=`) disables paging,
  * the same convention those variables already carry elsewhere (e.g. git).
  * @param env The environment to read from.
@@ -54,7 +59,7 @@ export function resolvePagerCommand(
 	if ( env.PAGER !== undefined ) {
 		return env.PAGER === '' ? undefined : env.PAGER;
 	}
-	return process.platform === 'win32' ? undefined : 'less -FRX';
+	return process.platform === 'win32' ? undefined : 'less -FR';
 }
 
 /**

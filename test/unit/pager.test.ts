@@ -121,11 +121,11 @@ describe( 'resolvePagerCommand', () => {
 		expect( resolvePagerCommand( { PAGER: 'most' } ) ).toBe( 'most' );
 	} );
 
-	it( 'defaults to "less -FRX" on non-Windows with nothing set', () => {
+	it( 'defaults to "less -FR" (no -X, so mouse/trackpad scrolling works) on non-Windows with nothing set', () => {
 		if ( process.platform === 'win32' ) {
 			expect( resolvePagerCommand( {} ) ).toBeUndefined();
 		} else {
-			expect( resolvePagerCommand( {} ) ).toBe( 'less -FRX' );
+			expect( resolvePagerCommand( {} ) ).toBe( 'less -FR' );
 		}
 	} );
 
