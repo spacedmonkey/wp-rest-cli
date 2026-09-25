@@ -104,6 +104,28 @@ describe( 'route navigation (arbitrary-depth nested routes)', () => {
 	} );
 } );
 
+describe( 'a parameterised-only route with no declared args at all', () => {
+	it( 'introspects without crashing', async () => {
+		const result = await run( [ 'wp/v2', 'trinkets' ] );
+		expect( result.exitCode ).toBe( 0 );
+		expect( result.stdout ).toContain(
+			'This route only exists with a value in place of its URL parameter'
+		);
+	} );
+
+	it( 'performs a get, splicing the id in with no schema to consult', async () => {
+		const result = await run( [
+			'wp/v2',
+			'trinkets',
+			'get',
+			'abc',
+			'--format=json',
+		] );
+		expect( result.exitCode ).toBe( 0 );
+		expect( JSON.parse( result.stdout ) ).toEqual( { id: 'abc' } );
+	} );
+} );
+
 describe( 'routes with a mid-path URL parameter (not at the end)', () => {
 	it( 'lists a route whose parameter sits in the middle of the path, joined by its literal segments', async () => {
 		const result = await run( [ 'wp/v2', 'posts', '--format=json' ] );
@@ -712,5 +734,41 @@ describe( 'generate', () => {
 		expect( result.stderr ).not.toMatch( /\x1b\[|\r/ );
 		expect( result.stderr ).toContain( 'Generating wp/v2/widgets' );
 		expect( result.stderr ).toContain( 'done (3/3)' );
+	} );
+
+	it( 'against a schema-less create route, surfaces a CLI hint instead of the raw API error', async () => {
+		const result = await run( [
+			'wp/v2',
+			'notes',
+			'generate',
+			'--count=1',
+		] );
+		expect( result.exitCode ).toBe( 1 );
+		expect( result.stderr ).toContain( 'Note content is required.' );
+		expect( result.stderr ).toContain(
+			"declares no fields, so generate couldn't synthesize"
+		);
+
+		const jsonResult = await run( [
+			'wp/v2',
+			'notes',
+			'generate',
+			'--count=1',
+			'--format=json',
+		] );
+		expect( jsonResult.exitCode ).toBe( 1 );
+		expect( JSON.parse( jsonResult.stderr ).error.hint ).toContain(
+			'declares no fields'
+		);
+	} );
+
+	it( 'create succeeds against a schema-less route when the field is supplied', async () => {
+		const result = await run( [
+			'wp/v2',
+			'notes',
+			'create',
+			'note=Hello',
+		] );
+		expect( result.exitCode ).toBe( 0 );
 	} );
 } );

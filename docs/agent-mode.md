@@ -51,7 +51,7 @@ These help agents but are available to everyone:
 -   `help ... --format=json` includes each endpoint's `required` arg names and the route's nested `children`.
 -   `--fields=id,_embedded` also asks WordPress for `_links` (needed for `--_embed` to work).
 -   `list --format=count` prints the site total (from `X-WP-Total`); when more pages exist, stderr says `Page 1 of N (T total)`.
--   `list --per_page=-1` returns every page at once, requesting the route's maximum page size each time.
+-   `list --per_page=-1` returns every page at once, requesting the route's maximum page size each time; if the route's schema doesn't declare both `page` and `per_page` (often because it declares no args at all), `-1` is instead forwarded to the API literally, with a notice on stderr.
 -   An unknown route exits `1` with `No such route`, and a bare unknown namespace with `No such namespace` (in agent mode this also applies when a verb is given).
 -   `--fields=id,title.rendered` keeps nesting in JSON/YAML.
 -   `types`, `taxonomies` and `statuses` list one row per entry.

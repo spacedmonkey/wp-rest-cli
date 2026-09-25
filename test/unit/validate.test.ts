@@ -32,6 +32,12 @@ describe( 'validateFieldTypes', () => {
 		).not.toThrow();
 	} );
 
+	it( 'does nothing when the arg schema is present but declares no fields', () => {
+		expect( () =>
+			validateFieldTypes( { anything: 'goes' }, {} )
+		).not.toThrow();
+	} );
+
 	it( 'passes valid values through without throwing', () => {
 		expect( () =>
 			validateFieldTypes(
@@ -157,6 +163,12 @@ describe( 'coerceJsonFields', () => {
 		} );
 	} );
 
+	it( 'returns fields unchanged when the arg schema declares no fields', () => {
+		expect( coerceJsonFields( { meta: '{"a":1}' }, {} ) ).toEqual( {
+			meta: '{"a":1}',
+		} );
+	} );
+
 	it( 'JSON-parses an object-typed field whose value is valid JSON', () => {
 		expect( coerceJsonFields( { meta: '{"color":"red"}' }, args ) ).toEqual(
 			{ meta: { color: 'red' } }
@@ -209,6 +221,13 @@ describe( 'unknownFieldWarnings', () => {
 		expect( unknownFieldWarnings( { bogus: '1' }, undefined ) ).toEqual(
 			[]
 		);
+	} );
+
+	it( 'never warns on a route that declares zero fields, whether the schema is missing or explicitly empty', () => {
+		expect( unknownFieldWarnings( { bogus: '1' }, undefined ) ).toEqual(
+			[]
+		);
+		expect( unknownFieldWarnings( { bogus: '1' }, {} ) ).toEqual( [] );
 	} );
 
 	it( 'warns without a suggestion when nothing is close', () => {

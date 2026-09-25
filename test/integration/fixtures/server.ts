@@ -178,6 +178,15 @@ const WIDGET_TYPES = [
 	{ id: 'text', name: 'Text' },
 ];
 
+// Modelled on a common third-party-plugin pattern (not any real WordPress
+// core controller): declares NO `args` key at all on its POST endpoint, yet
+// still rejects an empty `note` via a plain in-callback check — exists so
+// integration tests can exercise `create`/`generate` against a route with
+// zero declared schema to lean on at all (see HIDDEN_REQUIRED_FIELDS_BY_ERROR_CODE
+// in rest.ts, which can't help here since there's no schema for it to consult).
+const notes = new Map< number, Record< string, unknown > >();
+let nextNoteId = 1;
+
 const settings: Record< string, unknown > = { title: 'Fixture Site' };
 
 // Uuids "revoked" via DELETE /wp-json/wp/v2/users/me/application-passwords/:uuid
@@ -552,6 +561,17 @@ export async function startFixture(): Promise< Fixture > {
 						methods: [ 'GET' ],
 						endpoints: [ { methods: [ 'GET' ] } ],
 					},
+					// Modelled on a common third-party-plugin pattern (unlike any real
+					// WordPress core controller): POST with NO `args` key at all — not
+					// even {} — reading straight off get_json_params(), yet still
+					// enforcing a field as required in practice via a plain in-callback
+					// check. Exercises the fully schema-less create/generate path with
+					// no declared schema at all to lean on.
+					'/wp/v2/notes': {
+						namespace: 'wp/v2',
+						methods: [ 'POST' ],
+						endpoints: [ { methods: [ 'POST' ] } ],
+					},
 					// Modelled on WP_REST_Global_Styles_Controller: no bare collection
 					// route exists here at all, only this parameterised one.
 					'/wp/v2/global-styles/themes/(?P<stylesheet>%s)': {
@@ -619,6 +639,16 @@ export async function startFixture(): Promise< Fixture > {
 								},
 							},
 						],
+					},
+					// Modelled on a common third-party-plugin pattern: a URL parameter
+					// with NO `args` entry describing it anywhere (not even on this
+					// index's own embedded schema) — exercises the "requires a URL
+					// parameter" bare-route fallback (getRouteSchema) and the
+					// indexer's route/parameter matching with a wholly empty schema.
+					'/wp/v2/trinkets/(?P<id>[^/]+)': {
+						namespace: 'wp/v2',
+						methods: [ 'GET' ],
+						endpoints: [ { methods: [ 'GET' ] } ],
 					},
 					// Modelled on WP_REST_Revisions_Controller: the URL parameter sits
 					// in the *middle* of the path (a parent post id), not at the end —
@@ -1726,6 +1756,33 @@ export async function startFixture(): Promise< Fixture > {
 			return;
 		}
 
+		if ( path === '/wp-json/wp/v2/notes' && req.method === 'OPTIONS' ) {
+			send( res, 200, {
+				namespace: 'wp/v2',
+				methods: [ 'POST' ],
+				endpoints: [ { methods: [ 'POST' ] } ],
+			} );
+			return;
+		}
+
+		if ( path === '/wp-json/wp/v2/notes' && req.method === 'POST' ) {
+			const body = await readBody( req );
+			const note = typeof body.note === 'string' ? body.note.trim() : '';
+			if ( ! note ) {
+				send( res, 400, {
+					code: 'rest_note_required',
+					message: 'Note content is required.',
+					data: { status: 400 },
+				} );
+				return;
+			}
+			const id = nextNoteId++;
+			const record = { id, note };
+			notes.set( id, record );
+			send( res, 201, record );
+			return;
+		}
+
 		if ( path === '/wp-json/wp/v2/file-size' && req.method === 'OPTIONS' ) {
 			send( res, 200, {
 				namespace: 'wp/v2',
@@ -1820,6 +1877,18 @@ export async function startFixture(): Promise< Fixture > {
 		);
 		if ( gizmoMatch && req.method === 'GET' ) {
 			send( res, 200, { id: gizmoMatch[ 1 ], kind: 'electronic' } );
+			return;
+		}
+
+		// No OPTIONS handler for this route: being parameterised-only, its
+		// schema is always read from the index's own embedded route entry
+		// (`getRouteSchema`'s requiresParam fallback), never a live OPTIONS
+		// request — see the routes map entry above.
+		const trinketMatch = path.match(
+			/^\/wp-json\/wp\/v2\/trinkets\/([^/]+)$/
+		);
+		if ( trinketMatch && req.method === 'GET' ) {
+			send( res, 200, { id: trinketMatch[ 1 ] } );
 			return;
 		}
 

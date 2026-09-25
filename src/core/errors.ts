@@ -9,6 +9,8 @@ export class WpApiError extends Error {
 	readonly status: number;
 	readonly params?: Record< string, string >;
 	readonly headers?: Headers;
+	/** A CLI-added hint that overrides the code-keyed lookup in `hintFor`, when set by the caller after construction. */
+	hint?: string;
 
 	/**
 	 * @param body           The parsed `{code, message, data}` error body.
@@ -74,11 +76,14 @@ const GENERAL_ERROR_HINTS: Record< string, string > = {
 };
 
 /**
- * Looks up a hint for a WordPress error code.
+ * Looks up a hint for a WordPress error code. Exported so callers building a
+ * more specific hint (e.g. `generate`'s schema-less recovery path in
+ * `rest.ts`) can check whether a code-keyed hint already exists before
+ * overriding `WpApiError.hint` with something less relevant.
  * @param code The WordPress REST error code.
  * @return The hint text, if one is known.
  */
-function hintFor( code: string ): string | undefined {
+export function hintFor( code: string ): string | undefined {
 	return (
 		UPLOAD_ERROR_HINTS[ code ] ??
 		GENERAL_ERROR_HINTS[ code ] ??
@@ -147,7 +152,7 @@ export async function parseErrorResponse(
  */
 export function formatErrorForDisplay( error: unknown ): string {
 	if ( error instanceof WpApiError ) {
-		const hint = hintFor( error.code );
+		const hint = error.hint ?? hintFor( error.code );
 		const params = Object.entries( error.params ?? {} )
 			.map( ( [ name, message ] ) => `\n  ${ name }: ${ message }` )
 			.join( '' );
@@ -178,7 +183,7 @@ export function formatErrorForJson( error: unknown ): string {
 				code: error.code,
 				status: error.status,
 				params: error.params,
-				hint: hintFor( error.code ),
+				hint: error.hint ?? hintFor( error.code ),
 			},
 		} );
 	}

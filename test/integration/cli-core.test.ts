@@ -929,6 +929,54 @@ describe( 'agent-friendly JSON output', () => {
 		expect( result.stderr ).not.toContain( 'not a declared arg' );
 	} );
 
+	it( 'agent mode: no unknown-arg warning on a route that declares zero fields, either way', async () => {
+		// wp/v2/widget-types' GET endpoint omits the `args` key entirely;
+		// wp/v2/members' GET endpoint declares it as an explicitly empty {}
+		// — both mean "this route declares no fields" and must behave the
+		// same (previously, only the missing-key case stayed silent).
+		const undeclared = await runCli(
+			[
+				'wp/v2',
+				'widget-types',
+				'list',
+				'--bogus=1',
+				`--url=${ fixture.baseUrl }`,
+			],
+			{ env: { WRAPIDO_AGENT: '1' } }
+		);
+		const emptyArgs = await runCli(
+			[
+				'wp/v2',
+				'members',
+				'list',
+				'--bogus=1',
+				`--url=${ fixture.baseUrl }`,
+			],
+			{ env: { WRAPIDO_AGENT: '1' } }
+		);
+		expect( undeclared.exitCode ).toBe( 0 );
+		expect( emptyArgs.exitCode ).toBe( 0 );
+		expect( undeclared.stderr ).not.toContain( 'not a declared arg' );
+		expect( emptyArgs.stderr ).not.toContain( 'not a declared arg' );
+	} );
+
+	it( 'human mode does not warn about unknown flags on zero-field routes either', async () => {
+		const undeclared = await run( [
+			'wp/v2',
+			'widget-types',
+			'list',
+			'--bogus=1',
+		] );
+		const emptyArgs = await run( [
+			'wp/v2',
+			'members',
+			'list',
+			'--bogus=1',
+		] );
+		expect( undeclared.stderr ).not.toContain( 'not a declared arg' );
+		expect( emptyArgs.stderr ).not.toContain( 'not a declared arg' );
+	} );
+
 	it( 'default (human) mode still shows progress lines on stderr', async () => {
 		const result = await runCli( [
 			'wp/v2',
@@ -1125,7 +1173,7 @@ describe( 'agent-friendly JSON output', () => {
 			);
 		} );
 
-		it( 'passes through unchanged on a route without a page arg', async () => {
+		it( 'passes through unchanged on a route without a page arg, with a notice', async () => {
 			const plain = await agent( [ 'widgets', 'list' ] );
 			const result = await agent( [
 				'widgets',
@@ -1135,6 +1183,29 @@ describe( 'agent-friendly JSON output', () => {
 			expect( result.exitCode ).toBe( 0 );
 			expect( result.stdout ).toBe( plain.stdout );
 			expect( result.stderr ).toContain( 'Page 1 of' );
+			expect( result.stderr ).toContain( 'forwarded to the API as-is' );
+		} );
+
+		it( 'notices --per_page=-1 forwarded as-is on a schema-less route', async () => {
+			const result = await agent( [
+				'widget-types',
+				'list',
+				'--per_page=-1',
+			] );
+			expect( result.exitCode ).toBe( 0 );
+			expect( result.stderr ).toContain( 'forwarded to the API as-is' );
+		} );
+
+		it( 'does not notice --per_page=-1 on a keyed route (taxonomies)', async () => {
+			const result = await agent( [
+				'taxonomies',
+				'list',
+				'--per_page=-1',
+			] );
+			expect( result.exitCode ).toBe( 0 );
+			expect( result.stderr ).not.toContain(
+				'forwarded to the API as-is'
+			);
 		} );
 	} );
 
