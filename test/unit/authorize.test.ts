@@ -210,9 +210,9 @@ describe( 'authorizePrompt', () => {
 		expect( prompt ).not.toContain( '\x1b' );
 	} );
 
-	it( 'wraps the URL in an OSC 8 hyperlink when asked', () => {
+	it( 're-enables line wrapping and hyperlinks the URL on a tty', () => {
 		expect( authorizePrompt( url, true ) ).toContain(
-			`\x1b]8;;${ url }\x1b\\${ url }\x1b]8;;\x1b\\`
+			`\x1b[?7h\x1b]8;;${ url }\x1b\\${ url }\x1b]8;;\x1b\\`
 		);
 	} );
 } );
