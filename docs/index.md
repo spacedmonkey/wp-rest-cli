@@ -7,7 +7,11 @@ tags:
 
 <!-- markdownlint-disable MD033 -->
 <p align="center">
-  <img src="assets/logo.svg" alt="wrapido logo" width="160" height="160" style="background:#000;border-radius:24px;padding:24px;">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="assets/logo-light.svg">
+    <img src="assets/logo-light.svg" alt="wrapido" width="320">
+  </picture>
 </p>
 <!-- markdownlint-enable MD033 -->
 
