@@ -46,7 +46,7 @@ import {
 	loadFileConfig,
 	userConfigPath,
 } from './core/file-config.js';
-import { setTruncateEnabled } from './core/formatter.js';
+import { setTruncateLength } from './core/formatter.js';
 import { setUserTimeout } from './core/timeout.js';
 import { disableTlsVerification } from './core/tls.js';
 import type {
@@ -102,8 +102,7 @@ const KNOWN_LONG_FLAGS = new Set( [
 	'timeout',
 	'color',
 	'no-color',
-	'truncate',
-	'no-truncate',
+	'truncate-length',
 	'quiet',
 	'debug',
 	'help',
@@ -167,6 +166,21 @@ function parseTimeout( value: string | undefined ): number | undefined {
 	return ms;
 }
 
+/**
+ * Parses the `--truncate-length` value into a character count.
+ * @param value The raw option value.
+ * @return The truncate length; 0 disables truncation entirely.
+ */
+function parseTruncateLength( value: string ): number {
+	const length = Number( value );
+	if ( ! Number.isInteger( length ) || length < 0 ) {
+		throw new CliError(
+			`--truncate-length must be a non-negative integer (got "${ value }").`
+		);
+	}
+	return length;
+}
+
 interface RawOptions {
 	url?: string;
 	username?: string;
@@ -182,7 +196,7 @@ interface RawOptions {
 	body?: string;
 	timeout?: string;
 	color: boolean;
-	truncate: boolean;
+	truncateLength: string;
 	quiet?: boolean;
 	debug?: boolean;
 	help?: boolean;
@@ -436,8 +450,9 @@ program
 	)
 	.option( '--no-color', 'Disable colored output' )
 	.option(
-		'--no-truncate',
-		'Show full table cell values instead of truncating them to 50 characters'
+		'--truncate-length <n>',
+		'Max characters a table cell shows before truncating; 0 shows full values',
+		'50'
 	)
 	.option( '--quiet', 'Suppress spinner/progress output' )
 	.option(
@@ -483,10 +498,10 @@ run "wrapido <namespace> <route>" to see which ones a given route supports.
 	.action( async ( args: string[], rawOptions: RawOptions ) => {
 		let options = rawOptions;
 		setColorEnabled( options.color && colorByDefault() );
-		setTruncateEnabled( options.truncate !== false );
 		try {
 			options = applyFileConfig( rawOptions );
 			setColorEnabled( options.color && colorByDefault() );
+			setTruncateLength( parseTruncateLength( options.truncateLength ) );
 			if ( args[ 0 ] === 'config' ) {
 				if ( options.help ) {
 					console.log(

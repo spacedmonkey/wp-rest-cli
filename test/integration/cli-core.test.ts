@@ -676,6 +676,67 @@ describe( '--timeout', () => {
 	} );
 } );
 
+describe( '--truncate-length', () => {
+	it( 'truncates a table cell to 50 characters by default', async () => {
+		const longTitle = 'x'.repeat( 80 );
+		await run( [ 'wp/v2', 'widgets', 'create', `--title=${ longTitle }` ] );
+		const result = await run( [
+			'wp/v2',
+			'widgets',
+			'list',
+			'--fields=title.rendered',
+		] );
+		expect( result.exitCode ).toBe( 0 );
+		expect( result.stdout ).toContain( `${ 'x'.repeat( 49 ) }…` );
+		expect( result.stdout ).not.toContain( longTitle );
+	} );
+
+	it( 'honours a custom --truncate-length', async () => {
+		const longTitle = 'y'.repeat( 80 );
+		await run( [ 'wp/v2', 'widgets', 'create', `--title=${ longTitle }` ] );
+		const result = await run( [
+			'wp/v2',
+			'widgets',
+			'list',
+			'--fields=title.rendered',
+			'--truncate-length=10',
+		] );
+		expect( result.exitCode ).toBe( 0 );
+		expect( result.stdout ).toContain( `${ 'y'.repeat( 9 ) }…` );
+		expect( result.stdout ).not.toContain( 'y'.repeat( 10 ) );
+	} );
+
+	it( '--truncate-length=0 shows the full cell value', async () => {
+		const longTitle = 'z'.repeat( 80 );
+		await run( [ 'wp/v2', 'widgets', 'create', `--title=${ longTitle }` ] );
+		const result = await run( [
+			'wp/v2',
+			'widgets',
+			'list',
+			'--fields=title.rendered',
+			'--truncate-length=0',
+		] );
+		expect( result.exitCode ).toBe( 0 );
+		expect( result.stdout ).toContain( longTitle );
+	} );
+
+	it( 'rejects a negative --truncate-length', async () => {
+		const result = await run( [ '--truncate-length=-1' ] );
+		expect( result.exitCode ).toBe( 1 );
+		expect( result.stderr ).toContain(
+			'--truncate-length must be a non-negative integer'
+		);
+	} );
+
+	it( 'rejects a non-numeric --truncate-length', async () => {
+		const result = await run( [ '--truncate-length=abc' ] );
+		expect( result.exitCode ).toBe( 1 );
+		expect( result.stderr ).toContain(
+			'--truncate-length must be a non-negative integer'
+		);
+	} );
+} );
+
 describe( 'YAML config files', () => {
 	let dir: string;
 	const runIn = ( args: string[] ) =>

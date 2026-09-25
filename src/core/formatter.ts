@@ -99,24 +99,27 @@ function sanitizeForTable( value: string ): string {
 		.join( '' );
 }
 
-/** Longest cell (in characters) a table shows before truncating with an ellipsis. */
-const MAX_CELL = 50;
+/** Default longest cell (in characters) a table shows before truncating with an ellipsis. */
+const DEFAULT_TRUNCATE_LENGTH = 50;
 
-let truncateEnabled = true;
+let truncateLength = DEFAULT_TRUNCATE_LENGTH;
 
 /**
- * Turns table-cell truncation on/off for the process (`--no-truncate`).
- * @param enabled Whether long cells should be truncated.
+ * Sets the table-cell truncation length for the process (`--truncate-length`).
+ * @param length Max characters a cell shows before truncating; 0 disables truncation entirely.
  */
-export function setTruncateEnabled( enabled: boolean ): void {
-	truncateEnabled = enabled;
+export function setTruncateLength( length: number ): void {
+	truncateLength = length;
 }
 
 /**
- * Renders a single table cell value as one sanitized, truncated line.
- * Objects/arrays become `<object>`/`<array>` placeholders rather than JSON.
+ * Renders a single table cell value as one sanitized, truncated line. An
+ * object/array is JSON-stringified rather than shown as a bare placeholder,
+ * truncated to the same length as any other cell, but ending in `...}`/`...]`
+ * so it still reads as the right kind of value.
  * @param value    The raw field value.
- * @param truncate Whether to cut long values to `MAX_CELL` characters.
+ * @param truncate Whether this cell participates in truncation at all (a caller
+ *                 like `auth list` opts specific fields out regardless of length).
  * @return The cell's display string.
  */
 function stringifyCell( value: unknown, truncate: boolean ): string {
@@ -126,19 +129,26 @@ function stringifyCell( value: unknown, truncate: boolean ): string {
 	if ( value === null ) {
 		return 'null';
 	}
-	if ( Array.isArray( value ) ) {
-		return '<array>';
-	}
+	// 0 means "no limit" (--truncate-length=0), same as a caller opting out.
+	const limit = truncate ? truncateLength : 0;
 	if ( typeof value === 'object' ) {
-		return '<object>';
+		const json = JSON.stringify( value );
+		const closer = Array.isArray( value ) ? '...]' : '...}';
+		// Array.from counts code points, so emoji aren't split mid-surrogate.
+		const chars = Array.from( json );
+		return limit > 0 && chars.length > limit
+			? `${ chars
+					.slice( 0, Math.max( 0, limit - closer.length ) )
+					.join( '' ) }${ closer }`
+			: json;
 	}
 	const text = sanitizeForTable( String( value ) )
 		.replace( /\s+/g, ' ' )
 		.trim();
 	// Array.from counts code points, so emoji aren't split mid-surrogate.
 	const chars = Array.from( text );
-	return truncate && truncateEnabled && chars.length > MAX_CELL
-		? `${ chars.slice( 0, MAX_CELL - 1 ).join( '' ) }…`
+	return limit > 0 && chars.length > limit
+		? `${ chars.slice( 0, Math.max( 0, limit - 1 ) ).join( '' ) }…`
 		: text;
 }
 
@@ -306,8 +316,9 @@ export async function formatOutput(
 		}
 
 		case 'table': {
-			// Without --fields keep rows nested (top-level columns only) so
-			// objects show as `<object>`; --fields flattens for dotted paths.
+			// Without --fields keep rows nested (top-level columns only) so a
+			// nested object/array renders as one JSON cell; --fields flattens
+			// for dotted paths.
 			const rows = asArray( data ).map( ( row ) =>
 				fields ? selectFields( row, fields, true ) : row
 			);
