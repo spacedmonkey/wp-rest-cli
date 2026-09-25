@@ -2,7 +2,11 @@
  * External dependencies
  */
 import { spawn } from 'node:child_process';
+import type { ChildProcess, SpawnOptions } from 'node:child_process';
 import process from 'node:process';
+
+/** The one `spawn` call shape {@link runPager} needs — narrowed from its real overloaded signature so a test can inject a fake without touching real processes. */
+type Spawn = ( command: string, options: SpawnOptions ) => ChildProcess;
 
 /**
  * Internal dependencies
@@ -64,14 +68,19 @@ export function resolvePagerCommand(
  * double-printing the output.
  * @param command The shell command to run (may contain flags/pipes/quoting).
  * @param output  The text to page.
+ * @param spawnFn `node:child_process`'s `spawn`, overridable in tests.
  * @return Whether the pager was started.
  */
-function runPager( command: string, output: string ): Promise< boolean > {
+export function runPager(
+	command: string,
+	output: string,
+	spawnFn: Spawn = spawn
+): Promise< boolean > {
 	return new Promise( ( resolve ) => {
 		let settled = false;
 		let child;
 		try {
-			child = spawn( command, {
+			child = spawnFn( command, {
 				shell: true,
 				stdio: [ 'pipe', 'inherit', 'inherit' ],
 			} );
