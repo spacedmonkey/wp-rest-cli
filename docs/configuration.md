@@ -98,6 +98,8 @@ Paging only ever engages when stdout is a live terminal — it is automatically 
 -   **`WRAPIDO_PAGER`**, then **`PAGER`**, choose which pager command to run; an empty value (`PAGER=`) also disables paging. With neither set, the default is `less -FR` (`-F` quit if it fits one screen, `-R` pass through color) on Linux/macOS — there is no built-in default on Windows, where `less` isn't reliably present. Quitting the pager clears its content from view, like a normal `less`/`git log` session — this is what lets your terminal's mouse-wheel/trackpad scrolling work while it's open (a `-X` flag that kept content on screen after quitting was tried first, but that also silently disabled scroll-wheel support in most terminals).
 -   Output that already fits on one screen is printed directly, without invoking a pager at all — measured against the terminal's actual reported size (not left to a pager's own "quit if it fits" flag, which isn't reliably honored by every terminal/multiplexer).
 
+Mouse-wheel/trackpad scrolling while the pager is open depends on your terminal app translating that gesture into input `less` understands — this is outside `wrapido`'s control. **iTerm2** needs an explicit preference for it: Preferences → Profiles → your profile → Terminal → "Scroll wheel sends arrow keys when in alternate screen mode" (or Preferences → Advanced → Mouse, depending on version). **Terminal.app** has no equivalent setting and may not forward scroll events to `less` at all; the arrow keys, `Space`/`b`, and `/` (search) always work regardless.
+
 ```sh
 wrapido wp/v2 posts list --url=https://example.com                 # pages through less at a terminal
 wrapido wp/v2 posts list --url=https://example.com --no-pager       # never pages
