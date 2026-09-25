@@ -48,7 +48,6 @@ theme:
     - navigation.instant
     - navigation.tracking
     - navigation.sections
-    - navigation.tabs
     - navigation.indexes
     - navigation.top
     - navigation.footer

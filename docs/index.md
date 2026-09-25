@@ -5,6 +5,12 @@ tags:
 
 # wrapido
 
+<!-- markdownlint-disable MD033 -->
+<p align="center">
+  <img src="assets/logo.svg" alt="wrapido logo" width="160" height="160" style="background:#000;border-radius:24px;padding:24px;">
+</p>
+<!-- markdownlint-enable MD033 -->
+
 <!-- markdownlint-disable-next-line MD033 -->
 **<u>W</u>ordPress <u>R</u>EST <u>API</u> <u>Do</u>er**: a fast CLI for any WordPress site.
 
