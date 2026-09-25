@@ -1,3 +1,9 @@
+---
+tags:
+  - auth
+  - application-passwords
+---
+
 # Application Passwords
 
 WordPress core's own authentication mechanism (Users → Profile → Application Passwords, built in since 5.6) — revocable and scoped per-application, over the same HTTP Basic Auth the CLI always sends. See [Authentication](authentication.md) for the general `--username`/`--password`/env-var/`--use-auth` precedence shared by both auth types.

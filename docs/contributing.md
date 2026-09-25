@@ -1,3 +1,8 @@
+---
+tags:
+  - contributing
+---
+
 # Contributing
 
 Contributions are welcome. The full contributor guide lives in the repository:
@@ -18,3 +23,7 @@ npm run format
 ```
 
 Open a pull request against `main`. See the repository's [CLAUDE.md](https://github.com/spacedmonkey/wrapido/blob/main/CLAUDE.md) for a full architecture tour if you're changing how the CLI dispatches commands, discovers sites, or formats output.
+
+## Sponsorship
+
+Code contributions aren't the only way to support the project — you can also [sponsor it on GitHub](https://github.com/sponsors/spacedmonkey).

@@ -1,3 +1,9 @@
+---
+tags:
+  - uploads
+  - cli
+---
+
 # Uploading files
 
 Any `create` (or `update`) can upload a file. The flag is **the parameter name the endpoint itself expects** — the CLI has no fixed `--file` flag. Core's media endpoint reads a parameter called `file`, so that is what you use there; a custom route that reads `attachment` takes `--attachment=...`.

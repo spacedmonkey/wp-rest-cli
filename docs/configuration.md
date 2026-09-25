@@ -1,3 +1,9 @@
+---
+tags:
+  - config
+  - cli
+---
+
 # Configuration
 
 Save `--url`/`--username` defaults on disk so you don't have to repeat them on every invocation:
@@ -49,6 +55,7 @@ Every key is optional; omit the ones you don't need.
 | `--password`                                | —              | `WP_PASSWORD`                                                                                    | no — secret                        |
 | `--client-id`, `--client-secret`, `--token` | —              | —                                                                                                | no — secrets / one-off credentials |
 | `--fields`, `--field`, `--body`             | —              | —                                                                                                | no — per-invocation                |
+| `--truncate-length`                         | —              | —                                                                                                | no — per-invocation                |
 | `-h`, `--help`                              | —              | —                                                                                                | no                                 |
 
 Putting a "no" key in a file is an error, so a secret can't be committed by accident. Use `WP_USERNAME`/`WP_PASSWORD` or [`wrapido auth`](authentication.md#stored-credentials-wrapido-auth) for credentials.

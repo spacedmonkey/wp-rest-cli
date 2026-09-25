@@ -1,3 +1,9 @@
+---
+tags:
+  - cli
+  - installation
+---
+
 # Installation
 
 `wrapido` isn't published to the npm registry yet (see the note at the bottom of this page), so install it from source.

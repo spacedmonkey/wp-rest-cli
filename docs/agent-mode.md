@@ -1,3 +1,9 @@
+---
+tags:
+  - agent-mode
+  - cli
+---
+
 # Agent mode
 
 `wrapido` pairs well with AI agents (Claude Code, Codex, scripts): once auth is set up, an agent can discover a site's REST API and build content with it. **Agent mode** makes the output easy for a program to read, and changes nothing for people at a terminal.

@@ -1,3 +1,9 @@
+---
+tags:
+  - auth
+  - oauth2
+---
+
 # OAuth2
 
 The second supported `<type>` is `oauth2`, using the [WP-API/OAuth2](https://github.com/WP-API/OAuth2) WordPress plugin. It follows the same shape as [Application Passwords](authentication-application-passwords.md) — `login`/`add`/`list`/`remove`/`use`/`status` — with `--client-id`/`--client-secret` (or `--token`, for a personal access token — see below) playing the same role `--username`/`--password` do there. See [Authentication](authentication.md) for the general `--username`/`--password`/env-var/`--use-auth` precedence shared by both auth types.
@@ -93,7 +99,7 @@ wrapido auth oauth2 remove --all
 
 - **No expiry, no refresh.** The plugin issues tokens that never expire and has no `refresh_token` grant — this is spec-legal (RFC 6749 doesn't require either), not a bug in this tool.
 - **No REST-based revocation.** Unlike Application Passwords, the plugin exposes no HTTP endpoint to revoke a token. `oauth2 remove` only forgets the credential locally — revoke it manually in wp-admin if needed. This applies to a personal token too.
-- **No self-service client registration** — see the prerequisite above. (Doesn't apply to a personal access token — see [personal access token](#wrapido-auth-oauth2-add--no-browser-personal-access-token) above — since there's no client/Application involved in that path at all.)
+- **No self-service client registration** — see the prerequisite above. (Doesn't apply to a personal access token — see [personal access token](#wrapido-auth-oauth2-add-no-browser-personal-access-token) above — since there's no client/Application involved in that path at all.)
 - **`client_credentials` requires a plugin version from 2026-02-16 or later** — see [Requires a recent plugin version](#requires-a-recent-plugin-version) above, including a Composer `dev-master`/`composer.lock` gotcha that's the most common way to be on an older version without realizing it.
 - **A `client_credentials` token has no real user context** (it authenticates as user id 0). Some routes' permission callbacks may reject it regardless of validity — `oauth2 add`'s own best-effort verification treats this as inconclusive, not a failure, and still saves the credential. A personal token, by contrast, authenticates as whichever real user generated it, so `add`'s verification blocks the save on an unambiguous rejection instead.
 - **TLS is required**, even though the plugin itself doesn't enforce it (RFC 6749 requires TLS for both the authorization and token endpoints, and specifically for password-based client authentication — i.e. `add`'s client secret). `oauth2 login`/`add` both refuse a plain-HTTP, non-loopback site with a clear error, the same way `application-passwords login` already does — this includes `add --token=`.

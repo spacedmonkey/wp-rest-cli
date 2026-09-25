@@ -1,3 +1,8 @@
+---
+tags:
+  - cli
+---
+
 # wrapido
 
 <!-- markdownlint-disable-next-line MD033 -->
@@ -42,10 +47,11 @@ See [Installation](installation.md) for development setup, [Usage](usage.md) for
 - **Meta commands** — `wrapido <namespace> <route> meta <add|update|get|list|delete|patch|pluck|clean-duplicates>`, mapped onto the REST API's `meta` object field.
 - **Output formats** — `table` (default), `json`, `csv`, `yaml`, `ids`, `count`, `raw`, with `--fields=`/`--field=` selection.
 - **Agent mode** — `WRAPIDO_AGENT=1` gives AI agents and scripts plain, compact JSON output, JSON errors and unknown-flag warnings, with no change for interactive use. See [Agent mode](agent-mode.md).
-- **Authentication** — HTTP Basic Auth via WordPress core Application Passwords, or `--username`/`--password` / `WP_USERNAME`/`WP_PASSWORD`.
+- **Authentication** — HTTP Basic Auth via WordPress core Application Passwords, or OAuth2 via the [WP-API/OAuth2](https://github.com/WP-API/OAuth2) plugin (browser flow, `client_credentials`, or a personal access token) — or plain `--username`/`--password` / `WP_USERNAME`/`WP_PASSWORD`. See [Authentication](authentication.md).
 
 ## Project links
 
 - [GitHub repository](https://github.com/spacedmonkey/wrapido)
 - [Issues](https://github.com/spacedmonkey/wrapido/issues)
 - [License (MIT)](https://github.com/spacedmonkey/wrapido/blob/main/LICENSE)
+- [Sponsor this project](https://github.com/sponsors/spacedmonkey) — via GitHub Sponsors

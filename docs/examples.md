@@ -1,3 +1,9 @@
+---
+tags:
+  - examples
+  - cli
+---
+
 # Examples
 
 ```sh
