@@ -1,0 +1,129 @@
+/**
+ * External dependencies
+ */
+import { spawn } from 'node:child_process';
+import process from 'node:process';
+
+/**
+ * Internal dependencies
+ */
+import type { GlobalFlags } from '../types.js';
+import { agentMode } from '../ui.js';
+
+/**
+ * Whether help output should be paged for this invocation: only when stdout
+ * is a real interactive terminal, agent mode is off, `--quiet` wasn't
+ * passed, and neither `--no-pager` nor a `pager: false` config-file value
+ * turned it off. This can only ever narrow the default (`isTTY` on, nothing
+ * else off) — nothing can force paging on when stdout isn't a live
+ * terminal, by design: there is no `--pager` flag, only `--no-pager`.
+ * @param flags   The resolved global flags (`flags.pager` defaults true).
+ * @param isTTY   Whether stdout is a live terminal — pass `process.stdout.isTTY`.
+ * @param agentOn Whether agent mode is on — pass `agentMode()`.
+ * @return True when output should be piped through a pager.
+ */
+export function shouldUsePager(
+	flags: GlobalFlags,
+	isTTY: boolean,
+	agentOn: boolean
+): boolean {
+	return isTTY && ! agentOn && ! flags.quiet && flags.pager !== false;
+}
+
+/**
+ * Resolves the shell command to run as the pager: `WRAPIDO_PAGER`, then
+ * `PAGER`, then `less -FRX` (git's own default flags: quit if the content
+ * fits one screen, pass through ANSI color, don't clear the screen on exit)
+ * — except on Windows, where `less` isn't reliably present, so there is no
+ * built-in default there; an explicit `WRAPIDO_PAGER`/`PAGER` still works.
+ * An explicitly *empty* `WRAPIDO_PAGER`/`PAGER` (`PAGER=`) disables paging,
+ * the same convention those variables already carry elsewhere (e.g. git).
+ * @param env The environment to read from.
+ * @return The command to run, or undefined when there is none.
+ */
+export function resolvePagerCommand(
+	env: NodeJS.ProcessEnv = process.env
+): string | undefined {
+	if ( env.WRAPIDO_PAGER !== undefined ) {
+		return env.WRAPIDO_PAGER === '' ? undefined : env.WRAPIDO_PAGER;
+	}
+	if ( env.PAGER !== undefined ) {
+		return env.PAGER === '' ? undefined : env.PAGER;
+	}
+	return process.platform === 'win32' ? undefined : 'less -FRX';
+}
+
+/**
+ * Pipes `output` into `command` via the shell, mirroring `console.log`'s own
+ * trailing newline so paged and unpaged output are byte-identical. Resolves
+ * `false` only when the pager could not be started at all, so the caller can
+ * fall back to `console.log`; once anything has been written to the pager's
+ * stdin, this always resolves `true`, even if the pager itself later exits
+ * non-zero (e.g. a broken custom `$PAGER`) — the same way `git log | badcmd`
+ * fails visibly once rather than silently retrying without a pager and
+ * double-printing the output.
+ * @param command The shell command to run (may contain flags/pipes/quoting).
+ * @param output  The text to page.
+ * @return Whether the pager was started.
+ */
+function runPager( command: string, output: string ): Promise< boolean > {
+	return new Promise( ( resolve ) => {
+		let settled = false;
+		let child;
+		try {
+			child = spawn( command, {
+				shell: true,
+				stdio: [ 'pipe', 'inherit', 'inherit' ],
+			} );
+		} catch {
+			resolve( false );
+			return;
+		}
+		child.on( 'error', () => {
+			if ( ! settled ) {
+				settled = true;
+				resolve( false );
+			}
+		} );
+		child.on( 'spawn', () => {
+			// Only write once the process has actually started, so an
+			// unlaunchable shell never partially writes before falling back.
+			child.stdin?.on( 'error', () => {} ); // EPIPE: user quit early ('q').
+			child.stdin?.write(
+				output.endsWith( '\n' ) ? output : `${ output }\n`
+			);
+			child.stdin?.end();
+		} );
+		child.on( 'close', () => {
+			if ( ! settled ) {
+				settled = true;
+				resolve( true );
+			}
+		} );
+	} );
+}
+
+/**
+ * The single choke point for printing a command's final help-output string
+ * — replaces a bare `console.log(output)`. Pages it through the resolved
+ * pager when {@link shouldUsePager} says to and a pager command resolves and
+ * starts; otherwise (or on any failure to start one) prints exactly as
+ * `console.log(output)` always did, so this is a behavior no-op whenever the
+ * gate is false.
+ * @param output The complete output string to print.
+ * @param flags  The resolved global flags.
+ */
+export async function printOutput(
+	output: string,
+	flags: GlobalFlags
+): Promise< void > {
+	const isTTY = Boolean( process.stdout.isTTY );
+	if ( ! shouldUsePager( flags, isTTY, agentMode() ) ) {
+		console.log( output );
+		return;
+	}
+	const command = resolvePagerCommand();
+	if ( ! command || ! ( await runPager( command, output ) ) ) {
+		console.log( output );
+	}
+}

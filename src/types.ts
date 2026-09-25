@@ -117,6 +117,8 @@ export interface GlobalFlags {
 	/** Timeout in milliseconds for every HTTP request (`--timeout`). */
 	timeout?: number;
 	color: boolean;
+	/** Whether to page `help`/`--help` output through `less`/`$PAGER` on a real terminal (`--no-pager` to disable). */
+	pager: boolean;
 	quiet: boolean;
 	debug: boolean;
 }

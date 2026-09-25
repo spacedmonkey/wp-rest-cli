@@ -47,6 +47,7 @@ import {
 	userConfigPath,
 } from './core/file-config.js';
 import { setTruncateLength } from './core/formatter.js';
+import { printOutput } from './core/pager.js';
 import { setUserTimeout } from './core/timeout.js';
 import { disableTlsVerification } from './core/tls.js';
 import type {
@@ -102,6 +103,8 @@ const KNOWN_LONG_FLAGS = new Set( [
 	'timeout',
 	'color',
 	'no-color',
+	'pager',
+	'no-pager',
 	'truncate-length',
 	'quiet',
 	'debug',
@@ -196,6 +199,7 @@ interface RawOptions {
 	body?: string;
 	timeout?: string;
 	color: boolean;
+	pager: boolean;
 	truncateLength: string;
 	quiet?: boolean;
 	debug?: boolean;
@@ -232,6 +236,7 @@ function applyFileConfig( options: RawOptions ): RawOptions {
 	set( 'useAuth', values[ 'use-auth' ] );
 	set( 'timeout', values.timeout?.toString() );
 	set( 'color', values.color );
+	set( 'pager', values.pager );
 	set( 'quiet', values.quiet );
 	set( 'debug', values.debug );
 	return merged;
@@ -286,6 +291,7 @@ function toGlobalFlags( options: RawOptions ): GlobalFlags {
 		body: options.body,
 		timeout,
 		color: options.color && colorByDefault(),
+		pager: options.pager,
 		quiet: Boolean( options.quiet ),
 		debug: Boolean( options.debug ),
 	};
@@ -368,6 +374,32 @@ async function handleConfigCommand(
 }
 
 /**
+ * Captures the top-level `wrapido --help`/`wrapido help` text — the full
+ * output `program.outputHelp()` would otherwise write directly to stdout,
+ * including the `Examples:` block registered via `addHelpText('after', ...)`,
+ * which `program.helpInformation()` alone omits (it's written separately, via
+ * a Commander event `outputHelp()` fires) — so it can be paged instead
+ * through {@link printOutput}.
+ * @return The full help text.
+ */
+function capturedTopLevelHelp(): string {
+	const original = program.configureOutput();
+	let buffer = '';
+	program.configureOutput( {
+		...original,
+		writeOut: ( str: string ) => {
+			buffer += str;
+		},
+	} );
+	try {
+		program.outputHelp();
+	} finally {
+		program.configureOutput( original );
+	}
+	return buffer;
+}
+
+/**
  * Handles `wrapido help ...`: resolves the site URL, parses the help arguments,
  * and prints the result.
  * @param args    The positional arguments following `help`.
@@ -380,11 +412,11 @@ async function handleHelpCommand(
 	options: RawOptions,
 	style: HelpStyle = 'usage'
 ): Promise< number > {
+	const flags = toGlobalFlags( options );
 	if ( args.length === 0 ) {
-		program.outputHelp();
+		await printOutput( capturedTopLevelHelp(), flags );
 		return 0;
 	}
-	const flags = toGlobalFlags( options );
 	const siteUrl = flags.url ?? getDefaultUrl();
 	if ( ! siteUrl ) {
 		throw new CliError(
@@ -398,7 +430,7 @@ async function handleHelpCommand(
 		siteUrl,
 		style
 	);
-	console.log( output );
+	await printOutput( output, flags );
 	return exitCode;
 }
 
@@ -449,6 +481,10 @@ program
 		'Timeout in milliseconds for every request; overrides all defaults (API calls 20000, discovery/auth 8000, file transfers 300000)'
 	)
 	.option( '--no-color', 'Disable colored output' )
+	.option(
+		'--no-pager',
+		'Never page help output, even on a terminal (paging is already off for piped/non-interactive output)'
+	)
 	.option(
 		'--truncate-length <n>',
 		'Max characters a table cell shows before truncating; 0 shows full values',
@@ -556,7 +592,10 @@ run "wrapido <namespace> <route>" to see which ones a given route supports.
 
 			if ( options.help ) {
 				if ( args.length === 0 ) {
-					program.outputHelp();
+					await printOutput(
+						capturedTopLevelHelp(),
+						toGlobalFlags( options )
+					);
 					process.exitCode = 0;
 					return;
 				}
